@@ -1,9 +1,14 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
+import 'package:uai_capoeira/core/caca_bug/caca_bug_actions.dart';
+import 'package:uai_capoeira/core/caca_bug/caca_bug_service.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'package:uai_capoeira/core/emergency_offline/emergency_offline_service.dart';
 import 'package:uai_capoeira/core/theme/app_theme_tokens.dart';
 import 'package:uai_capoeira/modules/turmas/screens/tela_turma_screen.dart';
 import 'package:uai_capoeira/modules/turmas/admin/vincular_aluno_inativo_turma_screen.dart';
@@ -32,6 +37,9 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
   bool _isLoading = true;
   bool _erroCarregamento = false;
   bool _atualizando = false;
+  bool _cacaBugRegistrouEntrada = false;
+  bool _cacaBugRegistrouCarregamentoTurmas = false;
+  bool _cacaBugRegistrouErroCarregamento = false;
 
   int _pesoUsuarioLogado = 1;
   Map<String, bool> _permissoes = {};
@@ -46,7 +54,121 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
   @override
   void initState() {
     super.initState();
+    _registrarEntradaCacaBug();
     _carregarDadosIniciais();
+  }
+
+  void _registrarEntradaCacaBug() {
+    if (_cacaBugRegistrouEntrada) return;
+    _cacaBugRegistrouEntrada = true;
+    unawaited(
+      CacaBugService.instance
+          .registrarEvento(
+            tipo: 'navegacao',
+            acao: CacaBugActions.abriuTelaTurmasAcademia,
+            descricao:
+                'Usu\u00e1rio entrou nas turmas da academia ${widget.academiaNome}',
+            tela: 'TurmasAcademiaScreen',
+            arquivo: 'lib/modules/turmas/screens/turmas_academia_screen.dart',
+            rota: '/academias/turmas',
+            status: 'success',
+            dados: {
+              'academiaId': widget.academiaId,
+              'academiaNome': widget.academiaNome,
+              'academiaCidade': widget.academiaCidade,
+            },
+          )
+          .then((_) => CacaBugService.instance.flush(force: true)),
+    );
+  }
+
+  void _registrarCarregouTurmasCacaBug({required bool refreshManual}) {
+    if (!refreshManual && _cacaBugRegistrouCarregamentoTurmas) return;
+    if (!refreshManual) _cacaBugRegistrouCarregamentoTurmas = true;
+    unawaited(
+      CacaBugService.instance.registrarEvento(
+        tipo: 'acao_usuario',
+        acao: refreshManual
+            ? CacaBugActions.atualizouTurmasAcademia
+            : CacaBugActions.carregouTurmasAcademia,
+        descricao: refreshManual
+            ? 'Usu\u00e1rio atualizou turmas da academia ${widget.academiaNome}'
+            : 'Usu\u00e1rio carregou ${_turmas.length} turma(s) da academia ${widget.academiaNome}',
+        tela: 'TurmasAcademiaScreen',
+        arquivo: 'lib/modules/turmas/screens/turmas_academia_screen.dart',
+        rota: '/academias/turmas',
+        status: 'success',
+        dados: {
+          'academiaId': widget.academiaId,
+          'academiaNome': widget.academiaNome,
+          'turmasCount': _turmas.length,
+          'origem': refreshManual ? 'refresh_manual' : 'carregamento_inicial',
+        },
+      ),
+    );
+  }
+
+  void _registrarErroCarregarTurmasCacaBug(Object erro) {
+    if (_cacaBugRegistrouErroCarregamento) return;
+    _cacaBugRegistrouErroCarregamento = true;
+    unawaited(
+      CacaBugService.instance.registrarErro(
+        acao: CacaBugActions.erroCarregarTurmasAcademia,
+        descricao: 'Erro ao carregar turmas da academia ${widget.academiaNome}',
+        tela: 'TurmasAcademiaScreen',
+        arquivo: 'lib/modules/turmas/screens/turmas_academia_screen.dart',
+        rota: '/academias/turmas',
+        erro: erro,
+        dados: {
+          'academiaId': widget.academiaId,
+          'academiaNome': widget.academiaNome,
+        },
+      ),
+    );
+  }
+
+  void _registrarAbriuTurmaCacaBug(Map<String, dynamic> turma) {
+    unawaited(
+      CacaBugService.instance
+          .registrarEvento(
+            tipo: 'acao_usuario',
+            acao: CacaBugActions.abriuTurma,
+            descricao:
+                'Usu\u00e1rio abriu a turma ${turma['nome'] ?? 'sem nome'}',
+            tela: 'TurmasAcademiaScreen',
+            arquivo: 'lib/modules/turmas/screens/turmas_academia_screen.dart',
+            rota: '/academias/turmas',
+            status: 'success',
+            dados: {
+              'academiaId': widget.academiaId,
+              'academiaNome': widget.academiaNome,
+              'turmaId': turma['id'],
+              'turmaNome': turma['nome'],
+              'alunosCount': turma['alunos_ativos'],
+              'horario': turma['horario'],
+            },
+          )
+          .then((_) => CacaBugService.instance.flush(force: true)),
+    );
+  }
+
+  void _registrarVoltouParaAcademiaCacaBug() {
+    unawaited(
+      CacaBugService.instance.registrarEvento(
+        tipo: 'navegacao',
+        acao: CacaBugActions.voltouParaAcademia,
+        descricao:
+            'Usu\u00e1rio voltou para as turmas da academia ${widget.academiaNome}',
+        tela: 'TurmasAcademiaScreen',
+        arquivo: 'lib/modules/turmas/screens/turmas_academia_screen.dart',
+        rota: '/academias/turmas',
+        status: 'success',
+        dados: {
+          'academiaId': widget.academiaId,
+          'academiaNome': widget.academiaNome,
+        },
+      ),
+    );
   }
 
   bool _podeUsarCache() {
@@ -91,6 +213,7 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
         _ultimaAtualizacao = DateTime.now();
       });
     } catch (e) {
+      _registrarErroCarregarTurmasCacaBug(e);
       debugPrint('Erro ao carregar dados iniciais: $e');
 
       if (!mounted) return;
@@ -206,6 +329,38 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
     }
   }
 
+  Future<bool> _usarTurmasPacoteOffline() async {
+    final snapshot = await EmergencyOfflineService.instance.read();
+    final entries = (snapshot?['turmas'] as List?) ?? const [];
+    if (snapshot == null) return false;
+    final roster = (snapshot['alunos'] as List?) ?? const [];
+    final selected = entries.whereType<Map>().where(
+      (t) => t['academiaId']?.toString() == widget.academiaId,
+    ).map((t) {
+      final id = (t['id'] ?? '').toString();
+      return <String, dynamic>{
+        ...Map<String, dynamic>.from(t),
+        'id': id,
+        'nome': t['nome'] ?? 'Turma',
+        'alunos_ativos': roster.where((a) => a is Map && a['turmaId'] == id).length,
+        'capacidade_maxima': t['capacidade_maxima'] ?? 0,
+        'status': 'ATIVA',
+        'horario': t['horario'] ?? '',
+        'dias_semana': t['dias_semana'] ?? '',
+        'cor_turma': t['cor_turma'] ?? '#059669',
+      };
+    }).toList()..sort((a, b) => a['nome'].toString().compareTo(b['nome'].toString()));
+    if (!mounted) return true;
+    setState(() {
+      _turmas = selected;
+      _turmasCache = List<Map<String, dynamic>>.from(selected);
+      _ultimoCacheTurmas = DateTime.now();
+      _erroCarregamento = false;
+      _mensagemErro = null;
+    });
+    return true;
+  }
+
   Future<void> _carregarTurmas({bool forcarServidor = false}) async {
     try {
       if (!forcarServidor && _podeUsarCache()) {
@@ -233,12 +388,11 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
           return;
         }
 
+        if (await _usarTurmasPacoteOffline()) return;
         if (!mounted) return;
-
         setState(() {
           _erroCarregamento = true;
-          _mensagemErro =
-              'Sem conexão no momento. Tente novamente em instantes.';
+          _mensagemErro = 'Sem conexão e nenhum pacote local disponível.';
         });
         return;
       }
@@ -251,7 +405,9 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
           .get(const GetOptions(source: Source.server));
 
       await _processarTurmas(turmasSnapshot.docs);
+      _registrarCarregouTurmasCacaBug(refreshManual: false);
     } catch (e) {
+      _registrarErroCarregarTurmasCacaBug(e);
       debugPrint('Erro ao carregar turmas: $e');
 
       if (!mounted) return;
@@ -262,11 +418,10 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
           _erroCarregamento = false;
           _mensagemErro = null;
         });
-      } else {
+      } else if (!await _usarTurmasPacoteOffline()) {
         setState(() {
           _erroCarregamento = true;
-          _mensagemErro =
-              'Erro ao carregar turmas. Puxe para baixo para tentar novamente.';
+          _mensagemErro = 'Erro ao carregar turmas. Puxe para baixo para tentar novamente.';
         });
       }
     }
@@ -380,6 +535,7 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
     try {
       await _carregarDadosUsuario(forcarServidor: true);
       await _carregarTurmas(forcarServidor: true);
+      _registrarCarregouTurmasCacaBug(refreshManual: true);
 
       if (mounted && mostrarMensagem) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -412,7 +568,7 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: context.uai.cardAlt,
-          border: Border.all(color: corTurma.withOpacity(0.28), width: 2),
+          border: Border.all(color: corTurma.withAlpha(71), width: 2),
         ),
         child: ClipOval(
           child: Image.network(
@@ -456,8 +612,8 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: corTurma.withOpacity(0.12),
-        border: Border.all(color: corTurma.withOpacity(0.50), width: 2),
+        color: corTurma.withAlpha(31),
+        border: Border.all(color: corTurma.withAlpha(128), width: 2),
       ),
       child: Center(
         child: Text(
@@ -506,7 +662,7 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
   }
 
   Color _onPrimarySoft(UaiThemeTokens t, double opacity) {
-    return _onPrimaryText(t).withOpacity(opacity);
+    return _onPrimaryText(t).withAlpha((255.0 * (opacity)).round());
   }
 
   Widget _buildTurmaCard(Map<String, dynamic> turma, {bool gridMode = false}) {
@@ -529,21 +685,25 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: () {
+            _registrarAbriuTurmaCacaBug(turma);
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => TelaTurmaScreen(
-                  turmaId: turma['id'],
-                  turmaNome: turma['nome'],
-                  academiaId: widget.academiaId,
-                  academiaNome: widget.academiaNome,
-                ),
+                builder: (context) {
+                  final nomeTurma = turma['nome']?.toString().trim() ?? '';
+                  return TelaTurmaScreen(
+                    turmaId: turma['id'],
+                    turmaNome: nomeTurma.isEmpty ? 'Turma sem nome' : nomeTurma,
+                    academiaId: widget.academiaId,
+                    academiaNome: widget.academiaNome,
+                  );
+                },
               ),
             );
           },
           borderRadius: BorderRadius.circular(t.cardRadius - 4),
-          splashColor: corTurma.withOpacity(0.10),
-          highlightColor: corTurma.withOpacity(0.06),
+          splashColor: corTurma.withAlpha(26),
+          highlightColor: corTurma.withAlpha(15),
           child: Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(t.cardRadius - 4),
@@ -710,9 +870,9 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.10),
+          color: color.withAlpha(26),
           borderRadius: BorderRadius.circular(99),
-          border: Border.all(color: color.withOpacity(0.14)),
+          border: Border.all(color: color.withAlpha(36)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -746,9 +906,9 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.10),
+        color: color.withAlpha(26),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: color.withOpacity(0.16)),
+        border: Border.all(color: color.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -833,6 +993,7 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
     }
 
     final online = await _temInternet();
+    if (!mounted) return;
     if (!online) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -906,7 +1067,7 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
                         width: 42,
                         height: 42,
                         decoration: BoxDecoration(
-                          color: onPrimary.withOpacity(0.14),
+                          color: onPrimary.withAlpha(36),
                           borderRadius: BorderRadius.circular(15),
                         ),
                         child: Icon(
@@ -1075,7 +1236,7 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
             widget.academiaNome,
             style: TextStyle(
               fontSize: 12.5,
-              color: appBarFg.withOpacity(0.82),
+              color: appBarFg.withAlpha(209),
               fontWeight: FontWeight.w600,
             ),
             maxLines: 1,
@@ -1093,7 +1254,7 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
                   icon: const Icon(Icons.person_add_alt_1_rounded),
                   style: IconButton.styleFrom(
                     foregroundColor: appBarFg,
-                    backgroundColor: appBarFg.withOpacity(0.12),
+                    backgroundColor: appBarFg.withAlpha(31),
                   ),
                 )
               : TextButton.icon(
@@ -1102,14 +1263,14 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
                   label: Text('INATIVOS'),
                   style: TextButton.styleFrom(
                     foregroundColor: appBarFg,
-                    backgroundColor: appBarFg.withOpacity(0.12),
+                    backgroundColor: appBarFg.withAlpha(31),
                     padding: const EdgeInsets.symmetric(
                       horizontal: 12,
                       vertical: 8,
                     ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(t.buttonRadius),
-                      side: BorderSide(color: appBarFg.withOpacity(0.14)),
+                      side: BorderSide(color: appBarFg.withAlpha(36)),
                     ),
                     textStyle: TextStyle(
                       fontSize: 12,
@@ -1147,9 +1308,9 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
               width: 62,
               height: 62,
               decoration: BoxDecoration(
-                color: onPrimary.withOpacity(0.14),
+                color: onPrimary.withAlpha(36),
                 borderRadius: BorderRadius.circular(t.cardRadius - 2),
-                border: Border.all(color: onPrimary.withOpacity(0.16)),
+                border: Border.all(color: onPrimary.withAlpha(41)),
               ),
               child: Icon(Icons.groups_3_rounded, color: onPrimary, size: 33),
             );
@@ -1178,7 +1339,7 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
                       : '${widget.academiaCidade} • Turmas, horários e alunos em um só lugar.',
                   textAlign: narrow ? TextAlign.center : TextAlign.left,
                   style: TextStyle(
-                    color: onPrimary.withOpacity(0.84),
+                    color: onPrimary.withAlpha(214),
                     fontSize: 13,
                     height: 1.32,
                     fontWeight: FontWeight.w500,
@@ -1237,9 +1398,9 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: onPrimary.withOpacity(0.14),
+        color: onPrimary.withAlpha(36),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: onPrimary.withOpacity(0.16)),
+        border: Border.all(color: onPrimary.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1278,7 +1439,7 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
               width: 43,
               height: 43,
               decoration: BoxDecoration(
-                color: t.primary.withOpacity(0.10),
+                color: t.primary.withAlpha(26),
                 borderRadius: BorderRadius.circular(t.buttonRadius),
               ),
               child: Icon(Icons.list_alt_rounded, color: t.primary),

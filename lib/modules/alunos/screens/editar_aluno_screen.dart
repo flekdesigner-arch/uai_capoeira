@@ -1,23 +1,28 @@
-import 'dart:io';
-import 'dart:math' as math;
-import 'dart:typed_data';
+import 'dart:developer' as developer;
+import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart'; // 👈 ADICIONAR
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'package:uai_capoeira/core/session_log/session_log_service.dart';
 import 'package:uai_capoeira/modules/alunos/services/aluno_historico_edicao_service.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
-import 'package:image/image.dart' as img;
+import 'package:uai_capoeira/modules/alunos/photo_studio/photo_editor_state.dart';
+import 'package:uai_capoeira/modules/alunos/photo_studio/photo_studio_screen.dart';
+import 'package:uai_capoeira/modules/alunos/photo_capture/guided_camera_screen.dart';
+import 'package:uai_capoeira/modules/alunos/photo_history/aluno_photo_history_service.dart';
+import 'package:uai_capoeira/modules/chamadas/services/aluno_foto_resolver.dart';
+import 'package:uai_capoeira/core/image_cache/uai_student_photo_cache.dart';
+import 'package:uai_capoeira/modules/inscricoes/ficha/ficha_complementar_fields.dart';
 
-Color _readableOn(Color background) {
-  return background.computeLuminance() > 0.48
-      ? const Color(0xFF111827)
-      : const Color(0xFFFFFFFF);
-}
+bool get _isWindowsPlatform =>
+    !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
 
 // 🔐 IMPORTAR SERVIÇO DE PERMISSÕES
 
@@ -68,7 +73,7 @@ class PermissaoService {
         return permissoes;
       }
     } catch (e) {
-      print('Erro ao carregar permissões: $e');
+      developer.log('Erro ao carregar permissões: $e');
     }
     return {};
   }
@@ -87,9 +92,15 @@ class PermissaoService {
         return peso >= 90;
       }
     } catch (e) {
-      print('Erro ao verificar admin: $e');
+      developer.log('Erro ao verificar admin: $e');
     }
     return false;
+  }
+
+  Future<int> obterPesoPermissao(String userId) async {
+    final doc = await _firestore.collection('usuarios').doc(userId).get();
+    final peso = doc.data()?['peso_permissao'];
+    return peso is num ? peso.toInt() : 0;
   }
 
   void limparCache(String userId) {
@@ -97,10 +108,22 @@ class PermissaoService {
   }
 }
 
+class _PhotoSaveProgressState {
+  final String title;
+  final String message;
+  final double progress;
+
+  const _PhotoSaveProgressState({
+    required this.title,
+    required this.message,
+    required this.progress,
+  });
+}
+
 class EditarAlunoScreen extends StatefulWidget {
   final String? alunoId;
 
-  EditarAlunoScreen({super.key, this.alunoId});
+  const EditarAlunoScreen({super.key, this.alunoId});
 
   @override
   State<EditarAlunoScreen> createState() => _EditarAlunoScreenState();
@@ -113,19 +136,156 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
         : const Color(0xFFFFFFFF);
   }
 
-  Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance())
-        .abs();
-    if (diff >= 0.26) return color;
 
-    final bgIsDark = background.computeLuminance() < 0.45;
-    final hsl = HSLColor.fromColor(color);
 
-    return hsl
-        .withLightness(bgIsDark ? 0.72 : 0.32)
-        .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
-        .toColor();
+  // Resumo somente de leitura: não interfere na edição nem na vinculação.
+  String _cadastroDataExibicao = '';
+  String _ultimaAtualizacaoDataExibicao = '';
+  String _ultimaAtualizacaoAutorExibicao = '';
+  bool _exibindoAutorCadastro = false;
+
+  String _formatarDataHistorica(dynamic valor) {
+    DateTime? data;
+    if (valor is Timestamp) {
+      data = valor.toDate();
+    } else if (valor is DateTime) {
+      data = valor;
+    } else if (valor is String && valor.trim().isNotEmpty) {
+      data = DateTime.tryParse(valor.trim());
+    }
+    if (data == null || data.year < 1900) return '';
+    return DateFormat('dd/MM/yyyy • HH:mm').format(data);
   }
+
+  void _carregarResumoCadastro(Map<String, dynamic> dados) {
+    // Documentos legados usam data_do_cadastro; os recentes, criado_em.
+    // Não inferir a data de cadastro a partir da última atualização.
+    final cadastro = dados['cadastro_realizado_em'] ??
+        dados['data_do_cadastro'] ?? dados['criado_em'];
+    final atualizacao = dados['ultima_edicao_em'] ?? dados['atualizado_em'];
+    _cadastroDataExibicao = _formatarDataHistorica(cadastro);
+    _ultimaAtualizacaoDataExibicao = _formatarDataHistorica(atualizacao);
+    String primeiroPreenchido(List<dynamic> valores) {
+      for (final valor in valores) {
+        final texto = valor?.toString().trim() ?? '';
+        if (texto.isNotEmpty) return texto;
+      }
+      return '';
+    }
+
+    // O responsável pelo cadastro não deve ser confundido com o último editor.
+    final ultimoEditor = primeiroPreenchido([
+      dados['ultima_edicao_por_nome'],
+      dados['ultima_edicao_por_email'],
+      dados['atualizado_por'],
+    ]);
+    final autorCadastro = primeiroPreenchido([
+      dados['cadastro_realizado_por_nome'],
+      dados['cadastro_realizado_por'],
+      dados['cadastro_realizado_por_email'],
+      dados['criado_por_nome'],
+      dados['criado_por_email'],
+    ]);
+    _exibindoAutorCadastro = ultimoEditor.isEmpty && autorCadastro.isNotEmpty;
+    _ultimaAtualizacaoAutorExibicao = ultimoEditor.isNotEmpty
+        ? ultimoEditor
+        : autorCadastro;
+  }
+
+  Widget _buildResumoCadastro() {
+    Widget dado(String rotulo, String valor, IconData icone) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icone, size: 16, color: context.uai.textMuted),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(rotulo, style: TextStyle(
+                    fontSize: 11, color: context.uai.textSecondary)),
+                const SizedBox(height: 2),
+                Text(valor.isEmpty ? ' ' : valor,
+                    style: TextStyle(fontSize: 13,
+                        color: context.uai.textPrimary,
+                        fontWeight: FontWeight.w700)),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 4, bottom: 10),
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: context.uai.card,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: context.uai.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(Icons.info_outline_rounded,
+                color: context.uai.primary, size: 19),
+            const SizedBox(width: 8),
+            Text('Sobre o cadastro', style: TextStyle(
+                color: context.uai.textPrimary,
+                fontWeight: FontWeight.w800, fontSize: 14)),
+          ]),
+          const SizedBox(height: 13),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: dado('Data do cadastro', _cadastroDataExibicao,
+                    Icons.event_available_outlined),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: dado('Última atualização', _ultimaAtualizacaoDataExibicao,
+                    Icons.update_rounded),
+              ),
+            ],
+          ),
+          const SizedBox(height: 13),
+          Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.person_outline_rounded,
+                    size: 16, color: context.uai.textMuted),
+                const SizedBox(height: 3),
+                Text(
+                  _exibindoAutorCadastro ? 'Responsável pelo cadastro' : 'Atualizado por',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 11,
+                      color: context.uai.textSecondary),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _ultimaAtualizacaoAutorExibicao.isEmpty
+                      ? ' '
+                      : _ultimaAtualizacaoAutorExibicao,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 13,
+                      color: context.uai.textPrimary,
+                      fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Apenas uma secao do formulario pode permanecer aberta por vez.
+  String? _secaoAbertaId;
 
   final _formKey = GlobalKey<FormState>();
   bool get _isEditing => widget.alunoId != null;
@@ -135,6 +295,7 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
   String? _currentUserId;
   Map<String, bool> _permissoes = {};
   bool _isAdmin = false;
+  bool _podeEditarDadosCapoeira = false;
   bool _carregandoPermissoes = true;
   bool _verificouPermissoes = false;
 
@@ -150,6 +311,12 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
     'nome_responsavel': TextEditingController(),
     'contato_responsavel': TextEditingController(),
     'cidade': TextEditingController(),
+    'rua': TextEditingController(),
+    'numero': TextEditingController(),
+    'bairro': TextEditingController(),
+    'nome_contato_emergencia': TextEditingController(),
+    'contato_emergencia': TextEditingController(),
+    'grau_emergencia': TextEditingController(),
   };
 
   // Campos para academia e turma
@@ -174,14 +341,45 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
   List<DropdownMenuItem<String>> _graduacaoItems = [];
   Map<String, Map<String, dynamic>> _graduacoesData = {};
   XFile? _pickedImage;
+  Uint8List? _pickedImageBytesPreview;
+  String? _pickedImageExtension;
   String? _networkImageUrl;
+  Uint8List? _studioOriginalBytesPendente;
+  Uint8List? _studioArchiveFinalBytesPendente;
+  PhotoCompressionSettings _fotoCompressaoPendente =
+      const PhotoCompressionSettings();
+  String _fotoOrigemPendente = 'studio';
 
+  Map<String, dynamic> _fichaComplementar = fichaUaiVazia();
+  List<Map<String, dynamic>> _contatosEmergenciaAdicionais = [];
+  bool _possuiEnderecoEstruturado = false;
+  bool _enderecoLegadoAmbiguo = false;
+  // A confirmação é válida somente para os valores efetivamente revisados.
+  String? _enderecoRevisadoAssinatura;
+
+  String get _assinaturaEnderecoAtual =>
+      ['rua', 'numero', 'bairro']
+          .map((campo) => _controllers[campo]!.text.trim().toUpperCase())
+          .join('|');
+
+  bool get _enderecoRevisaoConfirmada =>
+      _enderecoRevisadoAssinatura != null &&
+      _enderecoRevisadoAssinatura == _assinaturaEnderecoAtual;
+  String _enderecoLegadoOriginal = '';
+  Uint8List? _fotoAnteriorBytesEmMemoria;
   bool _isLoading = true;
   bool _carregandoTurmas = false;
   bool _turmaCheia = false;
   bool _isMounted = false;
   bool _salvandoAluno = false;
   bool _dialogSalvandoAberto = false;
+  final ValueNotifier<_PhotoSaveProgressState> _saveProgress = ValueNotifier(
+    const _PhotoSaveProgressState(
+      title: 'Salvando aluno',
+      message: 'Preparando dados...',
+      progress: 0.05,
+    ),
+  );
 
   bool get _mudouTurma =>
       _isEditing && _turmaId != null && _turmaId != _turmaOriginalId;
@@ -194,22 +392,34 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
   @override
   void initState() {
     super.initState();
-    _isMounted = true;
-    _carregarUsuarioLogado(); // 🔥 CARREGAR USUÁRIO PRIMEIRO
+     _isMounted = true;
+     for (final campo in const ['rua', 'numero', 'bairro']) {
+       _controllers[campo]!.addListener(_atualizarConfirmacaoEndereco);
+     }
+     _carregarUsuarioLogado(); // 🔥 CARREGAR USUÁRIO PRIMEIRO
     _initializeData();
   }
 
-  @override
-  void dispose() {
+   void _atualizarConfirmacaoEndereco() {
+     // Atualiza visualmente o checkbox quando algum campo revisado muda.
+     if (_enderecoRevisadoAssinatura != null &&
+         !_enderecoRevisaoConfirmada && mounted) {
+       setState(() => _enderecoRevisadoAssinatura = null);
+     }
+   }
+
+   @override
+   void dispose() {
     _isMounted = false;
     _controllers.forEach((_, controller) {
       controller.dispose();
     });
+    _saveProgress.dispose();
     super.dispose();
   }
 
   void _safeSetState(VoidCallback callback) {
-    if (_isMounted) {
+    if (mounted) {
       setState(callback);
     }
   }
@@ -222,17 +432,17 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
 
       if (user != null) {
         _currentUserId = user.uid;
-        print('✅ Usuário logado: $_currentUserId');
+        developer.log('✅ Usuário logado: $_currentUserId');
         await _carregarPermissoes();
       } else {
-        print('❌ Nenhum usuário logado');
+        developer.log('❌ Nenhum usuário logado');
         _safeSetState(() {
           _carregandoPermissoes = false;
           _verificouPermissoes = true;
         });
       }
     } catch (e) {
-      print('❌ Erro ao carregar usuário: $e');
+      developer.log('❌ Erro ao carregar usuário: $e');
       _safeSetState(() {
         _carregandoPermissoes = false;
         _verificouPermissoes = true;
@@ -254,19 +464,21 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
       final permissoes = await _permissaoService.carregarPermissoes(
         _currentUserId!,
       );
-      final isAdmin = await _permissaoService.isAdmin(_currentUserId!);
+      final peso = await _permissaoService.obterPesoPermissao(_currentUserId!);
+      final isAdmin = peso >= 90;
 
-      print('📋 Permissões carregadas: $permissoes');
-      print('👑 É admin: $isAdmin');
+      developer.log('📋 Permissões carregadas: $permissoes');
+      developer.log('👑 É admin: $isAdmin');
 
       _safeSetState(() {
         _permissoes = permissoes;
         _isAdmin = isAdmin;
+        _podeEditarDadosCapoeira = peso >= 100;
         _carregandoPermissoes = false;
         _verificouPermissoes = true;
       });
     } catch (e) {
-      print('❌ Erro ao carregar permissões: $e');
+      developer.log('❌ Erro ao carregar permissões: $e');
       _safeSetState(() {
         _carregandoPermissoes = false;
         _verificouPermissoes = true;
@@ -278,19 +490,19 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
   Future<bool> _verificarPermissao(String permissao, {String? acao}) async {
     // Se ainda está carregando, aguarda
     if (_carregandoPermissoes || !_verificouPermissoes) {
-      print('⏳ Aguardando carregar permissões...');
+      developer.log('⏳ Aguardando carregar permissões...');
       await Future.delayed(Duration(milliseconds: 500));
       return _verificarPermissao(permissao, acao: acao);
     }
 
     // Admin tem todas as permissões
     if (_isAdmin) {
-      print('✅ ADMIN - Permissão concedida');
+      developer.log('✅ ADMIN - Permissão concedida');
       return true;
     }
 
     final temPermissao = _permissoes[permissao] ?? false;
-    print('🔐 Permissão "$permissao": ${temPermissao ? "✅" : "❌"}');
+    developer.log('🔐 Permissão "$permissao": ${temPermissao ? "✅" : "❌"}');
 
     if (!temPermissao) {
       await _mostrarDialogoSemPermissao(acao ?? permissao);
@@ -301,7 +513,7 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
 
   // 🔐 DIÁLOGO DE SEM PERMISSÃO
   Future<void> _mostrarDialogoSemPermissao(String acao) async {
-    if (!_isMounted) return;
+    if (!mounted) return;
 
     return showDialog(
       context: context,
@@ -333,10 +545,10 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
               Container(
                 padding: EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: context.uai.error.withOpacity(0.10),
+                  color: context.uai.error.withAlpha(26),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: context.uai.error.withOpacity(0.16),
+                    color: context.uai.error.withAlpha(41),
                   ),
                 ),
                 child: Row(
@@ -352,7 +564,7 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
                         'Entre em contato com um administrador para solicitar acesso.',
                         style: TextStyle(
                           fontSize: 14,
-                          color: context.uai.textPrimary.withOpacity(0.87),
+                          color: context.uai.textPrimary.withAlpha(222),
                           height: 1.3,
                         ),
                       ),
@@ -389,7 +601,7 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
       _safeSetState(() {
         _isLoading = false;
       });
-      if (_isMounted) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -458,6 +670,7 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
       _carregandoTurmas = true;
     });
 
+    final mutedColor = context.uai.textMuted;
     try {
       debugPrint('🔄 Buscando turmas para academia ID: $academiaId');
 
@@ -515,15 +728,15 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
         items.add(
           DropdownMenuItem(
             value: id,
+            enabled: !turmaBloqueada,
             child: Text(
               nome,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: turmaBloqueada ? context.uai.textMuted : null,
+                color: turmaBloqueada ? mutedColor : null,
                 fontWeight: turmaCheia ? FontWeight.bold : FontWeight.normal,
               ),
             ),
-            enabled: !turmaBloqueada,
           ),
         );
       }
@@ -554,7 +767,8 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
           _turmaCheia = false;
         }
 
-        if (_turmaId == null &&
+        if (_statusAtividade == 'ATIVO(A)' &&
+            _turmaId == null &&
             finalItems.length == 1 &&
             finalItems.first.enabled) {
           _turmaId = finalItems.first.value;
@@ -572,6 +786,7 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
   }
 
   Future<void> _fetchGraduacoes() async {
+    final graduationBorderColor = context.uai.textPrimary.withAlpha(97);
     try {
       final snapshot = await FirebaseFirestore.instance
           .collection('graduacoes')
@@ -611,7 +826,7 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
                       stops: [0.5, 0.5],
                     ),
                     border: Border.all(
-                      color: context.uai.textPrimary.withOpacity(0.38),
+                      color: graduationBorderColor,
                       width: 1,
                     ),
                   ),
@@ -666,13 +881,17 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
 
       final data = doc.data();
       if (data == null) {
-        if (_isMounted) {
+        if (mounted) {
           ScaffoldMessenger.of(
             context,
           ).showSnackBar(SnackBar(content: Text('Aluno não encontrado')));
         }
         return;
       }
+
+      if (!mounted) return;
+
+      _carregarResumoCadastro(data);
 
       // Preencher controllers com dados textuais
       _controllers.forEach((key, controller) {
@@ -693,6 +912,97 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
       safeSetDate('data_graduacao_atual', data['data_graduacao_atual']);
       safeSetDate('tempo_capoeira', data['tempo_capoeira']);
 
+      // Migração em memória: cadastro antigo com somente responsável passa a
+      // preencher o contato principal de emergência, sem apagar os campos legados.
+      final nomeEmergencia = _controllers['nome_contato_emergencia']!;
+      final telefoneEmergencia = _controllers['contato_emergencia']!;
+      if (nomeEmergencia.text.trim().isEmpty) {
+        nomeEmergencia.text = _controllers['nome_responsavel']!.text.trim();
+      }
+      if (telefoneEmergencia.text.trim().isEmpty) {
+        telefoneEmergencia.text = _controllers['contato_responsavel']!.text.trim();
+      }
+
+      // Valores vindos do Firestore são armazenados sem pontuação.
+      // Exibição usa a mesma máscara da inscrição pública.
+      for (final campo in const ['contato_aluno', 'contato_responsavel', 'contato_emergencia']) {
+        final valor = _controllers[campo]?.text ?? '';
+        if (valor.isNotEmpty) {
+          _controllers[campo]!.text = _EditarTelefoneFormatter().formatEditUpdate(
+            const TextEditingValue(), TextEditingValue(text: valor),
+          ).text;
+        }
+      }
+      final cpfLegado = _controllers['cpf']!.text;
+       if (cpfLegado == '0') {
+         _controllers['cpf']!.clear(); // Marcador antigo de dado ausente.
+       } else if (cpfLegado.isNotEmpty) {
+        _controllers['cpf']!.text = _EditarCpfFormatter().formatEditUpdate(
+          const TextEditingValue(), TextEditingValue(text: cpfLegado),
+        ).text;
+      }
+
+      _fichaComplementar = Map<String, dynamic>.from(
+        data['ficha_complementar'] is Map ? data['ficha_complementar'] as Map : fichaUaiVazia(),
+      );
+      _contatosEmergenciaAdicionais = (data['contatos_emergencia_adicionais'] is List
+              ? data['contatos_emergencia_adicionais'] as List : const [])
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item)).toList();
+      // Migração apenas em memória: os campos novos sempre têm prioridade.
+      // Um endereço legado ambíguo não é descartado nem inventado.
+      final legado = data['endereco']?.toString().trim() ?? '';
+      _enderecoLegadoOriginal = legado;
+      final migrado = _EnderecoLegadoUai.interpretar(
+        legado,
+        cidadeConhecida: data['cidade']?.toString(),
+      );
+      _possuiEnderecoEstruturado = ['rua', 'numero', 'bairro'].any(
+        (key) => data[key]?.toString().trim().isNotEmpty == true,
+      );
+       _enderecoLegadoAmbiguo = false;
+       _enderecoRevisadoAssinatura = null;
+       for (final campo in const ['rua', 'numero', 'bairro']) {
+        if (_controllers[campo]!.text.trim().isEmpty &&
+            (migrado[campo]?.isNotEmpty ?? false)) {
+          _controllers[campo]!.text = migrado[campo]!;
+        }
+      }
+      if (_controllers['cidade']!.text.trim().isEmpty &&
+          (migrado['cidade']?.isNotEmpty ?? false)) {
+        _controllers['cidade']!.text = migrado['cidade']!;
+      }
+       _enderecoLegadoAmbiguo = legado.isNotEmpty &&
+           ((migrado['revisao_necessaria'] == 'true' && !_possuiEnderecoEstruturado) ||
+            _controllers['rua']!.text.trim().isEmpty ||
+            _controllers['numero']!.text.trim().isEmpty ||
+            _controllers['bairro']!.text.trim().isEmpty);
+
+      // A ficha antiga pode trazer informações fora do mapa complementar.
+      // Os dados que não têm equivalência certa são mantidos sem alterações.
+      final familia = Map<String, dynamic>.from(
+        _fichaComplementar['familia'] is Map
+            ? _fichaComplementar['familia'] as Map : const <String, dynamic>{},
+      );
+       // Parentesco do responsável e parentesco de emergência são conceitos
+       // diferentes. Só herdar o vínculo quando a emergência foi derivada
+       // do responsável antigo (sem contato de emergência independente).
+       final emergenciaEspecifica =
+           (data['nome_contato_emergencia']?.toString().trim().isNotEmpty ?? false) ||
+           (data['contato_emergencia']?.toString().trim().isNotEmpty ?? false);
+       final grauResponsavel = data['grau_responsavel']?.toString().trim() ?? '';
+       final grauFicha = familia['grau_responsavel']?.toString().trim() ?? '';
+       final grauEmergencia = _controllers['grau_emergencia']!.text.trim();
+       if (grauFicha.isEmpty && grauResponsavel.isNotEmpty) {
+         familia['grau_responsavel'] = grauResponsavel;
+       }
+       if (grauEmergencia.isEmpty && !emergenciaEspecifica) {
+         final herdado = grauResponsavel.isNotEmpty ? grauResponsavel : grauFicha;
+         if (herdado.isNotEmpty) {
+           _controllers['grau_emergencia']!.text = herdado;
+         }
+       }
+      _fichaComplementar['familia'] = familia;
       String? academiaId = data['academia_id'] as String?;
       String? turmaId = data['turma_id'] as String?;
       String? academiaNome = data['academia'] as String?;
@@ -751,7 +1061,7 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
       }
     } catch (e) {
       debugPrint('Erro ao carregar dados do aluno: $e');
-      if (_isMounted) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -788,7 +1098,7 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
   }
 
   void _showImageSourceActionSheet() {
-    if (!_isMounted) return;
+    if (!mounted) return;
 
     showModalBottomSheet(
       context: context,
@@ -825,25 +1135,45 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
                   },
                 ),
               ),
-              Material(
-                color: Colors.transparent,
-                child: ListTile(
-                  leading: Icon(Icons.camera_alt, color: context.uai.primary),
-                  title: Text('Tirar Foto com a Câmera'),
-                  subtitle: Text('Abrir a câmera do celular'),
-                  onTap: () {
-                    Navigator.of(context).pop();
-                    _pickImage(ImageSource.camera);
-                  },
+              if (!_isWindowsPlatform)
+                Material(
+                  color: Colors.transparent,
+                  child: ListTile(
+                    leading: Icon(Icons.camera_alt, color: context.uai.primary),
+                    title: Text(
+                      !kIsWeb && defaultTargetPlatform == TargetPlatform.android
+                          ? 'Câmera guiada UAI'
+                          : 'Tirar Foto com a Câmera',
+                    ),
+                    subtitle: Text(
+                      !kIsWeb && defaultTargetPlatform == TargetPlatform.android
+                          ? 'Oval, cruz, perfil e card de chamada ao vivo'
+                          : 'Abrir a câmera do dispositivo',
+                    ),
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      _pickImage(ImageSource.camera);
+                    },
+                  ),
                 ),
-              ),
               Material(
                 color: Colors.transparent,
                 child: ListTile(
-                  leading: Icon(Icons.crop_rounded, color: context.uai.success),
-                  title: Text('Editar foto do aluno'),
+                  leading: Icon(
+                    _isWindowsPlatform
+                        ? Icons.auto_fix_high_rounded
+                        : Icons.crop_rounded,
+                    color: context.uai.success,
+                  ),
+                  title: Text(
+                    _isWindowsPlatform
+                        ? 'Abrir UAI Photo Studio'
+                        : 'Editar foto do aluno',
+                  ),
                   subtitle: Text(
-                    'Centralizar o rosto para aparecer certo nos cards',
+                    _isWindowsPlatform
+                        ? 'Enquadramento profissional, filtros e prévias dos cards'
+                        : 'Centralizar o rosto para aparecer certo nos cards',
                   ),
                   onTap: () {
                     Navigator.of(context).pop();
@@ -858,30 +1188,10 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
     );
   }
 
-  Future<File> _criarArquivoTemporarioSeguro(String prefixo) async {
-    final baseDir = Directory.systemTemp;
-    final dir = Directory('${baseDir.path}/uai_capoeira_fotos_editor');
-
-    if (!await dir.exists()) {
-      await dir.create(recursive: true);
-    }
-
-    final file = File(
-      '${dir.path}/${prefixo}_${DateTime.now().millisecondsSinceEpoch}.jpg',
-    );
-
-    if (!await file.parent.exists()) {
-      await file.parent.create(recursive: true);
-    }
-
-    return file;
-  }
-
-  Future<File?> _obterArquivoImagemParaEditar() async {
+  Future<Uint8List?> _obterBytesImagemParaEditar() async {
     try {
       if (_pickedImage != null) {
-        final file = File(_pickedImage!.path);
-        if (await file.exists()) return file;
+        return await _pickedImage!.readAsBytes();
       }
 
       final url = _networkImageUrl?.trim() ?? '';
@@ -890,87 +1200,418 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
         return null;
       }
 
-      final request = await HttpClient().getUrl(Uri.parse(url));
-      final response = await request.close();
-
+      final response = await http.get(Uri.parse(url));
       if (response.statusCode < 200 || response.statusCode >= 300) {
         return null;
       }
-
-      final bytesBuilder = BytesBuilder(copy: false);
-      await for (final chunk in response) {
-        bytesBuilder.add(chunk);
-      }
-
-      final tempFile = await _criarArquivoTemporarioSeguro('foto_aluno_editar');
-      await tempFile.writeAsBytes(bytesBuilder.takeBytes(), flush: true);
-      return tempFile;
+      return response.bodyBytes;
     } catch (e) {
       debugPrint('Erro ao preparar foto para edição: $e');
       return null;
     }
   }
 
-  Future<void> _editarFotoAluno() async {
-    final imagemOrigem = await _obterArquivoImagemParaEditar();
+  Future<Uint8List?> _obterBytesFotoSalvaNoStorage() async {
+    try {
+      final url = _networkImageUrl?.trim() ?? '';
+      if (url.isEmpty ||
+          (!url.startsWith('http://') && !url.startsWith('https://'))) {
+        return null;
+      }
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return null;
+      }
+      return response.bodyBytes;
+    } catch (e) {
+      debugPrint('Erro ao baixar foto atual do Storage para backup: $e');
+      return null;
+    }
+  }
 
-    if (imagemOrigem == null) {
-      if (!_isMounted) return;
+  Future<void> _editarFotoAluno() async {
+    final podeEditar = await _verificarPermissao(
+      'pode_editar_aluno',
+      acao: 'abrir o UAI Photo Studio',
+    );
+    if (!podeEditar || !mounted) return;
+
+    final imagemOrigem = await _obterBytesImagemParaEditar();
+
+    if (imagemOrigem == null || imagemOrigem.isEmpty) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Selecione ou tire uma foto primeiro para editar.'),
+          content: const Text(
+            'Selecione ou tire uma foto primeiro para editar.',
+          ),
           backgroundColor: context.uai.warning,
         ),
       );
       return;
     }
 
-    if (!_isMounted) return;
+    if (!mounted) return;
 
-    final arquivoEditado = await showDialog<File?>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => _EditorFotoAlunoDialog(
-        imageFile: imagemOrigem,
-        nomeAluno: _controllers['nome']?.text.trim() ?? 'Aluno',
+    final storageOriginalBytes = _isEditing
+        ? (_fotoAnteriorBytesEmMemoria ??
+            (_pickedImage == null ? imagemOrigem : await _obterBytesFotoSalvaNoStorage()))
+        : null;
+    if (!mounted) return;
+    _fotoAnteriorBytesEmMemoria ??= storageOriginalBytes;
+
+    final resultado = await Navigator.of(context).push<PhotoStudioResult?>(
+      MaterialPageRoute<PhotoStudioResult?>(
+        fullscreenDialog: true,
+        builder: (_) => PhotoStudioScreen(
+          sourceBytes: imagemOrigem,
+          storageOriginalBytes: storageOriginalBytes,
+          nomeAluno: _controllers['nome']?.text.trim() ?? 'Aluno',
+          alunoId: widget.alunoId,
+          dataNascimento: _parseDate(
+            _controllers['data_nascimento']?.text.trim() ?? '',
+          ),
+          sourceOrigin: _fotoOrigemPendente,
+          initialCompression: _fotoCompressaoPendente,
+        ),
       ),
     );
 
-    if (arquivoEditado != null && _isMounted) {
-      if (!await arquivoEditado.exists()) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Erro: a foto editada não foi encontrada. Tente novamente.',
-            ),
-            backgroundColor: context.uai.error,
-          ),
+    if (resultado != null && mounted) {
+      _safeSetState(() {
+        _studioOriginalBytesPendente =
+            resultado.sourceOriginalBytes ?? imagemOrigem;
+        _studioArchiveFinalBytesPendente = resultado.archiveFinalBytes;
+        _fotoCompressaoPendente = resultado.compression;
+        _fotoOrigemPendente = resultado.origem;
+        _pickedImage = XFile.fromData(
+          resultado.bytes,
+          mimeType: resultado.contentType,
+          name: 'foto_aluno_editada.${resultado.extension}',
         );
-        return;
-      }
-
-      _safeSetState(() => _pickedImage = XFile(arquivoEditado.path));
+        _pickedImageBytesPreview = resultado.bytes;
+        _pickedImageExtension = resultado.extension;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('✅ Foto ajustada! Toque em Salvar para enviar.'),
+          content: const Text(
+            '✓ Foto editada. Toque em Salvar para enviar ao Firebase.',
+          ),
           backgroundColor: context.uai.success,
         ),
       );
     }
   }
 
+  Future<PhotoCompressionSettings?> _escolherQualidadeInicialFoto() async {
+    if (!_isMounted) return null;
+    return showModalBottomSheet<PhotoCompressionSettings>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        final t = sheetContext.uai;
+        var selected = _fotoCompressaoPendente.preset;
+        var customQuality = _fotoCompressaoPendente.jpegQuality
+            .toDouble()
+            .clamp(40.0, 100.0);
+        return StatefulBuilder(
+          builder: (context, setLocalState) {
+            PhotoCompressionSettings current() {
+              if (selected == PhotoCompressionPreset.custom) {
+                return PhotoCompressionSettings(
+                  preset: PhotoCompressionPreset.custom,
+                  jpegQuality: customQuality.round().clamp(40, 100),
+                  maxSide: 1600,
+                );
+              }
+              return PhotoCompressionSettings.fromPreset(selected);
+            }
+
+            Widget option(
+              PhotoCompressionPreset preset,
+              String title,
+              String subtitle,
+              IconData icon,
+            ) {
+              final active = selected == preset;
+              return InkWell(
+                onTap: () => setLocalState(() => selected = preset),
+                borderRadius: BorderRadius.circular(16),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(13),
+                  decoration: BoxDecoration(
+                    color: active ? t.primary.withAlpha(28) : t.cardAlt,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: active ? t.primary : t.border),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(icon, color: active ? t.primary : t.textSecondary),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              style: TextStyle(
+                                color: t.textPrimary,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              subtitle,
+                              style: TextStyle(
+                                color: t.textSecondary,
+                                fontSize: 11,
+                                height: 1.25,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (active)
+                        Icon(Icons.check_circle_rounded, color: t.primary),
+                    ],
+                  ),
+                ),
+              );
+            }
+
+            final cfg = current();
+            return SafeArea(
+              child: Container(
+                margin: const EdgeInsets.all(12),
+                padding: EdgeInsets.fromLTRB(
+                  18,
+                  16,
+                  18,
+                  18 + MediaQuery.viewInsetsOf(sheetContext).bottom,
+                ),
+                decoration: BoxDecoration(
+                  color: t.card,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: t.border),
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 42,
+                            height: 42,
+                            decoration: BoxDecoration(
+                              color: t.primary.withAlpha(31),
+                              borderRadius: BorderRadius.circular(13),
+                            ),
+                            child: Icon(
+                              Icons.photo_size_select_large_rounded,
+                              color: t.primary,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Qualidade da nova foto',
+                                  style: TextStyle(
+                                    color: t.textPrimary,
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 17,
+                                  ),
+                                ),
+                                Text(
+                                  'O ORIGINAL full-res fica preservado no Drive. Esta escolha afeta só a foto operacional.',
+                                  style: TextStyle(
+                                    color: t.textSecondary,
+                                    fontSize: 11.2,
+                                    height: 1.25,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      option(
+                        PhotoCompressionPreset.original,
+                        'Original / sem compressão extra',
+                        'JPEG 100% no limite do editor. Máxima qualidade operacional.',
+                        Icons.auto_awesome_rounded,
+                      ),
+                      const SizedBox(height: 8),
+                      option(
+                        PhotoCompressionPreset.high,
+                        'Alta qualidade',
+                        '90% • recomendado para Perfil, Chamada e Turmas.',
+                        Icons.hd_rounded,
+                      ),
+                      const SizedBox(height: 8),
+                      option(
+                        PhotoCompressionPreset.balanced,
+                        'Equilibrada',
+                        '80% • boa qualidade com arquivo menor.',
+                        Icons.balance_rounded,
+                      ),
+                      const SizedBox(height: 8),
+                      option(
+                        PhotoCompressionPreset.light,
+                        'Leve',
+                        '65% • prioriza velocidade e economia de dados.',
+                        Icons.speed_rounded,
+                      ),
+                      const SizedBox(height: 8),
+                      option(
+                        PhotoCompressionPreset.custom,
+                        'Personalizada',
+                        'Escolha exatamente a porcentagem JPEG.',
+                        Icons.tune_rounded,
+                      ),
+                      if (selected == PhotoCompressionPreset.custom) ...[
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Compressão JPEG',
+                                style: TextStyle(
+                                  color: t.textPrimary,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              '${customQuality.round()}%',
+                              style: TextStyle(
+                                color: t.primary,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ],
+                        ),
+                        Slider(
+                          value: customQuality,
+                          min: 40,
+                          max: 100,
+                          divisions: 60,
+                          label: '${customQuality.round()}%',
+                          onChanged: (value) =>
+                              setLocalState(() => customQuality = value),
+                        ),
+                      ],
+                      const SizedBox(height: 10),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(11),
+                        decoration: BoxDecoration(
+                          color: t.cardAlt,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: t.border),
+                        ),
+                        child: Text(
+                          'Selecionado: ${cfg.label} • ${cfg.jpegQuality}% • lado máximo ${cfg.maxSide}px\nDrive: ORIGINAL bruto + FINAL do Studio em alta qualidade.',
+                          style: TextStyle(
+                            color: t.textSecondary,
+                            fontSize: 11,
+                            height: 1.35,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => Navigator.pop(sheetContext),
+                              child: const Text('Cancelar'),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            flex: 2,
+                            child: FilledButton.icon(
+                              onPressed: () => Navigator.pop(sheetContext, cfg),
+                              icon: const Icon(Icons.check_rounded),
+                              label: const Text('Usar esta qualidade'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Future<void> _pickImage(ImageSource source) async {
     try {
-      final image = await ImagePicker().pickImage(
-        source: source,
-        imageQuality: 50,
-        maxWidth: 800,
-      );
-      if (image != null && _isMounted) {
-        _safeSetState(() => _pickedImage = image);
+      final useGuidedCamera =
+          source == ImageSource.camera &&
+          !kIsWeb &&
+          defaultTargetPlatform == TargetPlatform.android;
+
+      XFile? image;
+      if (useGuidedCamera) {
+        image = await Navigator.of(context).push<XFile?>(
+          MaterialPageRoute<XFile?>(
+            fullscreenDialog: true,
+            builder: (_) => GuidedCameraScreen(
+              nomeAluno: _controllers['nome']?.text.trim().isNotEmpty == true
+                  ? _controllers['nome']!.text.trim()
+                  : 'Aluno',
+            ),
+          ),
+        );
+      } else {
+        image = await ImagePicker().pickImage(
+          source: source,
+          // V11: preserve os bytes originais. Compressão só acontece depois,
+          // de forma explícita, no UAI Photo Studio.
+          imageQuality: 100,
+        );
+      }
+
+      if (image != null && mounted) {
+        final previewBytes = await image.readAsBytes();
+        if (!mounted) return;
+        if (useGuidedCamera) {
+          final quality = await _escolherQualidadeInicialFoto();
+          if (quality == null || !_isMounted) return;
+          _fotoCompressaoPendente = quality;
+        }
+        _safeSetState(() {
+          _pickedImage = image;
+          _pickedImageBytesPreview = previewBytes;
+          _studioOriginalBytesPendente = previewBytes;
+          _fotoOrigemPendente = useGuidedCamera ? 'camera_guiada' : 'galeria';
+          final candidate = image!.name.isNotEmpty ? image.name : image.path;
+          final parts = candidate.split('.');
+          _pickedImageExtension = parts.length > 1
+              ? parts.last.toLowerCase()
+              : 'jpg';
+        });
+
+        if (useGuidedCamera && mounted) {
+          await _editarFotoAluno();
+        }
       }
     } catch (e) {
-      if (_isMounted) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -985,38 +1626,17 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
     }
   }
 
-  Future<File?> _comprimirImagem(File imageFile) async {
-    try {
-      final bytes = await imageFile.readAsBytes();
-      final originalImage = img.decodeImage(bytes);
-
-      if (originalImage == null) {
-        return imageFile;
-      }
-
-      final compressedBytes = img.encodeJpg(originalImage, quality: 70);
-
-      final tempDir = Directory(
-        '${Directory.systemTemp.path}/uai_capoeira_fotos_editor',
-      );
-      if (!await tempDir.exists()) {
-        await tempDir.create(recursive: true);
-      }
-
-      final tempFile = File(
-        '${tempDir.path}/compressed_${DateTime.now().millisecondsSinceEpoch}.jpg',
-      );
-      await tempFile.writeAsBytes(compressedBytes, flush: true);
-
-      debugPrint(
-        '✅ Imagem comprimida: ${imageFile.lengthSync()} → ${tempFile.lengthSync()} bytes',
-      );
-
-      return tempFile;
-    } catch (e) {
-      debugPrint('⚠️ Erro ao comprimir imagem: $e');
-      return imageFile;
-    }
+  void _atualizarSplashSalvandoAluno({
+    required String titulo,
+    required String mensagem,
+    required double progresso,
+  }) {
+    if (!mounted) return;
+    _saveProgress.value = _PhotoSaveProgressState(
+      title: titulo,
+      message: mensagem,
+      progress: progresso.clamp(0.0, 1.0).toDouble(),
+    );
   }
 
   void _mostrarSplashSalvandoAluno({
@@ -1024,6 +1644,11 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
   }) {
     if (_dialogSalvandoAberto || !mounted) return;
 
+    _atualizarSplashSalvandoAluno(
+      titulo: 'Preparando salvamento',
+      mensagem: mensagem,
+      progresso: 0.05,
+    );
     _dialogSalvandoAberto = true;
     showDialog<void>(
       context: context,
@@ -1035,47 +1660,100 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
           child: Dialog(
             backgroundColor: t.card,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(22),
+              borderRadius: BorderRadius.circular(24),
             ),
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 58,
-                    height: 58,
-                    decoration: BoxDecoration(
-                      color: t.primary.withValues(alpha: 0.12),
-                      shape: BoxShape.circle,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 460),
+              child: ValueListenableBuilder<_PhotoSaveProgressState>(
+                valueListenable: _saveProgress,
+                builder: (context, progress, _) {
+                  return Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 62,
+                          height: 62,
+                          decoration: BoxDecoration(
+                            color: t.primary.withValues(alpha: 0.12),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              SizedBox(
+                                width: 48,
+                                height: 48,
+                                child: CircularProgressIndicator(
+                                  value: progress.progress,
+                                  strokeWidth: 4,
+                                  backgroundColor: t.border,
+                                  color: t.primary,
+                                ),
+                              ),
+                              Icon(
+                                Icons.cloud_done_rounded,
+                                color: t.primary,
+                                size: 25,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          progress.title,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: t.textPrimary,
+                            fontSize: 19,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 7),
+                        Text(
+                          progress.message,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: t.textSecondary, height: 1.4),
+                        ),
+                        const SizedBox(height: 18),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(999),
+                          child: LinearProgressIndicator(
+                            value: progress.progress,
+                            minHeight: 8,
+                            backgroundColor: t.border,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              t.primary,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 9),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.lock_rounded,
+                              size: 13,
+                              color: t.textMuted,
+                            ),
+                            const SizedBox(width: 5),
+                            Flexible(
+                              child: Text(
+                                'A foto antiga só é removida depois de um backup seguro.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: t.textMuted,
+                                  fontSize: 10.5,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
-                    child: Icon(Icons.save_rounded, color: t.primary, size: 30),
-                  ),
-                  const SizedBox(height: 18),
-                  Text(
-                    'Salvando aluno',
-                    style: TextStyle(
-                      color: t.textPrimary,
-                      fontSize: 19,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    mensagem,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: t.textSecondary, height: 1.35),
-                  ),
-                  const SizedBox(height: 20),
-                  SizedBox(
-                    width: 34,
-                    height: 34,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 3,
-                      color: t.primary,
-                    ),
-                  ),
-                ],
+                  );
+                },
               ),
             ),
           ),
@@ -1114,11 +1792,115 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
     return 'Mudança de turma: $turmaAntes → $turmaDepois';
   }
 
+  /// Studio 2.0: o usuário aguarda apenas o staging seguro, a fila durável
+  /// e a confirmação da foto operacional. Drive é processado pelo backend.
+  /// Nenhuma foto anterior é excluída aqui: a versão fica recuperável.
+  Future<void> _salvarFotoComFilaSegura(String alunoIdSalvo) async {
+    final relogio = Stopwatch()..start();
+    final previousUrl = _networkImageUrl;
+    final bytesUpload = _pickedImageBytesPreview ?? await _pickedImage!.readAsBytes();
+    if (bytesUpload.isEmpty) throw StateError('Foto editada vazia.');
+    final originalFull = _studioOriginalBytesPendente ?? bytesUpload;
+    final finalArchive = _studioArchiveFinalBytesPendente ?? bytesUpload;
+    final originalMime = AlunoPhotoHistoryService.inferMimeType(originalFull);
+    final finalMime = AlunoPhotoHistoryService.inferMimeType(finalArchive);
+    final nome = _controllers['nome']!.text.trim();
+    final nascimento = _parseDate(_controllers['data_nascimento']!.text.trim());
+
+    _atualizarSplashSalvandoAluno(
+      titulo: 'Protegendo a memória fotográfica',
+      mensagem: 'Guardando ORIGINAL e FINAL no Storage seguro…',
+      progresso: 0.16,
+    );
+    Uint8List? anterior;
+    DateTime? capturadaEm;
+    if (previousUrl != null && previousUrl.isNotEmpty) {
+      anterior = _fotoAnteriorBytesEmMemoria ?? await _obterBytesFotoSalvaNoStorage();
+      if (anterior == null || anterior.isEmpty) {
+        throw StateError('Não foi possível preservar a foto anterior. Nenhuma foto foi alterada.');
+      }
+      try {
+        final aluno = await FirebaseFirestore.instance.collection('alunos').doc(alunoIdSalvo).get();
+        final referencia = aluno.data()?['foto_atualizada_em'] ?? aluno.data()?['atualizado_em'];
+        if (referencia is Timestamp) capturadaEm = referencia.toDate();
+      } catch (e) {
+        debugPrint('Data de captura anterior indisponível: $e');
+      }
+    }
+    if (!mounted) return;
+    debugPrint('UAI Photo Pipeline 2: preparar foto anterior ${relogio.elapsedMilliseconds}ms');
+    _atualizarSplashSalvandoAluno(
+      titulo: 'Agendando backup seguro',
+      mensagem: 'Validando os arquivos e criando a fila de backup no servidor…',
+      progresso: 0.32,
+    );
+    await AlunoPhotoHistoryService().enqueueStudioBackup(
+      alunoId: alunoIdSalvo,
+      alunoNome: nome.isEmpty ? 'Aluno' : nome,
+      finalBytes: finalArchive,
+      originalBytes: originalFull,
+      previousBytes: anterior,
+      finalMimeType: finalMime,
+      originalMimeType: originalMime,
+      origem: _fotoOrigemPendente,
+      dataNascimento: nascimento,
+      previousCapturedAt: capturadaEm,
+    );
+    if (!mounted) return;
+    debugPrint('UAI Photo Pipeline 2: staging e fila ${relogio.elapsedMilliseconds}ms');
+    _atualizarSplashSalvandoAluno(
+      titulo: 'Atualizando foto operacional',
+      mensagem: 'Enviando somente a foto de perfil na qualidade do Studio…',
+      progresso: 0.53,
+    );
+    var extension = (_pickedImageExtension ?? 'jpg').toLowerCase();
+    if (extension == 'jpeg') extension = 'jpg';
+    final contentType = extension == 'png' ? 'image/png' : 'image/jpeg';
+    final ref = FirebaseStorage.instance.ref().child(
+      'foto_alunos/${alunoIdSalvo}_${DateTime.now().millisecondsSinceEpoch}.$extension',
+    );
+    await ref.putData(bytesUpload, SettableMetadata(
+      contentType: contentType,
+      customMetadata: {
+        'edited': 'true', 'studio': 'uai_photo_studio_v2',
+        'compressionPreset': _fotoCompressaoPendente.preset.name,
+        'jpegQuality': _fotoCompressaoPendente.jpegQuality.toString(),
+      },
+    ));
+    _networkImageUrl = await ref.getDownloadURL();
+    debugPrint('UAI Photo Pipeline 2: operacional confirmado em ${relogio.elapsedMilliseconds}ms');
+    // O arquivo anterior não é removido: o worker fará backup idempotente.
+  }
+
   Future<void> _saveForm() async {
     if (_salvandoAluno) return;
-    if (!_formKey.currentState!.validate() || !_isMounted) return;
+    if (!_isMounted || !_formKey.currentState!.validate()) return;
 
-    final deveValidarLotacao = !_isEditing || _turmaId != _turmaOriginalId;
+    // O fluxo de edição cadastral não transfere, ativa ou desativa alunos.
+    // Apenas a criação de alunos novos exige vínculo inicial com turma.
+    if (!_isEditing && _statusAtividade == 'ATIVO(A)' &&
+        (_academiaId == null || _academiaId!.isEmpty ||
+         _turmaId == null || _turmaId!.isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Selecione academia e turma ao cadastrar um aluno ativo.'),
+      ));
+      return;
+    }
+
+    final enderecoCompletoParaMigrar = const ['rua', 'numero', 'bairro']
+        .every((campo) => _controllers[campo]!.text.trim().isNotEmpty);
+    if (_isEditing &&
+        _enderecoLegadoAmbiguo &&
+        enderecoCompletoParaMigrar &&
+        !_enderecoRevisaoConfirmada) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Confira e confirme o endereço antigo antes de salvar. '
+            'Nenhum dado foi alterado.'),
+      ));
+      return;
+    }
+
+    final deveValidarLotacao = !_isEditing;
 
     if (deveValidarLotacao && _turmaId != null && _turmaId!.isNotEmpty) {
       final turmaData = _turmasMap[_turmaId];
@@ -1128,7 +1910,7 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
       final totalAlunos = alunosAtivos > 0 ? alunosAtivos : alunosCount;
 
       if (capacidadeMaxima > 0 && totalAlunos >= capacidadeMaxima) {
-        if (_isMounted) {
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
@@ -1142,6 +1924,19 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
       }
     }
 
+    // Reconsulta o peso para não depender apenas do estado visual da tela.
+    // Falhas na verificação não autorizam edição de dados restritos.
+    var podeSalvarCapoeira = false;
+    if (_currentUserId != null) {
+      try {
+        podeSalvarCapoeira = await _permissaoService
+                .obterPesoPermissao(_currentUserId!) >= 100;
+      } catch (e) {
+        debugPrint('Não foi possível validar peso para os dados da capoeira: $e');
+      }
+    }
+    if (!mounted) return;
+
     _safeSetState(() => _salvandoAluno = true);
     _mostrarSplashSalvandoAluno(
       mensagem: _pickedImage != null
@@ -1152,39 +1947,196 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
     );
 
     bool mudouTurmaOuAcademiaAoSalvar = false;
+    bool escritaAlunoConfirmada = false;
+    bool graduacaoAlterada = false;
     bool houveAlteracaoReal = false;
+    String? fotoAntigaPendenteExcluir;
+    Uint8List? fotoAntigaBytesBackup;
+    final alunosCollection = FirebaseFirestore.instance.collection('alunos');
+    String? alunoIdSalvo = widget.alunoId ?? alunosCollection.doc().id;
+    bool backupFotoAntigaConcluido = false;
+    DateTime? fotoAntigaDataReferencia;
 
     try {
       if (_pickedImage != null) {
         try {
-          File? imagemParaUpload = File(_pickedImage!.path);
+          if (_isEditing) {
+            await _salvarFotoComFilaSegura(alunoIdSalvo);
+          } else {
+          // Cadastro manual novo: mantém o fluxo legado até o documento existir.
+          final photoHistory = AlunoPhotoHistoryService();
+          final nascimento = _parseDate(
+            _controllers['data_nascimento']?.text.trim() ?? '',
+          );
+          final nomeAlunoBackup =
+              _controllers['nome']?.text.trim().isNotEmpty == true
+              ? _controllers['nome']!.text.trim()
+              : 'Aluno';
+          final previousImageUrl = _networkImageUrl;
 
-          final imagemComprimida = await _comprimirImagem(imagemParaUpload);
-          if (imagemComprimida != null) {
-            imagemParaUpload = imagemComprimida;
-          }
-
-          final ref = FirebaseStorage.instance
-              .ref()
-              .child('foto_alunos')
-              .child('${widget.alunoId ?? UniqueKey().toString()}.jpg');
-
-          final metadata = SettableMetadata(
-            contentType: 'image/jpeg',
-            customMetadata: {'compressed': 'true', 'quality': '70'},
+          _atualizarSplashSalvandoAluno(
+            titulo: 'Protegendo a memória atual',
+            mensagem: previousImageUrl?.isNotEmpty == true
+                ? 'Arquivando a foto atual antes de qualquer substituição…'
+                : 'Preparando o arquivo fotográfico do aluno…',
+            progresso: 0.12,
           );
 
-          await ref.putFile(imagemParaUpload, metadata);
+          if (_isEditing &&
+              previousImageUrl != null &&
+              previousImageUrl.isNotEmpty) {
+            fotoAntigaBytesBackup = _fotoAnteriorBytesEmMemoria ??
+                await _obterBytesFotoSalvaNoStorage();
+            try {
+              final alunoAtual = await alunosCollection
+                  .doc(widget.alunoId)
+                  .get();
+              final raw =
+                  alunoAtual.data()?['foto_atualizada_em'] ??
+                  alunoAtual.data()?['atualizado_em'];
+              if (raw is Timestamp) fotoAntigaDataReferencia = raw.toDate();
+              if (raw is DateTime) fotoAntigaDataReferencia = raw;
+            } catch (_) {}
+
+            if (fotoAntigaBytesBackup != null &&
+                fotoAntigaBytesBackup.isNotEmpty) {
+              try {
+                await photoHistory.backupVersion(
+                  alunoId: alunoIdSalvo,
+                  alunoNome: nomeAlunoBackup,
+                  finalBytes: fotoAntigaBytesBackup,
+                  finalMimeType: AlunoPhotoHistoryService.inferMimeType(
+                    fotoAntigaBytesBackup,
+                  ),
+                  origem: 'foto_anterior',
+                  capturadoEm: fotoAntigaDataReferencia,
+                  dataNascimento: nascimento,
+                  nota:
+                      'Versão preservada automaticamente antes da troca da foto de perfil.',
+                );
+                backupFotoAntigaConcluido = true;
+              } catch (e) {
+                debugPrint(
+                  '⚠️ Backup Drive da foto anterior falhou; a foto atual será mantida no Storage: $e',
+                );
+                await photoHistory.registerPendingStorageBackup(
+                  alunoId: alunoIdSalvo,
+                  alunoNome: nomeAlunoBackup,
+                  storageUrl: previousImageUrl,
+                  dataNascimento: nascimento,
+                  origem: 'foto_anterior',
+                  nota:
+                      'Backup pendente criado automaticamente antes da troca de foto.',
+                );
+              }
+            }
+          }
+
+          final bytesUpload = _pickedImageBytesPreview ??
+              await _pickedImage!.readAsBytes();
+          var extension = (_pickedImageExtension ?? 'jpg').toLowerCase();
+          if (extension == 'jpeg') extension = 'jpg';
+          final contentType = extension == 'png' ? 'image/png' : 'image/jpeg';
+
+          final originalFull = _studioOriginalBytesPendente ?? bytesUpload;
+          final archiveFinal = _studioArchiveFinalBytesPendente ?? bytesUpload;
+          final originalMime = AlunoPhotoHistoryService.inferMimeType(
+            originalFull,
+          );
+          final archiveMime = AlunoPhotoHistoryService.inferMimeType(
+            archiveFinal,
+          );
+
+          _atualizarSplashSalvandoAluno(
+            titulo: 'Preservando o original',
+            mensagem:
+                'Enviando ORIGINAL full-res e versão FINAL do Studio para a memória visual…',
+            progresso: 0.28,
+          );
+
+          try {
+            await photoHistory.backupVersion(
+              alunoId: alunoIdSalvo,
+              alunoNome: nomeAlunoBackup,
+              originalBytes: originalFull,
+              finalBytes: archiveFinal,
+              originalMimeType: originalMime,
+              finalMimeType: archiveMime,
+              origem: _fotoOrigemPendente,
+              dataNascimento: nascimento,
+              nota:
+                  'ORIGINAL full-res + FINAL do Studio preservados antes da ativação da nova foto.',
+            );
+          } catch (driveError) {
+            debugPrint(
+              '⚠️ Drive indisponível; criando staging seguro da nova foto: $driveError',
+            );
+            _atualizarSplashSalvandoAluno(
+              titulo: 'Protegendo backup pendente',
+              mensagem:
+                  'O Drive não respondeu. Guardando uma cópia temporária segura para sincronizar depois…',
+              progresso: 0.34,
+            );
+            try {
+              await photoHistory.registerPendingBytesBackup(
+                alunoId: alunoIdSalvo,
+                alunoNome: nomeAlunoBackup,
+                originalBytes: originalFull,
+                finalBytes: archiveFinal,
+                originalMimeType: originalMime,
+                finalMimeType: archiveMime,
+                origem: _fotoOrigemPendente,
+                dataNascimento: nascimento,
+                nota:
+                    'ORIGINAL + FINAL aguardando sincronização automática com o Drive.',
+              );
+            } catch (stagingError) {
+              throw StateError(
+                'Não foi possível proteger o original da nova foto. Tente novamente. Detalhe: $stagingError',
+              );
+            }
+          }
+
+          _atualizarSplashSalvandoAluno(
+            titulo: 'Enviando foto operacional',
+            mensagem:
+                'Aplicando exatamente a qualidade escolhida no Studio, sem recompressão extra…',
+            progresso: 0.52,
+          );
+
+          final storagePath =
+              'foto_alunos/${alunoIdSalvo}_${DateTime.now().millisecondsSinceEpoch}.$extension';
+          final ref = FirebaseStorage.instance.ref().child(storagePath);
+          final metadata = SettableMetadata(
+            contentType: contentType,
+            customMetadata: {
+              'edited': 'true',
+              'extension': extension,
+              'studio': 'uai_photo_studio_v11',
+              'compressionPreset': _fotoCompressaoPendente.preset.name,
+              'jpegQuality': _fotoCompressaoPendente.jpegQuality.toString(),
+            },
+          );
+          // IMPORTANTE: os bytes já foram exportados pelo Studio com a qualidade
+          // escolhida pelo usuário. Não há segunda compressão JPEG aqui.
+          await ref.putData(bytesUpload, metadata);
           _networkImageUrl = await ref.getDownloadURL();
+
+          if (previousImageUrl != null &&
+              previousImageUrl.isNotEmpty &&
+              previousImageUrl != _networkImageUrl) {
+            fotoAntigaPendenteExcluir = previousImageUrl;
+          }
+          } // Fim do caminho legado para criação manual.
         } catch (e) {
-          if (_isMounted) {
+          if (mounted) {
             _fecharSplashSalvandoAluno();
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(
                   _mensagemErroAmigavelEditarAluno(
                     e,
-                    contexto: 'upload da imagem',
+                    contexto: 'processamento seguro da foto',
                   ),
                 ),
               ),
@@ -1199,9 +2151,10 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
       _controllers.forEach((key, controller) {
         if (dateKeys.contains(key)) {
           final date = _parseDate(controller.text.trim());
-          if (date != null) {
-            dataToSave[key] = Timestamp.fromDate(date);
-          }
+           if (date != null && date.year >= 1900 &&
+               date.year <= DateTime.now().year + 1) {
+             dataToSave[key] = Timestamp.fromDate(date);
+           }
         } else {
           final text = controller.text.trim();
           if (text.isNotEmpty) {
@@ -1210,6 +2163,58 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
         }
       });
 
+      // Compatibilidade retroativa: campos novos e endereço composto público.
+      final rua = _controllers['rua']!.text.trim();
+      final numero = _controllers['numero']!.text.trim();
+      final bairro = _controllers['bairro']!.text.trim();
+      final cidade = _controllers['cidade']!.text.trim();
+      final enderecoCompleto = rua.isNotEmpty && numero.isNotEmpty &&
+          bairro.isNotEmpty;
+       final podeConverterEndereco = enderecoCompleto &&
+           (!_enderecoLegadoAmbiguo || _enderecoRevisaoConfirmada);
+       if (podeConverterEndereco) {
+        dataToSave['rua'] = rua.toUpperCase();
+        dataToSave['numero'] = numero.toUpperCase();
+        dataToSave['bairro'] = bairro.toUpperCase();
+        dataToSave['cidade'] = cidade.toUpperCase();
+        dataToSave['endereco'] = [
+          '${rua.toUpperCase()} - ${numero.toUpperCase()}',
+          bairro.toUpperCase(),
+          if (cidade.isNotEmpty) cidade.toUpperCase(),
+        ].join(', ');
+        dataToSave['endereco_versao'] = 2;
+       } else if (_isEditing && _enderecoLegadoOriginal.isNotEmpty) {
+         // Uma sugestão incompleta nunca é um dado confirmado.
+         dataToSave.remove('rua');
+         dataToSave.remove('numero');
+         dataToSave.remove('bairro');
+         dataToSave.remove('endereco_versao');
+         dataToSave['endereco'] = _enderecoLegadoOriginal;
+       }
+       final grauEmergencia = _controllers['grau_emergencia']!.text.trim();
+       final mesmoContatoResponsavel =
+           _controllers['nome_contato_emergencia']!.text.trim().toUpperCase() ==
+               _controllers['nome_responsavel']!.text.trim().toUpperCase() &&
+           _controllers['nome_responsavel']!.text.trim().isNotEmpty;
+       if (grauEmergencia.isNotEmpty && mesmoContatoResponsavel) {
+         final familia = Map<String, dynamic>.from(
+           _fichaComplementar['familia'] is Map
+               ? _fichaComplementar['familia'] as Map
+               : const <String, dynamic>{},
+         );
+         familia['grau_responsavel'] = grauEmergencia;
+         _fichaComplementar['familia'] = familia;
+       }
+      dataToSave['ficha_complementar'] = _fichaComplementar;
+      dataToSave['contatos_emergencia_adicionais'] = _contatosEmergenciaAdicionais;
+
+      for (final campo in const ['cpf', 'contato_aluno', 'contato_responsavel', 'contato_emergencia']) {
+        final valor = _controllers[campo]?.text.trim() ?? '';
+         final digitos = valor.replaceAll(RegExp(r'[^0-9]'), '');
+         if (digitos.isNotEmpty && (campo != 'cpf' || digitos.length == 11)) {
+           dataToSave[campo] = digitos;
+         }
+      }
       if (_academiaId != null && _academiaId!.isNotEmpty) {
         dataToSave['academia_id'] = _academiaId;
         dataToSave['academia'] = _academiaNome ?? _academiasMap[_academiaId];
@@ -1235,17 +2240,23 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
       final camposObrigatorios = {
         'sexo': _sexo,
         'status_atividade': _statusAtividade ?? 'ATIVO(A)',
-        'foto_perfil_aluno': _networkImageUrl,
+        if (_pickedImage != null || !_isEditing)
+          'foto_perfil_aluno': _networkImageUrl,
         'graduacao_id': _graduacaoId,
         'graduacao_ref': graduacaoRef,
-        'cpf': _controllers['cpf']!.text.isEmpty
-            ? '0'
-            : _controllers['cpf']!.text,
+         if (_controllers['cpf']!.text.replaceAll(RegExp(r'[^0-9]'), '').length == 11)
+           'cpf': _controllers['cpf']!.text.replaceAll(RegExp(r'[^0-9]'), ''),
         'atualizado_em': FieldValue.serverTimestamp(),
         'editavel': true,
       };
+      if (_pickedImage != null) {
+        camposObrigatorios['foto_atualizada_em'] = FieldValue.serverTimestamp();
+      }
 
-      if (graduacaoData != null) {
+      // Para uma edição cadastral, jamais sincronizar as cores/pontas
+      // da graduação apenas porque o catálogo foi recarregado. A graduação
+      // só deve ser sincronizada quando a seleção realmente mudou.
+      if (graduacaoData != null && !_isEditing) {
         final camposGraduacao = {
           'graduacao_nome': graduacaoData['nome_graduacao'],
           'graduacao_cor1': graduacaoData['hex_cor1'],
@@ -1259,6 +2270,27 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
       }
 
       dataToSave.addAll(camposObrigatorios);
+
+      if (_isEditing) {
+        // Alterações estruturais são exclusivas dos fluxos auditáveis de
+        // Detalhes do Aluno. Não sobrescrever nem recalcular estes campos.
+        for (final campo in const [
+          'academia_id', 'academia', 'turma_id', 'turma',
+          'status_atividade',
+        ]) {
+          dataToSave.remove(campo);
+        }
+      }
+      if (!podeSalvarCapoeira) {
+        for (final campo in const [
+          'graduacao_id', 'graduacao_ref', 'graduacao_nome', 'graduacao_cor1',
+          'graduacao_cor2', 'graduacao_ponta1', 'graduacao_ponta2',
+          'data_graduacao_atual', 'tempo_capoeira',
+        ]) {
+          dataToSave.remove(campo);
+        }
+      }
+
 
       if (_isEditing) {
         final alunoRef = FirebaseFirestore.instance
@@ -1275,6 +2307,52 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
         }
 
         final dadosAntes = alunoSnapshot.data() ?? <String, dynamic>{};
+        // A mudança de graduação deve ser explícita e autorizada. Dados
+        // legados podem ter cores distintas das atuais do catálogo e não
+        // devem ser corrigidos silenciosamente ao editar endereço/contato.
+        final mudouGraduacaoSelecionada = podeSalvarCapoeira &&
+            dadosAntes['graduacao_id'] != _graduacaoId;
+        if (!mudouGraduacaoSelecionada) {
+          for (final campo in const [
+            'graduacao_id', 'graduacao_ref', 'graduacao_nome',
+            'graduacao_cor1', 'graduacao_cor2',
+            'graduacao_ponta1', 'graduacao_ponta2',
+          ]) {
+            dataToSave.remove(campo);
+          }
+        } else {
+          // A graduação foi realmente trocada por um administrador peso 100.
+          dataToSave['graduacao_id'] = _graduacaoId;
+          dataToSave['graduacao_ref'] = graduacaoRef;
+          if (graduacaoData != null) {
+            final camposGraduacao = <String, dynamic>{
+              'graduacao_nome': graduacaoData['nome_graduacao'],
+              'graduacao_cor1': graduacaoData['hex_cor1'],
+              'graduacao_cor2': graduacaoData['hex_cor2'],
+              'graduacao_ponta1': graduacaoData['hex_ponta1'],
+              'graduacao_ponta2': graduacaoData['hex_ponta2'],
+            }..removeWhere((key, value) => value == null);
+            dataToSave.addAll(camposGraduacao);
+          }
+        }
+        if (!podeSalvarCapoeira && dataToSave['ficha_complementar'] is Map) {
+          final novaFicha = Map<String, dynamic>.from(
+            dataToSave['ficha_complementar'] as Map);
+          final fichaOriginal = dadosAntes['ficha_complementar'];
+          if (fichaOriginal is Map && fichaOriginal.containsKey('capoeira')) {
+            novaFicha['capoeira'] = fichaOriginal['capoeira'];
+          } else {
+            novaFicha.remove('capoeira');
+          }
+          dataToSave['ficha_complementar'] = novaFicha;
+        }
+        final fotoDataRaw =
+            dadosAntes['foto_atualizada_em'] ?? dadosAntes['atualizado_em'];
+        if (fotoDataRaw is Timestamp) {
+          fotoAntigaDataReferencia = fotoDataRaw.toDate();
+        } else if (fotoDataRaw is DateTime) {
+          fotoAntigaDataReferencia = fotoDataRaw;
+        }
         final dadosDepois = Map<String, dynamic>.from(dadosAntes)
           ..addAll(dataToSave);
         final camposAlterados = AlunoHistoricoEdicaoService.compararDados(
@@ -1283,10 +2361,36 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
         );
 
         houveAlteracaoReal = camposAlterados.isNotEmpty;
-        mudouTurmaOuAcademiaAoSalvar = _mudouTurmaOuAcademia;
+        graduacaoAlterada = mudouGraduacaoSelecionada;
+        mudouTurmaOuAcademiaAoSalvar = false;
         final resumoMudancaTurma = _resumoMudancaTurma();
 
+        _atualizarSplashSalvandoAluno(
+          titulo: 'Atualizando perfil',
+          mensagem: _pickedImage != null
+              ? 'Confirmando a nova foto e os dados no Firestore…'
+              : 'Gravando os dados cadastrais no Firestore…',
+          progresso: 0.76,
+        );
         await alunoRef.update(dataToSave);
+        escritaAlunoConfirmada = true;
+        unawaited(SessionLogService.instance.recordEntityOperation(
+          module: 'alunos.editar', entityType: 'aluno',
+          entityId: widget.alunoId!, operation: 'atualizou', result: 'sucesso',
+        ));
+        if (graduacaoAlterada) {
+          unawaited(SessionLogService.instance.recordAction(
+            action: 'alterou_graduacao_aluno', module: 'alunos.editar',
+            status: 'sucesso',
+          ));
+        }
+        if (_pickedImage != null) {
+          AlunoFotoResolver.invalidar(widget.alunoId!);
+          await UaiStudentPhotoCache.invalidate(
+            studentId: widget.alunoId!,
+            imageUrls: <String?>[fotoAntigaPendenteExcluir, _networkImageUrl],
+          );
+        }
 
         try {
           await AlunoHistoricoEdicaoService().registrarEdicaoManual(
@@ -1294,14 +2398,12 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
             dadosAntes: dadosAntes,
             dadosDepois: dadosDepois,
             origem: 'editar_aluno_screen',
-            subtipoEdicao: mudouTurmaOuAcademiaAoSalvar
-                ? 'mudanca_turma'
-                : 'dados_cadastrais',
+            subtipoEdicao: 'dados_cadastrais',
             resumoPersonalizado: resumoMudancaTurma,
           );
         } catch (e) {
           debugPrint('Erro ao registrar histórico de edição do aluno: $e');
-          if (_isMounted) {
+          if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(
@@ -1313,26 +2415,62 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
           }
         }
 
-        if (_turmaOriginalId != null &&
-            _turmaOriginalId!.isNotEmpty &&
-            _turmaOriginalId != _turmaId) {
-          await _atualizarContadorTurma(_turmaOriginalId!);
-        }
-
-        if (_turmaId != null && _turmaId!.isNotEmpty) {
-          await _atualizarContadorTurma(_turmaId!);
-        }
+        // Contadores de turma não são atualizados numa edição cadastral.
       } else {
         dataToSave['criado_em'] = FieldValue.serverTimestamp();
-
-        await FirebaseFirestore.instance.collection('alunos').add(dataToSave);
+        _atualizarSplashSalvandoAluno(
+          titulo: 'Criando ficha do aluno',
+          mensagem: 'Registrando os dados e vinculando a memória fotográfica…',
+          progresso: 0.76,
+        );
+        await alunosCollection.doc(alunoIdSalvo).set(dataToSave);
+        escritaAlunoConfirmada = true;
+        unawaited(SessionLogService.instance.recordEntityOperation(
+          module: 'alunos.editar', entityType: 'aluno',
+          entityId: alunoIdSalvo, operation: 'criou', result: 'sucesso',
+        ));
 
         if (_turmaId != null && _turmaId!.isNotEmpty) {
           await _atualizarContadorTurma(_turmaId!);
         }
       }
 
-      if (_isMounted) {
+      _atualizarSplashSalvandoAluno(
+        titulo: 'Finalizando com segurança',
+        mensagem: _pickedImage != null
+            ? 'Conferindo backups e limpando apenas arquivos protegidos…'
+            : 'Concluindo a atualização cadastral…',
+        progresso: 0.92,
+      );
+
+      if (fotoAntigaPendenteExcluir != null) {
+        final origemPath = FirebaseStorage.instance
+            .refFromURL(fotoAntigaPendenteExcluir)
+            .fullPath;
+        final fotoDeCadastro =
+            origemPath.startsWith('fotos_inscricoes/') ||
+            origemPath.startsWith('foto_alunos/cadastro_');
+        if (backupFotoAntigaConcluido && !fotoDeCadastro) {
+          try {
+            await FirebaseStorage.instance
+                .refFromURL(fotoAntigaPendenteExcluir)
+                .delete();
+            debugPrint(
+              '✅ Foto antiga removida do Storage após backup no Drive',
+            );
+          } catch (e) {
+            debugPrint(
+              '⚠️ Backup concluído, mas não foi possível remover a foto antiga: $e',
+            );
+          }
+        } else {
+          debugPrint(
+            '🛡️ Foto antiga mantida no Storage porque o backup no Drive não foi confirmado.',
+          );
+        }
+      }
+
+      if (mounted) {
         _fecharSplashSalvandoAluno();
         final mensagem = !_isEditing
             ? 'Aluno criado!'
@@ -1348,7 +2486,14 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
         Navigator.of(context).pop();
       }
     } catch (e) {
-      if (_isMounted) {
+      if (!escritaAlunoConfirmada) {
+        unawaited(SessionLogService.instance.recordEntityOperation(
+          module: 'alunos.editar', entityType: 'aluno',
+          entityId: alunoIdSalvo,
+          operation: _isEditing ? 'atualizou' : 'criou', result: 'falha',
+        ));
+      }
+      if (mounted) {
         _fecharSplashSalvandoAluno();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1362,7 +2507,7 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
         );
       }
     } finally {
-      if (_isMounted) {
+      if (mounted) {
         _fecharSplashSalvandoAluno();
         _safeSetState(() => _salvandoAluno = false);
       }
@@ -1411,76 +2556,21 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
       acao: 'excluir aluno',
     );
 
-    if (!temPermissao) return; // ✅ Diálogo já é mostrado no _verificarPermissao
+    if (!temPermissao || !mounted) return; // ✅ Diálogo já é mostrado no _verificarPermissao
 
+    final nomeAluno = _controllers['nome']!.text;
     final shouldDelete = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text("⚠️ Confirmar Exclusão"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              "Você tem certeza que deseja excluir o aluno(a):",
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 8),
-            Text(
-              _controllers['nome']!.text,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: context.uai.primary,
-              ),
-            ),
-            SizedBox(height: 16),
-            Container(
-              padding: EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: context.uai.error.withOpacity(0.10),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: context.uai.error.withOpacity(0.30)),
-              ),
-              child: Text(
-                'Esta ação é permanente e irreversível. Todos os dados do aluno serão removidos do sistema.',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: context.uai.error,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text("Cancelar"),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor:
-                  Theme.of(context).appBarTheme.backgroundColor ??
-                  context.uai.primary,
-              foregroundColor:
-                  Theme.of(context).appBarTheme.foregroundColor ??
-                  _readableOn(
-                    Theme.of(context).appBarTheme.backgroundColor ??
-                        context.uai.primary,
-                  ),
-            ),
-            child: Text("EXCLUIR PERMANENTEMENTE"),
-          ),
-        ],
-      ),
+      barrierDismissible: false,
+      builder: (context) => _ConfirmarExclusaoAlunoDialog(nomeAluno: nomeAluno),
     );
 
+    if (!mounted) return;
     if (shouldDelete == true) {
+      bool exclusaoConfirmada = false;
       try {
         // Mostrar loading
-        if (_isMounted) {
+        if (mounted) {
           showDialog(
             context: context,
             barrierDismissible: false,
@@ -1506,6 +2596,12 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
             .doc(widget.alunoId)
             .delete();
 
+        exclusaoConfirmada = true;
+        unawaited(SessionLogService.instance.recordEntityOperation(
+          module: 'alunos.editar', entityType: 'aluno',
+          entityId: widget.alunoId!, operation: 'excluiu', result: 'sucesso',
+        ));
+
         debugPrint('✅ Aluno deletado do Firestore');
 
         // Atualizar contador da turma se houver
@@ -1515,7 +2611,7 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
         }
 
         // Fechar loading
-        if (_isMounted) {
+        if (mounted) {
           Navigator.of(context).pop(); // Fecha o loading
 
           // Mostrar sucesso
@@ -1537,10 +2633,16 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
           Navigator.of(context).popUntil((route) => route.isFirst);
         }
       } catch (e) {
+        if (!exclusaoConfirmada) {
+          unawaited(SessionLogService.instance.recordEntityOperation(
+            module: 'alunos.editar', entityType: 'aluno',
+            entityId: widget.alunoId!, operation: 'excluiu', result: 'falha',
+          ));
+        }
         debugPrint('❌ Erro ao excluir aluno: $e');
 
         // Fechar loading se estiver aberto
-        if (_isMounted) {
+        if (mounted) {
           Navigator.of(context).pop();
 
           ScaffoldMessenger.of(context).showSnackBar(
@@ -1680,366 +2782,799 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
         key: _formKey,
         child: SingleChildScrollView(
           padding: EdgeInsets.all(16.0),
-          child: Column(
-            children: [
-              // Foto do aluno
-              GestureDetector(
-                onTap: _showImageSourceActionSheet,
-                child: Column(
-                  children: [
-                    Stack(
-                      alignment: Alignment.bottomRight,
-                      children: [
-                        CircleAvatar(
-                          radius: 60,
-                          backgroundColor: context.uai.cardAlt,
-                          backgroundImage: _pickedImage != null
-                              ? FileImage(File(_pickedImage!.path))
-                              : (_networkImageUrl != null &&
-                                            _networkImageUrl!.isNotEmpty
-                                        ? CachedNetworkImageProvider(
-                                            _networkImageUrl!,
-                                          )
-                                        : null)
-                                    as ImageProvider?,
-                          child:
-                              _pickedImage == null &&
-                                  (_networkImageUrl == null ||
-                                      _networkImageUrl!.isEmpty)
-                              ? Icon(Icons.camera_alt, size: 50)
-                              : null,
-                        ),
-                        Container(
-                          padding: EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: context.uai.primary,
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: context.uai.textPrimary,
-                              width: 3,
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1180),
+              child: Column(
+                children:
+                    [
+                          // Foto do aluno
+                          _buildFotoAlunoHeader(),
+                          const SizedBox(height: 10),
+                          if (_isEditing) _buildResumoCadastro(),
+
+                          // Dados Pessoais
+                          _buildSecaoCompacta('pessoais', 'Dados Pessoais', [
+
+                          _buildTextField(
+                            _controllers['nome']!,
+                            'Nome do Aluno',
+                            isRequired: true,
+                          ),
+                          _buildTextField(_controllers['apelido']!, 'Apelido'),
+                          _buildTextField(
+                            _controllers['cpf']!,
+                            'CPF',
+                            keyboardType: TextInputType.number,
+                          ),
+
+                          DropdownButtonFormField<String>(
+                            initialValue: _sexo,
+                            items: ['MASCULINO', 'FEMININO']
+                                .map(
+                                  (e) => DropdownMenuItem(
+                                    value: e,
+                                    child: Text(e),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (v) => setState(() => _sexo = v),
+                            decoration: InputDecoration(
+                              labelText: 'Sexo',
+                              border: OutlineInputBorder(),
+                            ),
+                            validator: (v) =>
+                                v == null ? 'Campo obrigatório' : null,
+                          ),
+
+                          _buildDateField(
+                            _controllers['data_nascimento']!,
+                            'Data de Nascimento',
+                            isRequired: true,
+                          ),
+
+                          // Contato
+                                                    ]),
+_buildSecaoCompacta('contato', 'Contato', [
+
+                          _buildTextField(
+                            _controllers['contato_aluno']!,
+                            'Contato do Aluno',
+                            keyboardType: TextInputType.phone,
+                          ),
+                          _buildTextField(
+                            _controllers['nome_responsavel']!,
+                            'Nome do Responsável',
+                          ),
+                          _buildTextField(
+                            _controllers['contato_responsavel']!,
+                            'Contato do Responsável',
+                            keyboardType: TextInputType.phone,
+                          ),
+                                                    ]),
+_buildSecaoCompacta('endereco', 'Endereço', [
+
+                          if (_possuiEnderecoEstruturado && !_enderecoLegadoAmbiguo)
+                            const Padding(
+                              padding: EdgeInsets.only(bottom: 8),
+                              child: Text('Endereço estruturado existente: os campos foram preservados.'),
+                            ),
+                          if (_enderecoLegadoAmbiguo)
+                            Card(
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('Endereço antigo: confirme os campos abaixo',
+                                      style: TextStyle(fontWeight: FontWeight.bold)),
+                                    const SizedBox(height: 6),
+                                    SelectableText(_enderecoLegadoOriginal),
+                                    const SizedBox(height: 6),
+                                    const Text('O registro original será preservado até o endereço ser completamente preenchido.'),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          _buildTextField(_controllers['rua']!, 'Rua', enderecoTexto: true),
+                          _buildTextField(_controllers['numero']!, 'Número',
+                            enderecoTexto: true, maxLength: 5),
+                          _buildTextField(_controllers['bairro']!, 'Bairro', enderecoTexto: true),
+                          _buildTextField(_controllers['cidade']!, 'Cidade'),
+                           if (_enderecoLegadoAmbiguo)
+                             CheckboxListTile(
+                               contentPadding: EdgeInsets.zero,
+                               title: const Text('Conferi rua, número e bairro'),
+                               subtitle: const Text(
+                                 'Após conferir, o endereço será convertido ao formato novo ao salvar.'),
+                                value: _enderecoRevisaoConfirmada,
+                                onChanged: (checked) {
+                                  if (checked == false) {
+                                    setState(() => _enderecoRevisadoAssinatura = null);
+                                  } else if (checked == true) {
+                                   final completo = ['rua', 'numero', 'bairro'].every(
+                                     (campo) => _controllers[campo]!.text.trim().isNotEmpty,
+                                   );
+                                   if (completo) {
+                                      setState(() => _enderecoRevisadoAssinatura =
+                                          _assinaturaEnderecoAtual);
+                                   } else {
+                                     ScaffoldMessenger.of(context).showSnackBar(
+                                       const SnackBar(content: Text(
+                                         'Confira e complete rua, número e bairro antes de confirmar.')),
+                                     );
+                                   }
+                                 }
+                               },
+                             ),
+
+                           // Campos compartilhados com a inscrição pública.
+                                                    ]),
+_buildSecaoCompacta('complementares', 'Dados complementares da inscrição', [
+
+                           _buildTextField(_controllers['nome_contato_emergencia']!, 'Nome do contato de emergência'),
+                           _buildTextField(_controllers['contato_emergencia']!, 'Telefone de emergência', keyboardType: TextInputType.phone),
+                           _buildParentescoEmergencia(),
+                                                    ]),
+_buildSecaoCompacta('emergencia', 'Contatos adicionais de emergência', [
+
+                           _buildContatosEmergenciaAdicionais(),
+                                                    ]),
+_buildSecaoCompacta('saude', 'Ficha complementar • Saúde', [
+
+                           FichaComplementarFields(
+                             ficha: _fichaComplementar,
+                             secao: 'saude',
+                             onChanged: (nova) => setState(() => _fichaComplementar = nova),
+                           ),
+                                                    ]),
+_buildSecaoCompacta('capoeira_ficha', 'Ficha complementar • Capoeira', [
+
+                           Opacity(
+                             opacity: _podeEditarDadosCapoeira ? 1 : 0.48,
+                             child: IgnorePointer(
+                               ignoring: !_podeEditarDadosCapoeira,
+                               child: FichaComplementarFields(
+                                 ficha: _fichaComplementar,
+                                 secao: 'capoeira',
+                                 onChanged: (nova) => setState(() => _fichaComplementar = nova),
+                               ),
+                             ),
+                           ),
+                           // O vínculo familiar é editado no seletor acima.
+                           // Evita os chips duplicados da seção Família.
+
+                          ]),
+
+                          // Academia e Turma: somente cadastro novo.
+                          if (!_isEditing) ...[
+                          // Academia e Turma
+                          _buildSecaoCompacta('turma_nova', 'Academia e Turma', [
+
+                          // Seleção de Academia
+                          DropdownButtonFormField<String>(
+                            initialValue: _academiaId,
+                            items: [
+                              DropdownMenuItem(
+                                value: null,
+                                child: Text('Selecione uma academia'),
+                              ),
+                              ..._academiaItems,
+                            ],
+                            onChanged: _salvandoAluno
+                                ? null
+                                : (String? newValue) {
+                                    setState(() {
+                                      _academiaId = newValue;
+                                      _academiaNome = newValue != null
+                                          ? _academiasMap[newValue]
+                                          : null;
+                                      _turmaId = null;
+                                      _turmaNome = null;
+                                      _turmaItems = [];
+                                      _turmaCheia = false;
+                                      if (newValue != null) {
+                                        _fetchTurmas(newValue);
+                                      }
+                                    });
+                                  },
+                            decoration: InputDecoration(
+                              labelText: 'Academia/Núcleo',
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.school),
+                            ),
+                            validator: (value) =>
+                                _statusAtividade == 'ATIVO(A)' && value == null
+                                    ? 'Aluno ativo precisa de uma academia'
+                                    : null,
+                          ),
+
+                          SizedBox(height: 16),
+
+                          // Seleção de Turma
+                          Stack(
+                            children: [
+                              DropdownButtonFormField<String>(
+                                initialValue: _turmaId,
+                                items: [
+                                  DropdownMenuItem(
+                                    value: null,
+                                    child: Text('Selecione uma turma'),
+                                  ),
+                                  ..._turmaItems,
+                                ],
+                                onChanged: _salvandoAluno
+                                    ? null
+                                    : (String? newValue) {
+                                        setState(() {
+                                          _turmaId = newValue;
+                                          if (newValue != null) {
+                                            final turmaData =
+                                                _turmasMap[newValue];
+                                            _turmaNome = turmaData != null
+                                                ? turmaData['nome'] as String?
+                                                : null;
+                                            _turmaCheia =
+                                                turmaData?['cheia'] == true;
+                                          } else {
+                                            _turmaNome = null;
+                                            _turmaCheia = false;
+                                          }
+                                        });
+                                      },
+                                decoration: InputDecoration(
+                                  labelText: 'Turma',
+                                  border: OutlineInputBorder(),
+                                  prefixIcon: Icon(Icons.group),
+                                ),
+                                validator: (value) {
+                                  if (_statusAtividade == 'ATIVO(A)' && value == null) {
+                                    return 'Aluno ativo precisa de uma turma';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              if (_carregandoTurmas)
+                                Positioned.fill(
+                                  child: Container(
+                                    color: context.uai.card.withAlpha(179),
+                                    child: Center(
+                                      child: CircularProgressIndicator(),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+
+                          if (_turmaCheia)
+                            Padding(
+                              padding: EdgeInsets.only(top: 8.0),
+                              child: Container(
+                                padding: EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: context.uai.error.withAlpha(26),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: context.uai.error.withAlpha(77),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.warning,
+                                      color: context.uai.primaryDark,
+                                    ),
+                                    SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        'Esta turma está CHEIA! Não é possível adicionar mais alunos.',
+                                        style: TextStyle(
+                                          color: context.uai.primaryDark,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+
+                          if (_academiaId != null &&
+                              _turmaItems.isEmpty &&
+                              !_carregandoTurmas)
+                            Padding(
+                              padding: EdgeInsets.only(top: 8.0),
+                              child: Text(
+                                'Nenhuma turma disponível para esta academia',
+                                style: TextStyle(
+                                  color: context.uai.warning,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            ),
+
+                          if (_turmaId != null &&
+                              _turmasMap.containsKey(_turmaId) &&
+                              _turmasMap[_turmaId] != null)
+                            Card(
+                              margin: EdgeInsets.only(top: 8),
+                              child: Padding(
+                                padding: EdgeInsets.all(12.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Informações da Turma:',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: context.uai.primary,
+                                      ),
+                                    ),
+                                    SizedBox(height: 8),
+                                    Text(
+                                      'Horário: ${_turmasMap[_turmaId]!['horario'] ?? 'Não informado'}',
+                                    ),
+                                    Text(
+                                      'Capacidade: ${_turmasMap[_turmaId]!['alunos_ativos'] ?? _turmasMap[_turmaId]!['alunos_count'] ?? 0}/${_turmasMap[_turmaId]!['capacidade_maxima'] ?? 0} alunos',
+                                    ),
+                                    if (_turmaCheia)
+                                      Text(
+                                        'STATUS: CHEIA ❌',
+                                        style: TextStyle(
+                                          color: context.uai.error,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    Text(
+                                      'Faixa Etária: ${_turmasMap[_turmaId]!['faixa_etaria'] ?? ''}',
+                                    ),
+                                    Text(
+                                      'Nível: ${_turmasMap[_turmaId]!['nivel'] ?? ''}',
+                                    ),
+                                    if (_turmasMap[_turmaId]!['dias_semana'] !=
+                                            null &&
+                                        (_turmasMap[_turmaId]!['dias_semana']
+                                                as List)
+                                            .isNotEmpty)
+                                      Text(
+                                        'Dias: ${(_turmasMap[_turmaId]!['dias_semana'] as List).join(', ')}',
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ),
+
+                          ]),
+                          ],
+
+                          // Dados da Capoeira
+                          _buildSecaoCompacta('capoeira_dados', 'Dados da Capoeira', [
+
+                          if (!_podeEditarDadosCapoeira)
+                            Text('Somente administradores com peso 100 podem alterar estes dados.',
+                              style: TextStyle(color: context.uai.textSecondary)),
+                          Opacity(
+                            opacity: _podeEditarDadosCapoeira ? 1 : 0.48,
+                            child: IgnorePointer(
+                              ignoring: !_podeEditarDadosCapoeira,
+                              child: Column(children: [
+
+                          DropdownButtonFormField<String>(
+                            initialValue: _graduacaoId,
+                            items: _graduacaoItems,
+                            onChanged: (v) => setState(() => _graduacaoId = v),
+                            decoration: InputDecoration(
+                              labelText: 'Graduação Atual',
+                              border: OutlineInputBorder(),
+                            ),
+                            isExpanded: true,
+                            selectedItemBuilder: (BuildContext context) {
+                              return _graduacaoItems.map<Widget>((
+                                DropdownMenuItem<String> item,
+                              ) {
+                                return Text(
+                                  item.value == null
+                                      ? "Sem Graduação"
+                                      : (_graduacoesData[item
+                                                .value!]?['nome_graduacao'] ??
+                                            ''),
+                                  overflow: TextOverflow.ellipsis,
+                                );
+                              }).toList();
+                            },
+                          ),
+
+                          _buildDateField(
+                            _controllers['data_graduacao_atual']!,
+                            'Data da Graduação',
+                          ),
+                          _buildDateField(
+                            _controllers['tempo_capoeira']!,
+                            'Início na Capoeira',
+                          ),
+
+                          ]),
                             ),
                           ),
-                          child: Icon(
-                            Icons.edit,
-                            color: context.uai.textPrimary,
-                            size: 18,
+
+                          ]),
+                        ]
+                        .map(
+                          (e) => Padding(
+                            padding: const EdgeInsets.only(bottom: 16),
+                            child: e,
                           ),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: 8),
-                    Text(
-                      'Toque na foto para galeria, câmera ou editor de enquadramento',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: context.uai.textSecondary,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
+                        )
+                        .toList(),
               ),
-              SizedBox(height: 16),
-
-              // Dados Pessoais
-              _buildSectionTitle('Dados Pessoais'),
-              _buildTextField(
-                _controllers['nome']!,
-                'Nome do Aluno',
-                isRequired: true,
-              ),
-              _buildTextField(_controllers['apelido']!, 'Apelido'),
-              _buildTextField(
-                _controllers['cpf']!,
-                'CPF',
-                keyboardType: TextInputType.number,
-              ),
-
-              DropdownButtonFormField<String>(
-                value: _sexo,
-                items: ['MASCULINO', 'FEMININO']
-                    .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                    .toList(),
-                onChanged: (v) => setState(() => _sexo = v),
-                decoration: InputDecoration(
-                  labelText: 'Sexo',
-                  border: OutlineInputBorder(),
-                ),
-                validator: (v) => v == null ? 'Campo obrigatório' : null,
-              ),
-
-              _buildDateField(
-                _controllers['data_nascimento']!,
-                'Data de Nascimento',
-                isRequired: true,
-              ),
-
-              // Contato
-              _buildSectionTitle('Contato'),
-              _buildTextField(
-                _controllers['contato_aluno']!,
-                'Contato do Aluno',
-                keyboardType: TextInputType.phone,
-              ),
-              _buildTextField(
-                _controllers['nome_responsavel']!,
-                'Nome do Responsável',
-              ),
-              _buildTextField(
-                _controllers['contato_responsavel']!,
-                'Contato do Responsável',
-                keyboardType: TextInputType.phone,
-              ),
-              _buildTextField(_controllers['endereco']!, 'Endereço'),
-              _buildTextField(_controllers['cidade']!, 'Cidade'),
-
-              // Academia e Turma
-              _buildSectionTitle('Academia e Turma'),
-
-              // Seleção de Academia
-              DropdownButtonFormField<String>(
-                value: _academiaId,
-                items: [
-                  DropdownMenuItem(
-                    value: null,
-                    child: Text('Selecione uma academia'),
-                  ),
-                  ..._academiaItems,
-                ],
-                onChanged: _salvandoAluno
-                    ? null
-                    : (String? newValue) {
-                        setState(() {
-                          _academiaId = newValue;
-                          _academiaNome = newValue != null
-                              ? _academiasMap[newValue]
-                              : null;
-                          _turmaId = null;
-                          _turmaNome = null;
-                          _turmaItems = [];
-                          _turmaCheia = false;
-                          if (newValue != null) {
-                            _fetchTurmas(newValue);
-                          }
-                        });
-                      },
-                decoration: InputDecoration(
-                  labelText: 'Academia/Núcleo',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.school),
-                ),
-                validator: (value) =>
-                    value == null ? 'Selecione uma academia' : null,
-              ),
-
-              SizedBox(height: 16),
-
-              // Seleção de Turma
-              Stack(
-                children: [
-                  DropdownButtonFormField<String>(
-                    value: _turmaId,
-                    items: [
-                      DropdownMenuItem(
-                        value: null,
-                        child: Text('Selecione uma turma'),
-                      ),
-                      ..._turmaItems,
-                    ],
-                    onChanged: _salvandoAluno
-                        ? null
-                        : (String? newValue) {
-                            setState(() {
-                              _turmaId = newValue;
-                              if (newValue != null) {
-                                final turmaData = _turmasMap[newValue];
-                                _turmaNome = turmaData != null
-                                    ? turmaData['nome'] as String?
-                                    : null;
-                                _turmaCheia = turmaData?['cheia'] == true;
-                              } else {
-                                _turmaNome = null;
-                                _turmaCheia = false;
-                              }
-                            });
-                          },
-                    decoration: InputDecoration(
-                      labelText: 'Turma',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.group),
-                    ),
-                    validator: (value) {
-                      if (_academiaId != null && value == null) {
-                        return 'Selecione uma turma';
-                      }
-                      return null;
-                    },
-                  ),
-                  if (_carregandoTurmas)
-                    Positioned.fill(
-                      child: Container(
-                        color: context.uai.card.withOpacity(0.7),
-                        child: Center(child: CircularProgressIndicator()),
-                      ),
-                    ),
-                ],
-              ),
-
-              if (_turmaCheia)
-                Padding(
-                  padding: EdgeInsets.only(top: 8.0),
-                  child: Container(
-                    padding: EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: context.uai.error.withOpacity(0.10),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: context.uai.error.withOpacity(0.30),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.warning, color: context.uai.primaryDark),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Esta turma está CHEIA! Não é possível adicionar mais alunos.',
-                            style: TextStyle(
-                              color: context.uai.primaryDark,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-              if (_academiaId != null &&
-                  _turmaItems.isEmpty &&
-                  !_carregandoTurmas)
-                Padding(
-                  padding: EdgeInsets.only(top: 8.0),
-                  child: Text(
-                    'Nenhuma turma disponível para esta academia',
-                    style: TextStyle(
-                      color: context.uai.warning,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                ),
-
-              if (_turmaId != null &&
-                  _turmasMap.containsKey(_turmaId) &&
-                  _turmasMap[_turmaId] != null)
-                Card(
-                  margin: EdgeInsets.only(top: 8),
-                  child: Padding(
-                    padding: EdgeInsets.all(12.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Informações da Turma:',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: context.uai.primary,
-                          ),
-                        ),
-                        SizedBox(height: 8),
-                        Text(
-                          'Horário: ${_turmasMap[_turmaId]!['horario'] ?? 'Não informado'}',
-                        ),
-                        Text(
-                          'Capacidade: ${_turmasMap[_turmaId]!['alunos_ativos'] ?? _turmasMap[_turmaId]!['alunos_count'] ?? 0}/${_turmasMap[_turmaId]!['capacidade_maxima'] ?? 0} alunos',
-                        ),
-                        if (_turmaCheia)
-                          Text(
-                            'STATUS: CHEIA ❌',
-                            style: TextStyle(
-                              color: context.uai.error,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        Text(
-                          'Faixa Etária: ${_turmasMap[_turmaId]!['faixa_etaria'] ?? ''}',
-                        ),
-                        Text('Nível: ${_turmasMap[_turmaId]!['nivel'] ?? ''}'),
-                        if (_turmasMap[_turmaId]!['dias_semana'] != null &&
-                            (_turmasMap[_turmaId]!['dias_semana'] as List)
-                                .isNotEmpty)
-                          Text(
-                            'Dias: ${(_turmasMap[_turmaId]!['dias_semana'] as List).join(', ')}',
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-
-              // Dados da Capoeira
-              _buildSectionTitle('Dados da Capoeira'),
-
-              DropdownButtonFormField<String>(
-                value: _graduacaoId,
-                items: _graduacaoItems,
-                onChanged: (v) => setState(() => _graduacaoId = v),
-                decoration: InputDecoration(
-                  labelText: 'Graduação Atual',
-                  border: OutlineInputBorder(),
-                ),
-                isExpanded: true,
-                selectedItemBuilder: (BuildContext context) {
-                  return _graduacaoItems.map<Widget>((
-                    DropdownMenuItem<String> item,
-                  ) {
-                    return Text(
-                      item.value == null
-                          ? "Sem Graduação"
-                          : (_graduacoesData[item.value!]?['nome_graduacao'] ??
-                                ''),
-                      overflow: TextOverflow.ellipsis,
-                    );
-                  }).toList();
-                },
-              ),
-
-              _buildDateField(
-                _controllers['data_graduacao_atual']!,
-                'Data da Graduação',
-              ),
-              _buildDateField(
-                _controllers['tempo_capoeira']!,
-                'Início na Capoeira',
-              ),
-
-              DropdownButtonFormField<String>(
-                value: _statusAtividade,
-                items: ['ATIVO(A)', 'INATIVO(A)']
-                    .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                    .toList(),
-                onChanged: (v) => setState(() => _statusAtividade = v),
-                decoration: InputDecoration(
-                  labelText: 'Status',
-                  border: OutlineInputBorder(),
-                ),
-                validator: (v) => v == null ? 'Campo obrigatório' : null,
-              ),
-            ].map((e) => Padding(padding: EdgeInsets.only(bottom: 16), child: e)).toList(),
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildSectionTitle(String title) {
-    return Padding(
-      padding: EdgeInsets.only(top: 24.0, bottom: 8.0),
-      child: Text(
-        title,
-        style: Theme.of(
-          context,
-        ).textTheme.titleLarge?.copyWith(color: context.uai.primary),
+  Widget _buildContatosEmergenciaAdicionais() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var i = 0; i < _contatosEmergenciaAdicionais.length; i++)
+          Card(
+            child: ListTile(
+              title: Text(_contatosEmergenciaAdicionais[i]['nome']?.toString() ?? 'Contato'),
+              subtitle: Text([
+                _contatosEmergenciaAdicionais[i]['telefone']?.toString() ?? '',
+                _contatosEmergenciaAdicionais[i]['grau']?.toString() ?? '',
+              ].where((v) => v.isNotEmpty).join(' • ')),
+              onTap: _salvandoAluno ? null : () => _editarContatoEmergencia(i),
+              trailing: IconButton(
+                tooltip: 'Remover contato',
+                onPressed: _salvandoAluno ? null : () => setState(() => _contatosEmergenciaAdicionais.removeAt(i)),
+                icon: const Icon(Icons.delete_outline_rounded),
+              ),
+            ),
+          ),
+        OutlinedButton.icon(
+          onPressed: _salvandoAluno ? null : () => _editarContatoEmergencia(null),
+          icon: const Icon(Icons.add_rounded),
+          label: const Text('Adicionar contato de emergência'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildParentescoEmergencia() {
+    final selecionado = _controllers['grau_emergencia']!.text.trim();
+    final reconhecido = grausResponsavelUai.contains(selecionado);
+    return DropdownButtonFormField<String>(
+      key: ValueKey('grau_emergencia_${reconhecido ? selecionado : 'sem_vinculo'}'),
+      initialValue: reconhecido ? selecionado : null,
+      isExpanded: true,
+      decoration: InputDecoration(
+        labelText: 'Parentesco do contato de emergência',
+        prefixIcon: const Icon(Icons.family_restroom_rounded),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+        helperText: selecionado.isNotEmpty && !reconhecido
+            ? 'Vínculo anterior: $selecionado. Selecione o equivalente.'
+            : null,
+        helperMaxLines: 2,
+      ),
+      items: grausResponsavelUai
+          .map((grau) => DropdownMenuItem(value: grau, child: Text(grau)))
+          .toList(),
+      onChanged: _salvandoAluno ? null : (grau) {
+        if (grau == null) return;
+        setState(() {
+          _controllers['grau_emergencia']!.text = grau;
+          final familia = Map<String, dynamic>.from(
+            _fichaComplementar['familia'] is Map
+                ? _fichaComplementar['familia'] as Map
+                : const <String, dynamic>{},
+          );
+          familia['grau_responsavel'] = grau;
+          familia['grau_outro'] = grau == 'Outro' ? 'Outro vínculo' : '';
+          _fichaComplementar['familia'] = familia;
+        });
+      },
+    );
+  }
+
+  Future<void> _editarContatoEmergencia(int? index) async {
+    final anterior = index == null ? <String, dynamic>{} : _contatosEmergenciaAdicionais[index];
+    final nome = TextEditingController(text: anterior['nome']?.toString() ?? '');
+    final telefone = TextEditingController(text: anterior['telefone']?.toString() ?? '');
+    String? grauSelecionado = grausResponsavelUai.contains(anterior['grau'])
+        ? anterior['grau']?.toString()
+        : null;
+    try {
+      final novo = await showDialog<Map<String, dynamic>>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (dialogContext, setDialogState) => AlertDialog(
+          title: Text(index == null ? 'Adicionar contato' : 'Editar contato'),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              TextField(controller: nome, decoration: const InputDecoration(labelText: 'Nome')),
+              TextField(controller: telefone, keyboardType: TextInputType.phone,
+                inputFormatters: [_EditarTelefoneFormatter()],
+                decoration: const InputDecoration(labelText: 'Telefone')),
+              DropdownButtonFormField<String>(
+                initialValue: grauSelecionado,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Parentesco'),
+                items: grausResponsavelUai
+                    .map((grau) => DropdownMenuItem(value: grau, child: Text(grau)))
+                    .toList(),
+                onChanged: (valor) => setDialogState(() => grauSelecionado = valor),
+              ),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancelar')),
+            FilledButton(onPressed: () {
+              if (nome.text.trim().isEmpty || telefone.text.trim().isEmpty) return;
+              Navigator.pop(dialogContext, {
+                ...anterior,
+                'nome': nome.text.trim(),
+                'telefone': telefone.text.replaceAll(RegExp(r'[^0-9]'), ''),
+                'grau': grauSelecionado ?? anterior['grau']?.toString() ?? '',
+              });
+            }, child: const Text('Salvar contato')),
+          ],
+        ),
+        ),
+      );
+      if (!mounted || novo == null) return;
+      setState(() {
+        if (index == null) {
+          _contatosEmergenciaAdicionais.add(novo);
+        } else {
+          _contatosEmergenciaAdicionais[index] = novo;
+        }
+      });
+    } finally {
+      nome.dispose();
+      telefone.dispose();
+    }
+  }
+
+  Widget _buildFotoAlunoHeader() {
+    final isWindowsWide =
+        _isWindowsPlatform && MediaQuery.of(context).size.width >= 900;
+    final foto = CircleAvatar(
+      radius: isWindowsWide ? 64 : 58,
+      backgroundColor: context.uai.cardAlt,
+      backgroundImage: _pickedImageBytesPreview != null
+          ? MemoryImage(_pickedImageBytesPreview!)
+          : (_networkImageUrl != null && _networkImageUrl!.isNotEmpty
+                    ? CachedNetworkImageProvider(_networkImageUrl!)
+                    : null)
+                as ImageProvider?,
+      child:
+          _pickedImage == null &&
+              (_networkImageUrl == null || _networkImageUrl!.isEmpty)
+          ? Icon(Icons.person_rounded, size: 54, color: context.uai.textMuted)
+          : null,
+    );
+
+    final avatar = Stack(
+      clipBehavior: Clip.none,
+      children: [
+        foto,
+        Positioned(
+          right: 0,
+          bottom: 2,
+          child: Container(
+            padding: const EdgeInsets.all(7),
+            decoration: BoxDecoration(
+              color: context.uai.primary,
+              shape: BoxShape.circle,
+              border: Border.all(color: context.uai.card, width: 3),
+            ),
+            child: const Icon(
+              Icons.edit_rounded,
+              color: Colors.white,
+              size: 18,
+            ),
+          ),
+        ),
+      ],
+    );
+
+    if (!isWindowsWide) {
+      return GestureDetector(
+        onTap: _salvandoAluno ? null : _showImageSourceActionSheet,
+        child: Column(
+          children: [
+            avatar,
+            const SizedBox(height: 10),
+            Text(
+              'Toque na foto para trocar ou ajustar o enquadramento',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: context.uai.textSecondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: context.uai.card,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: context.uai.border),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(13),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: _salvandoAluno ? null : _showImageSourceActionSheet,
+            child: avatar,
+          ),
+          const SizedBox(width: 22),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _controllers['nome']!.text.trim().isEmpty
+                      ? 'Foto do aluno'
+                      : _controllers['nome']!.text.trim(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  'Gerencie a foto usada no perfil, cards e chamadas. No Windows, o UAI Photo Studio oferece enquadramento e tratamento completo.',
+                  style: TextStyle(
+                    color: context.uai.textSecondary,
+                    fontSize: 12.5,
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 8,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: _salvandoAluno
+                          ? null
+                          : _showImageSourceActionSheet,
+                      icon: const Icon(Icons.add_photo_alternate_rounded),
+                      label: const Text('Trocar foto'),
+                    ),
+                    FilledButton.icon(
+                      onPressed: _salvandoAluno ? null : _editarFotoAluno,
+                      icon: const Icon(Icons.auto_fix_high_rounded),
+                      label: const Text('Abrir UAI Photo Studio'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            decoration: BoxDecoration(
+              color: context.uai.success.withAlpha(26),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: context.uai.success.withAlpha(89)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.desktop_windows_rounded,
+                  size: 16,
+                  color: context.uai.success,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'Studio Windows',
+                  style: TextStyle(
+                    color: context.uai.success,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Acordeao: apenas uma secao aberta, mantendo os controles montados para
+  // preservar valores, validacoes e estado local de cada campo.
+  Widget _buildSecaoCompacta(String id, String titulo, List<Widget> campos) {
+    final t = context.uai;
+    final aberta = _secaoAbertaId == id;
+    final (cor, icone) = switch (id) {
+      'pessoais' => (const Color(0xFF2875B9), Icons.badge_outlined),
+      'contato' => (const Color(0xFF168D81), Icons.phone_outlined),
+      'endereco' => (const Color(0xFFE08A20), Icons.location_on_outlined),
+      'complementares' => (const Color(0xFF8053B8), Icons.assignment_outlined),
+      'emergencia' => (const Color(0xFFD05C61), Icons.contact_emergency_outlined),
+      'saude' => (const Color(0xFFDB5B88), Icons.favorite_border_rounded),
+      'capoeira_ficha' => (const Color(0xFF6D7E31), Icons.menu_book_outlined),
+      'turma_nova' => (const Color(0xFF2F889F), Icons.groups_outlined),
+      'capoeira_dados' => (const Color(0xFFAD7134), Icons.workspace_premium_outlined),
+      _ => (t.primary, Icons.description_outlined),
+    };
+
+    return Material(
+      color: t.card,
+      borderRadius: BorderRadius.circular(18),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          InkWell(
+            onTap: () => setState(() => _secaoAbertaId = aberta ? null : id),
+            child: IntrinsicHeight(
+              child: Row(
+                children: [
+                  Container(width: 5, color: cor),
+                  const SizedBox(width: 12),
+                  Icon(icone, color: cor, size: 22),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 19),
+                      child: Text(
+                        titulo,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: t.textPrimary,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    aberta ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                    color: t.textSecondary,
+                  ),
+                  const SizedBox(width: 14),
+                ],
+              ),
+            ),
+          ),
+          Visibility(
+            visible: aberta,
+            maintainState: true,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 6, 14, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: campos
+                    .map((campo) => Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: campo,
+                        ))
+                    .toList(),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2049,22 +3584,41 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
     String label, {
     TextInputType keyboardType = TextInputType.text,
     bool isRequired = false,
+    bool enderecoTexto = false,
+    bool nomePessoa = false,
+    int? maxLength,
   }) {
+    final ehTelefone = keyboardType == TextInputType.phone;
+    final ehCpf = identical(controller, _controllers['cpf']);
+    final formatadores = <TextInputFormatter>[
+      if (ehTelefone || ehCpf || keyboardType == TextInputType.number)
+        FilteringTextInputFormatter.digitsOnly
+      else if (nomePessoa)
+        FilteringTextInputFormatter.allow(RegExp(r'[A-Za-zÀ-ÖØ-öø-ÿ\s]'))
+      else if (enderecoTexto)
+        FilteringTextInputFormatter.allow(
+          RegExp(r'[A-Za-zÀ-ÖØ-öø-ÿ0-9\s\.,\-ºª/]'),
+        ),
+      if (ehTelefone || ehCpf)
+        LengthLimitingTextInputFormatter(11)
+      else if (maxLength != null)
+        LengthLimitingTextInputFormatter(maxLength),
+      if (ehTelefone) _EditarTelefoneFormatter(),
+      if (ehCpf) _EditarCpfFormatter(),
+    ];
     return TextFormField(
       controller: controller,
       decoration: InputDecoration(
         labelText: label,
-        border: OutlineInputBorder(),
+        border: const OutlineInputBorder(),
       ),
+      textCapitalization: (ehTelefone || ehCpf || keyboardType == TextInputType.number ||
+          keyboardType == TextInputType.emailAddress)
+          ? TextCapitalization.none : TextCapitalization.characters,
       keyboardType: keyboardType,
-      inputFormatters:
-          keyboardType == TextInputType.phone ||
-              keyboardType == TextInputType.number
-          ? [FilteringTextInputFormatter.digitsOnly]
-          : [],
+      inputFormatters: formatadores,
       validator: (value) => (isRequired && (value == null || value.isEmpty))
-          ? 'Campo obrigatório'
-          : null,
+          ? 'Campo obrigatório' : null,
     );
   }
 
@@ -2089,477 +3643,270 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
   }
 }
 
-class _EditorFotoAlunoDialog extends StatefulWidget {
-  final File imageFile;
+class _ConfirmarExclusaoAlunoDialog extends StatefulWidget {
   final String nomeAluno;
 
-  _EditorFotoAlunoDialog({required this.imageFile, required this.nomeAluno});
+  const _ConfirmarExclusaoAlunoDialog({required this.nomeAluno});
 
   @override
-  State<_EditorFotoAlunoDialog> createState() => _EditorFotoAlunoDialogState();
+  State<_ConfirmarExclusaoAlunoDialog> createState() =>
+      _ConfirmarExclusaoAlunoDialogState();
 }
 
-class _EditorFotoAlunoDialogState extends State<_EditorFotoAlunoDialog> {
-  double _zoom = 1.35;
-  double _offsetX = 0;
-  double _offsetY = 0;
-  bool _salvando = false;
+class _ConfirmarExclusaoAlunoDialogState
+    extends State<_ConfirmarExclusaoAlunoDialog> {
+  final TextEditingController _confirmacaoController = TextEditingController();
+  bool _confirmado = false;
 
-  void _resetar() {
-    setState(() {
-      _zoom = 1.35;
-      _offsetX = 0;
-      _offsetY = 0;
-    });
+  @override
+  void initState() {
+    super.initState();
+    _confirmacaoController.addListener(_validar);
   }
 
-  Future<void> _salvarImagemEditada() async {
-    if (_salvando) return;
-
-    setState(() => _salvando = true);
-
-    try {
-      final bytes = await widget.imageFile.readAsBytes();
-      final decoded = img.decodeImage(bytes);
-
-      if (decoded == null) {
-        throw Exception('Não foi possível abrir essa imagem.');
-      }
-
-      final original = img.bakeOrientation(decoded);
-      final menorLado = math.min(original.width, original.height).toDouble();
-      final cropSize = (menorLado / _zoom)
-          .round()
-          .clamp(120, menorLado.round())
-          .toInt();
-
-      final maxDx = math.max(0.0, (original.width - cropSize) / 2);
-      final maxDy = math.max(0.0, (original.height - cropSize) / 2);
-
-      // IMPORTANTE:
-      // No preview, o slider move a IMAGEM dentro do quadro.
-      // No recorte real, precisamos mover a JANELA DE CORTE no sentido contrário.
-      // Sem esse sinal invertido, ao puxar a foto para baixo no editor,
-      // o arquivo final cortava mais para baixo ainda e focava barriga/pernas.
-      final cropX = ((original.width - cropSize) / 2 - (_offsetX * maxDx))
-          .round()
-          .clamp(0, original.width - cropSize)
-          .toInt();
-      final cropY = ((original.height - cropSize) / 2 - (_offsetY * maxDy))
-          .round()
-          .clamp(0, original.height - cropSize)
-          .toInt();
-
-      final cropped = img.copyCrop(
-        original,
-        x: cropX,
-        y: cropY,
-        width: cropSize,
-        height: cropSize,
-      );
-
-      final resized = img.copyResize(
-        cropped,
-        width: 900,
-        height: 900,
-        interpolation: img.Interpolation.cubic,
-      );
-
-      final jpg = img.encodeJpg(resized, quality: 86);
-
-      final baseDir = Directory.systemTemp;
-      final dir = Directory('${baseDir.path}/uai_capoeira_fotos_editor');
-      if (!await dir.exists()) {
-        await dir.create(recursive: true);
-      }
-
-      final output = File(
-        '${dir.path}/foto_aluno_crop_${DateTime.now().millisecondsSinceEpoch}.jpg',
-      );
-
-      if (!await output.parent.exists()) {
-        await output.parent.create(recursive: true);
-      }
-
-      await output.writeAsBytes(jpg, flush: true);
-
-      if (!await output.exists()) {
-        throw Exception('Arquivo editado não foi criado.');
-      }
-
-      if (!mounted) return;
-      Navigator.pop(context, output);
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _mensagemErroAmigavelEditarAluno(e, contexto: 'edição da foto'),
-          ),
-          backgroundColor: context.uai.error,
-        ),
-      );
-      setState(() => _salvando = false);
+  void _validar() {
+    final novoValor = _confirmacaoController.text == widget.nomeAluno;
+    if (novoValor != _confirmado && mounted) {
+      setState(() => _confirmado = novoValor);
     }
   }
 
   @override
-  Widget build(BuildContext context) {
-    final nome = widget.nomeAluno.trim().isEmpty
-        ? 'Aluno'
-        : widget.nomeAluno.trim();
-
-    return Dialog(
-      insetPadding: EdgeInsets.all(12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.92,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: double.infinity,
-                padding: EdgeInsets.fromLTRB(16, 16, 8, 14),
-                decoration: BoxDecoration(
-                  gradient: context.uai.primaryGradient,
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.crop_rounded, color: context.uai.card),
-                    SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Editar foto do aluno',
-                            style: TextStyle(
-                              color: context.uai.textPrimary,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 17,
-                            ),
-                          ),
-                          Text(
-                            nome,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: context.uai.card.withOpacity(0.78),
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: _salvando
-                          ? null
-                          : () => Navigator.pop(context),
-                      icon: Icon(Icons.close_rounded, color: context.uai.card),
-                    ),
-                  ],
-                ),
-              ),
-              Flexible(
-                child: SingleChildScrollView(
-                  padding: EdgeInsets.all(16),
-                  child: Column(
-                    children: [
-                      Text(
-                        'Use o card como referência: deixe o rosto bem no centro para aparecer certo nos cards do app.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: context.uai.textSecondary,
-                          fontSize: 13,
-                          height: 1.3,
-                        ),
-                      ),
-                      SizedBox(height: 14),
-                      _buildCardReferencia(),
-                      SizedBox(height: 16),
-                      _buildSlider(
-                        label: 'Zoom',
-                        value: _zoom,
-                        min: 1.0,
-                        max: 3.0,
-                        divisions: 40,
-                        icon: Icons.zoom_in_rounded,
-                        onChanged: (v) => setState(() => _zoom = v),
-                      ),
-                      _buildSlider(
-                        label: 'Horizontal',
-                        value: _offsetX,
-                        min: -1,
-                        max: 1,
-                        divisions: 40,
-                        icon: Icons.swap_horiz_rounded,
-                        onChanged: (v) => setState(() => _offsetX = v),
-                      ),
-                      _buildSlider(
-                        label: 'Vertical',
-                        value: _offsetY,
-                        min: -1,
-                        max: 1,
-                        divisions: 40,
-                        icon: Icons.swap_vert_rounded,
-                        onChanged: (v) => setState(() => _offsetY = v),
-                      ),
-                      SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: _salvando ? null : _resetar,
-                              icon: Icon(Icons.refresh_rounded),
-                              label: Text('Resetar'),
-                            ),
-                          ),
-                          SizedBox(width: 10),
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: _salvando
-                                  ? null
-                                  : _salvarImagemEditada,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor:
-                                    Theme.of(
-                                      context,
-                                    ).appBarTheme.backgroundColor ??
-                                    context.uai.primary,
-                                foregroundColor:
-                                    Theme.of(
-                                      context,
-                                    ).appBarTheme.foregroundColor ??
-                                    _readableOn(
-                                      Theme.of(
-                                            context,
-                                          ).appBarTheme.backgroundColor ??
-                                          context.uai.primary,
-                                    ),
-                                padding: EdgeInsets.symmetric(vertical: 13),
-                              ),
-                              icon: _salvando
-                                  ? SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: context.uai.textPrimary,
-                                      ),
-                                    )
-                                  : Icon(Icons.check_rounded),
-                              label: Text(
-                                _salvando ? 'Salvando...' : 'Aplicar',
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+  void dispose() {
+    _confirmacaoController
+      ..removeListener(_validar)
+      ..dispose();
+    super.dispose();
   }
 
-  Widget _buildCardReferencia() {
-    return Center(
-      child: Container(
-        width: 210,
-        height: 292,
-        decoration: BoxDecoration(
-          color: context.uai.textPrimary,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: context.uai.success, width: 2.2),
-          boxShadow: [
-            BoxShadow(
-              color: context.uai.textPrimary.withOpacity(0.12),
-              blurRadius: 14,
-              offset: Offset(0, 5),
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Row(
+        children: [
+          Icon(Icons.warning_amber_rounded, color: context.uai.warning),
+          const SizedBox(width: 10),
+          const Expanded(child: Text('Confirmar exclusão permanente')),
+        ],
+      ),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Para evitar exclusões acidentais, digite ou cole exatamente o nome completo do aluno:',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: context.uai.cardAlt,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: context.uai.border),
+              ),
+              child: SelectableText(
+                widget.nomeAluno,
+                style: TextStyle(
+                  color: context.uai.primary,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _confirmacaoController,
+              autofocus: true,
+              enableSuggestions: false,
+              autocorrect: false,
+              decoration: InputDecoration(
+                labelText: 'Nome completo para confirmar',
+                hintText: widget.nomeAluno,
+                prefixIcon: const Icon(Icons.edit_note_rounded),
+                suffixIcon: _confirmado
+                    ? Icon(Icons.verified_rounded, color: context.uai.success)
+                    : null,
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: context.uai.error.withAlpha(26),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: context.uai.error.withAlpha(89)),
+              ),
+              child: Text(
+                'Esta ação é permanente e irreversível. Os dados do aluno serão removidos do sistema.',
+                style: TextStyle(
+                  color: context.uai.error,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ],
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: Column(
-            children: [
-              Expanded(
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Container(
-                      color: context.uai.cardAlt,
-                      child: ClipRect(
-                        child: Transform.translate(
-                          offset: Offset(_offsetX * 58, _offsetY * 58),
-                          child: Transform.scale(
-                            scale: _zoom,
-                            child: Image.file(
-                              widget.imageFile,
-                              fit: BoxFit.cover,
-                              filterQuality: FilterQuality.medium,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    Positioned.fill(
-                      child: IgnorePointer(
-                        child: CustomPaint(painter: _GuiaRostoPainter()),
-                      ),
-                    ),
-                    Positioned.fill(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.bottomCenter,
-                            end: Alignment.center,
-                            colors: [
-                              Colors.black.withOpacity(0.55),
-                              Colors.transparent,
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      left: 10,
-                      right: 10,
-                      bottom: 10,
-                      child: Text(
-                        'Prévia no card',
-                        style: TextStyle(
-                          color: context.uai.textPrimary,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                width: double.infinity,
-                padding: EdgeInsets.fromLTRB(9, 9, 9, 10),
-                color: context.uai.success.withOpacity(0.10),
-                child: Center(
-                  child: Container(
-                    width: 128,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: context.uai.success,
-                      borderRadius: BorderRadius.circular(19),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.check_circle_rounded,
-                          color: context.uai.textPrimary,
-                          size: 17,
-                        ),
-                        SizedBox(width: 6),
-                        Text(
-                          'Presente',
-                          style: TextStyle(
-                            color: context.uai.textPrimary,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 11.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancelar'),
         ),
-      ),
-    );
-  }
-
-  Widget _buildSlider({
-    required String label,
-    required double value,
-    required double min,
-    required double max,
-    required int divisions,
-    required IconData icon,
-    required ValueChanged<double> onChanged,
-  }) {
-    return Container(
-      margin: EdgeInsets.only(bottom: 8),
-      padding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: context.uai.background,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: context.uai.border),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, size: 19, color: context.uai.primary),
-          SizedBox(width: 8),
-          SizedBox(
-            width: 74,
-            child: Text(
-              label,
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-            ),
+        FilledButton.icon(
+          onPressed: _confirmado ? () => Navigator.pop(context, true) : null,
+          style: FilledButton.styleFrom(
+            backgroundColor: context.uai.error,
+            foregroundColor: Colors.white,
           ),
-          Expanded(
-            child: Slider(
-              value: value,
-              min: min,
-              max: max,
-              divisions: divisions,
-              activeColor: context.uai.primary,
-              onChanged: _salvando ? null : onChanged,
-            ),
-          ),
-        ],
-      ),
+          icon: const Icon(Icons.delete_forever_rounded),
+          label: const Text('EXCLUIR PERMANENTEMENTE'),
+        ),
+      ],
     );
   }
 }
 
-class _GuiaRostoPainter extends CustomPainter {
+
+
+// Formatos de entrada equivalentes aos utilizados na inscrição pública.
+class _EditarTelefoneFormatter extends TextInputFormatter {
   @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white.withOpacity(0.82)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2;
-
-    final center = Offset(size.width / 2, size.height * 0.42);
-    final oval = Rect.fromCenter(
-      center: center,
-      width: size.width * 0.46,
-      height: size.height * 0.36,
-    );
-
-    canvas.drawOval(oval, paint);
-    canvas.drawLine(
-      Offset(size.width / 2, 0),
-      Offset(size.width / 2, size.height),
-      paint..color = Colors.white.withOpacity(0.35),
-    );
-    canvas.drawLine(
-      Offset(0, center.dy),
-      Offset(size.width, center.dy),
-      paint..color = Colors.white.withOpacity(0.35),
-    );
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    final digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+    var formatted = digits;
+    if (digits.length >= 2) {
+      formatted = '(${digits.substring(0, 2)})';
+      if (digits.length > 2) {
+        formatted += ' ${digits.substring(2, digits.length > 7 ? 7 : digits.length)}';
+      }
+      if (digits.length > 7) {
+        formatted += '-${digits.substring(7, digits.length > 11 ? 11 : digits.length)}';
+      }
+    }
+    return TextEditingValue(text: formatted, selection: TextSelection.collapsed(offset: formatted.length));
   }
+}
 
+class _EditarCpfFormatter extends TextInputFormatter {
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    final digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+    var formatted = digits;
+    if (digits.length > 3) formatted = '${digits.substring(0, 3)}.${digits.substring(3)}';
+    if (digits.length > 6) formatted = '${digits.substring(0, 3)}.${digits.substring(3, 6)}.${digits.substring(6)}';
+    if (digits.length > 9) {
+      formatted = '${digits.substring(0, 3)}.${digits.substring(3, 6)}.${digits.substring(6, 9)}-${digits.substring(9, digits.length > 11 ? 11 : digits.length)}';
+    }
+    return TextEditingValue(text: formatted, selection: TextSelection.collapsed(offset: formatted.length));
+  }
+}
+
+class _EnderecoLegadoUai {
+  static String _normalizar(String value) => value
+      .trim()
+      .toUpperCase()
+      .replaceAll(RegExp(r'[ÁÀÂÃ]'), 'A')
+      .replaceAll(RegExp(r'[ÉÊ]'), 'E')
+      .replaceAll(RegExp(r'[Í]'), 'I')
+      .replaceAll(RegExp(r'[ÓÔÕ]'), 'O')
+      .replaceAll(RegExp(r'[ÚÜ]'), 'U')
+      .replaceAll('Ç', 'C')
+      .replaceAll(RegExp(r'\s+'), ' ');
+
+  static Map<String, String> interpretar(
+    String endereco, {
+    String? cidadeConhecida,
+  }) {
+    final resultado = <String, String>{};
+    final original = endereco.trim();
+    if (original.isEmpty) return resultado;
+
+    final cidade = cidadeConhecida?.trim() ?? '';
+    final partes = original.split(',')
+        .map((p) => p.trim())
+        .where((p) => p.isNotEmpty)
+        .toList();
+    if (partes.isEmpty) return resultado;
+
+    // Não atribuir a cidade ao bairro, nem duplicá-la no endereço.
+    if (cidade.isNotEmpty && partes.length > 1 &&
+        _normalizar(partes.last) == _normalizar(cidade)) {
+      partes.removeLast();
+    } else if (cidade.isEmpty && partes.length >= 3) {
+      resultado['cidade'] = partes.removeLast();
+    }
+
+    final texto = partes.join(', ');
+    // Formato antigo rotulado: Rua: X N: 123 B: Y.
+    final rotulado = RegExp(
+      r'^\s*(?:RUA|R|LOGRADOURO)\s*:\s*(.+?)\s+(?:N|Nº|N°|NUMERO|NÚMERO)\s*:?\s*(\d+[A-Za-z]?)\s+(?:B|BAIRRO)\s*:\s*(.+)$',
+      caseSensitive: false,
+    ).firstMatch(texto);
+    if (rotulado != null) {
+      resultado['rua'] = rotulado.group(1)!.trim();
+      resultado['numero'] = rotulado.group(2)!.trim();
+      resultado['bairro'] = rotulado.group(3)!.trim();
+      return resultado;
+    }
+
+    // Novo formato: RUA - 123, BAIRRO; legado: RUA, 123, BAIRRO.
+    final separado = RegExp(r'^(.+?)\s+-\s+(\d{1,6}[A-Za-z]?)$')
+        .firstMatch(partes.first);
+    if (separado != null) {
+      resultado['rua'] = separado.group(1)!.trim();
+      resultado['numero'] = separado.group(2)!.trim();
+      if (partes.length > 1) resultado['bairro'] = partes[1];
+      return resultado;
+    }
+    if (partes.length >= 3 &&
+        RegExp(r'^\d{1,6}[A-Za-z]?$').hasMatch(partes[1])) {
+      resultado['rua'] = partes[0];
+      resultado['numero'] = partes[1];
+      resultado['bairro'] = partes[2];
+      return resultado;
+    }
+    final comNumero = RegExp(r'^(.+?)\s+(\d{1,6}[A-Za-z]?)$')
+        .firstMatch(partes.first);
+    if (comNumero != null && partes.length >= 2) {
+      resultado['rua'] = comNumero.group(1)!.trim();
+      resultado['numero'] = comNumero.group(2)!.trim();
+      resultado['bairro'] = partes[1];
+      return resultado;
+    }
+
+    // Variação Rua X N: 123 / Bairro, sem os dois-pontos em Rua.
+    final comBairro = RegExp(
+      r'^(.+?)\s+(?:N|Nº|N°|NUMERO|NÚMERO)\s*:?\s*(\d+[A-Za-z]?)\s*[/,]\s*(.+)$',
+      caseSensitive: false,
+    ).firstMatch(texto);
+    if (comBairro != null) {
+      resultado['rua'] = comBairro.group(1)!.trim();
+      resultado['numero'] = comBairro.group(2)!.trim();
+      resultado['bairro'] = comBairro.group(3)!.trim();
+      return resultado;
+    }
+
+    // Texto sem separadores: sugerir rua/número/bairro, mas a interface
+    // exige conferência antes de transformar o endereço original.
+    final noMeio = RegExp(r'^(.+?)\s+(\d{1,6}[A-Za-z]?)\s+(.+)$')
+        .firstMatch(partes.first);
+    if (noMeio != null) {
+      resultado['rua'] = noMeio.group(1)!.trim();
+      resultado['numero'] = noMeio.group(2)!.trim();
+      resultado['bairro'] = noMeio.group(3)!.trim();
+      resultado['revisao_necessaria'] = 'true';
+      return resultado;
+    }
+
+    // Não inventar número ou bairro onde não houver identificação confiável.
+    resultado['rua'] = partes.first;
+    if (partes.length > 1) resultado['bairro'] = partes[1];
+    return resultado;
+  }
 }

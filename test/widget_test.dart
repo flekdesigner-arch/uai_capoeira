@@ -1,34 +1,19 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:uai_capoeira/main.dart';
+import 'package:uai_capoeira/app/bootstrap/uai_native_bootstrap.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp() as Widget);
+  testWidgets('native bootstrap fallback shows initialization failure', (tester) async {
+    const message = 'Falha de inicializacao controlada';
+    await tester.pumpWidget(ErrorApp(
+      error: StateError(message),
+      stack: StackTrace.fromString('bootstrap-test-stack'),
+    ));
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
-
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(find.byType(MaterialApp), findsOneWidget);
+    expect(find.text('Erro ao inicializar o app'), findsOneWidget);
+    expect(find.textContaining(message), findsOneWidget);
+    expect(find.textContaining('bootstrap-test-stack'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
-}
-
-class MyApp {
-  const MyApp();
 }

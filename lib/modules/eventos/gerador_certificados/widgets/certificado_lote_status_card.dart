@@ -88,9 +88,9 @@ class CertificadoLoteStatusCard extends StatelessWidget {
                     width: 50,
                     height: 50,
                     decoration: BoxDecoration(
-                      color: onPrimary.withOpacity(0.14),
+                      color: onPrimary.withAlpha(36),
                       borderRadius: BorderRadius.circular(t.buttonRadius),
-                      border: Border.all(color: onPrimary.withOpacity(0.16)),
+                      border: Border.all(color: onPrimary.withAlpha(41)),
                     ),
                     child: carregando
                         ? Padding(
@@ -128,7 +128,7 @@ class CertificadoLoteStatusCard extends StatelessWidget {
                             'Gere, imprima, acompanhe lotes e prepare pacote para gráfica.',
                         textAlign: narrow ? TextAlign.center : TextAlign.left,
                         style: TextStyle(
-                          color: onPrimary.withOpacity(0.82),
+                          color: onPrimary.withAlpha(209),
                           fontSize: 12.4,
                           height: 1.35,
                           fontWeight: FontWeight.w600,
@@ -295,9 +295,9 @@ class _StatusMiniCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(11),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), t.cardAlt),
+        color: Color.alphaBlend(accent.withAlpha(20), t.cardAlt),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: accent.withOpacity(0.16)),
+        border: Border.all(color: accent.withAlpha(41)),
       ),
       child: Row(
         children: [
@@ -305,7 +305,7 @@ class _StatusMiniCard extends StatelessWidget {
             width: 34,
             height: 34,
             decoration: BoxDecoration(
-              color: accent.withOpacity(0.11),
+              color: accent.withAlpha(28),
               borderRadius: BorderRadius.circular(13),
             ),
             child: Icon(icon, color: accent, size: 19),
@@ -414,7 +414,7 @@ class _ProgressLine extends StatelessWidget {
             value: value,
             minHeight: 9,
             color: accent,
-            backgroundColor: t.border.withOpacity(0.35),
+            backgroundColor: t.border.withAlpha(89),
           ),
         ),
       ],

@@ -23,66 +23,38 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
   final Set<String> _secoesExpandidas = <String>{};
 
   final List<Map<String, dynamic>> _iconesDisponiveis = [
-    {
-      'nome': 'Gavel',
-      'icon': Icons.gavel_rounded,
-      'iconName': 'gavel',
-      'cor': Colors.blue,
-    },
-    {
-      'nome': 'Person Add',
-      'icon': Icons.person_add_rounded,
-      'iconName': 'person_add',
-      'cor': Colors.green,
-    },
-    {
-      'nome': 'School',
-      'icon': Icons.school_rounded,
-      'iconName': 'school',
-      'cor': Colors.orange,
-    },
-    {
-      'nome': 'Premium',
-      'icon': Icons.workspace_premium_rounded,
-      'iconName': 'workspace_premium',
-      'cor': Colors.purple,
-    },
-    {
-      'nome': 'Security',
-      'icon': Icons.security_rounded,
-      'iconName': 'security',
-      'cor': Colors.red,
-    },
-    {
-      'nome': 'Group',
-      'icon': Icons.group_rounded,
-      'iconName': 'group',
-      'cor': Colors.teal,
-    },
-    {
-      'nome': 'Star',
-      'icon': Icons.star_rounded,
-      'iconName': 'star',
-      'cor': Colors.amber,
-    },
-    {
-      'nome': 'Events',
-      'icon': Icons.emoji_events_rounded,
-      'iconName': 'emoji_events',
-      'cor': Colors.deepOrange,
-    },
-    {
-      'nome': 'Book',
-      'icon': Icons.menu_book_rounded,
-      'iconName': 'menu_book',
-      'cor': Colors.brown,
-    },
-    {
-      'nome': 'Rule',
-      'icon': Icons.rule_rounded,
-      'iconName': 'rule',
-      'cor': Colors.indigo,
-    },
+    {'nome': 'Regras', 'icon': Icons.gavel_rounded, 'iconName': 'gavel', 'cor': Colors.blue},
+    {'nome': 'Normas', 'icon': Icons.rule_rounded, 'iconName': 'rule', 'cor': Colors.indigo},
+    {'nome': 'Segurança', 'icon': Icons.security_rounded, 'iconName': 'security', 'cor': Colors.red},
+    {'nome': 'Alunos', 'icon': Icons.groups_rounded, 'iconName': 'groups', 'cor': Colors.teal},
+    {'nome': 'Novo aluno', 'icon': Icons.person_add_alt_1_rounded, 'iconName': 'person_add', 'cor': Colors.green},
+    {'nome': 'Graduação', 'icon': Icons.military_tech_rounded, 'iconName': 'military_tech', 'cor': Colors.orange},
+    {'nome': 'Formação', 'icon': Icons.school_rounded, 'iconName': 'school', 'cor': Colors.deepOrange},
+    {'nome': 'Destaque', 'icon': Icons.workspace_premium_rounded, 'iconName': 'workspace_premium', 'cor': Colors.purple},
+    {'nome': 'Conduta', 'icon': Icons.verified_user_rounded, 'iconName': 'verified_user', 'cor': Colors.blueGrey},
+    {'nome': 'Compromisso', 'icon': Icons.handshake_rounded, 'iconName': 'handshake', 'cor': Colors.green},
+    {'nome': 'Respeito', 'icon': Icons.favorite_rounded, 'iconName': 'favorite', 'cor': Colors.pink},
+    {'nome': 'Disciplina', 'icon': Icons.fact_check_rounded, 'iconName': 'fact_check', 'cor': Colors.indigo},
+    {'nome': 'Horários', 'icon': Icons.schedule_rounded, 'iconName': 'schedule', 'cor': Colors.blue},
+    {'nome': 'Uniforme', 'icon': Icons.checkroom_rounded, 'iconName': 'checkroom', 'cor': Colors.orange},
+    {'nome': 'Eventos', 'icon': Icons.event_rounded, 'iconName': 'event', 'cor': Colors.deepOrange},
+    {'nome': 'Conquistas', 'icon': Icons.emoji_events_rounded, 'iconName': 'emoji_events', 'cor': Colors.amber},
+    {'nome': 'Música', 'icon': Icons.music_note_rounded, 'iconName': 'music_note', 'cor': Colors.purple},
+    {'nome': 'Instrumentos', 'icon': Icons.album_rounded, 'iconName': 'album', 'cor': Colors.brown},
+    {'nome': 'História', 'icon': Icons.history_edu_rounded, 'iconName': 'history_edu', 'cor': Colors.brown},
+    {'nome': 'Livro', 'icon': Icons.menu_book_rounded, 'iconName': 'menu_book', 'cor': Colors.brown},
+    {'nome': 'Local', 'icon': Icons.location_on_rounded, 'iconName': 'location_on', 'cor': Colors.red},
+    {'nome': 'Viagens', 'icon': Icons.travel_explore_rounded, 'iconName': 'travel_explore', 'cor': Colors.teal},
+    {'nome': 'Comunidade', 'icon': Icons.diversity_3_rounded, 'iconName': 'diversity_3', 'cor': Colors.green},
+    {'nome': 'Família', 'icon': Icons.family_restroom_rounded, 'iconName': 'family_restroom', 'cor': Colors.pink},
+    {'nome': 'Avisos', 'icon': Icons.campaign_rounded, 'iconName': 'campaign', 'cor': Colors.orange},
+    {'nome': 'Proibido', 'icon': Icons.block_rounded, 'iconName': 'block', 'cor': Colors.red},
+    {'nome': 'Permitido', 'icon': Icons.task_alt_rounded, 'iconName': 'task_alt', 'cor': Colors.green},
+    {'nome': 'Atenção', 'icon': Icons.warning_amber_rounded, 'iconName': 'warning', 'cor': Colors.amber},
+    {'nome': 'Identidade', 'icon': Icons.badge_rounded, 'iconName': 'badge', 'cor': Colors.blueGrey},
+    {'nome': 'Responsabilidade', 'icon': Icons.volunteer_activism_rounded, 'iconName': 'volunteer_activism', 'cor': Colors.pink},
+    {'nome': 'Objetivo', 'icon': Icons.track_changes_rounded, 'iconName': 'track_changes', 'cor': Colors.deepOrange},
+    {'nome': 'Estrela', 'icon': Icons.star_rounded, 'iconName': 'star', 'cor': Colors.amber},
   ];
 
   @override
@@ -152,28 +124,28 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
         'id': 'regras_gerais',
         'titulo': '⚖️ REGRAS GERAIS',
         'icone': 'gavel',
-        'cor': Colors.blue.value,
+        'cor': Colors.blue.toARGB32(),
         'conteudo': _getRegrasGeraisPadrao(),
       },
       {
         'id': 'novos_alunos',
         'titulo': '🆕 NOVOS ALUNOS',
         'icone': 'person_add',
-        'cor': Colors.green.value,
+        'cor': Colors.green.toARGB32(),
         'conteudo': _getNovosAlunosPadrao(),
       },
       {
         'id': 'alunos_graduados',
         'titulo': '🎓 ALUNOS GRADUADOS',
         'icone': 'school',
-        'cor': Colors.orange.value,
+        'cor': Colors.orange.toARGB32(),
         'conteudo': _getAlunosGraduadosPadrao(),
       },
       {
         'id': 'formados',
         'titulo': '⭐ FORMADOS',
         'icone': 'workspace_premium',
-        'cor': Colors.purple.value,
+        'cor': Colors.purple.toARGB32(),
         'conteudo': _getFormadosPadrao(),
       },
     ];
@@ -291,7 +263,7 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
               'id': id,
               'titulo': titulo,
               'icone': iconName,
-              'cor': cor.value,
+              'cor': cor.toARGB32(),
               'conteudo': 'Digite o conteúdo aqui...',
             });
             _secoesExpandidas.add(id);
@@ -313,7 +285,7 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
           setState(() {
             _secoes[index]['titulo'] = titulo;
             _secoes[index]['icone'] = iconName;
-            _secoes[index]['cor'] = cor.value;
+            _secoes[index]['cor'] = cor.toARGB32();
           });
         },
       ),
@@ -379,28 +351,39 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
 
   IconData _getIconFromName(dynamic iconName) {
     switch (iconName?.toString()) {
-      case 'gavel':
-        return Icons.gavel_rounded;
-      case 'person_add':
-        return Icons.person_add_rounded;
-      case 'school':
-        return Icons.school_rounded;
-      case 'workspace_premium':
-        return Icons.workspace_premium_rounded;
-      case 'security':
-        return Icons.security_rounded;
-      case 'group':
-        return Icons.group_rounded;
-      case 'star':
-        return Icons.star_rounded;
-      case 'emoji_events':
-        return Icons.emoji_events_rounded;
-      case 'menu_book':
-        return Icons.menu_book_rounded;
-      case 'rule':
-        return Icons.rule_rounded;
-      default:
-        return Icons.description_rounded;
+      case 'gavel': return Icons.gavel_rounded;
+      case 'rule': return Icons.rule_rounded;
+      case 'security': return Icons.security_rounded;
+      case 'groups': case 'group': return Icons.groups_rounded;
+      case 'person_add': return Icons.person_add_alt_1_rounded;
+      case 'military_tech': return Icons.military_tech_rounded;
+      case 'school': return Icons.school_rounded;
+      case 'workspace_premium': return Icons.workspace_premium_rounded;
+      case 'verified_user': return Icons.verified_user_rounded;
+      case 'handshake': return Icons.handshake_rounded;
+      case 'favorite': return Icons.favorite_rounded;
+      case 'fact_check': return Icons.fact_check_rounded;
+      case 'schedule': return Icons.schedule_rounded;
+      case 'checkroom': return Icons.checkroom_rounded;
+      case 'event': return Icons.event_rounded;
+      case 'emoji_events': return Icons.emoji_events_rounded;
+      case 'music_note': return Icons.music_note_rounded;
+      case 'album': return Icons.album_rounded;
+      case 'history_edu': return Icons.history_edu_rounded;
+      case 'menu_book': return Icons.menu_book_rounded;
+      case 'location_on': return Icons.location_on_rounded;
+      case 'travel_explore': return Icons.travel_explore_rounded;
+      case 'diversity_3': return Icons.diversity_3_rounded;
+      case 'family_restroom': return Icons.family_restroom_rounded;
+      case 'campaign': return Icons.campaign_rounded;
+      case 'block': return Icons.block_rounded;
+      case 'task_alt': return Icons.task_alt_rounded;
+      case 'warning': return Icons.warning_amber_rounded;
+      case 'badge': return Icons.badge_rounded;
+      case 'volunteer_activism': return Icons.volunteer_activism_rounded;
+      case 'track_changes': return Icons.track_changes_rounded;
+      case 'star': return Icons.star_rounded;
+      default: return Icons.description_rounded;
     }
   }
 
@@ -440,12 +423,8 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
     setState(() {
       final oldSecaoIndex = oldIndex - 1;
 
-      var targetGlobalIndex = newIndex;
-      if (targetGlobalIndex > oldIndex) {
-        targetGlobalIndex -= 1;
-      }
-
-      var newSecaoIndex = targetGlobalIndex - 1;
+      // onReorderItem entrega o índice destino já ajustado.
+      var newSecaoIndex = newIndex - 1;
       if (newSecaoIndex < 0) newSecaoIndex = 0;
       if (newSecaoIndex > _secoes.length - 1) {
         newSecaoIndex = _secoes.length - 1;
@@ -544,7 +523,7 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
     return ReorderableListView.builder(
       buildDefaultDragHandles: false,
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 96),
-      onReorder: _moverSecao,
+      onReorderItem: _moverSecao,
       itemCount: _secoes.length + 1,
       itemBuilder: (context, index) {
         if (index == 0) {
@@ -553,7 +532,7 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
             padding: const EdgeInsets.only(bottom: 14),
             child: Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 980),
+                constraints: const BoxConstraints(maxWidth: 1180),
                 child: _buildHero(),
               ),
             ),
@@ -568,7 +547,7 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
           padding: const EdgeInsets.only(bottom: 14),
           child: Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 980),
+              constraints: const BoxConstraints(maxWidth: 1180),
               child: _buildSecao(index: itemIndex, secao: secao),
             ),
           ),
@@ -595,9 +574,9 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
           final logo = Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Color.alphaBlend(onPrimary.withOpacity(0.92), t.primary),
+              color: Color.alphaBlend(onPrimary.withAlpha(235), t.primary),
               borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: onPrimary.withOpacity(0.18)),
+              border: Border.all(color: onPrimary.withAlpha(46)),
             ),
             child: _logoService.buildLogo(height: 58),
           );
@@ -608,7 +587,7 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
                 : CrossAxisAlignment.start,
             children: [
               Text(
-                'Editar Regimento',
+                'Gerenciar Regimento',
                 textAlign: narrow ? TextAlign.center : TextAlign.left,
                 style: TextStyle(
                   color: onPrimary,
@@ -619,10 +598,10 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
               ),
               const SizedBox(height: 6),
               Text(
-                'Arraste os cards fechados para ordenar. Toque em uma seção para editar o conteúdo.',
+                'Organize normas, condutas e orientações oficiais em capítulos claros e fáceis de manter.',
                 textAlign: narrow ? TextAlign.center : TextAlign.left,
                 style: TextStyle(
-                  color: onPrimary.withOpacity(0.82),
+                  color: onPrimary.withAlpha(209),
                   fontSize: 13,
                   height: 1.35,
                 ),
@@ -668,9 +647,9 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: onPrimary.withOpacity(0.14),
+        color: onPrimary.withAlpha(36),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: onPrimary.withOpacity(0.16)),
+        border: Border.all(color: onPrimary.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -703,7 +682,7 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
     final expanded = _secaoEstaExpandida(secao, index);
     return Container(
       decoration: _cardDecoration(
-        borderColor: cor.withOpacity(expanded ? 0.28 : 0.18),
+        borderColor: cor.withAlpha(expanded ? 71 : 46),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(t.cardRadius),
@@ -714,8 +693,8 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
               color: Colors.transparent,
               child: InkWell(
                 onTap: () => _alternarSecao(secao, index),
-                splashColor: cor.withOpacity(0.10),
-                highlightColor: cor.withOpacity(0.05),
+                splashColor: cor.withAlpha(26),
+                highlightColor: cor.withAlpha(13),
                 child: Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 12,
@@ -725,17 +704,17 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
                     gradient: LinearGradient(
                       colors: [
                         Color.alphaBlend(
-                          cor.withOpacity(expanded ? 0.14 : 0.08),
+                          cor.withAlpha(expanded ? 36 : 20),
                           t.card,
                         ),
-                        Color.alphaBlend(cor.withOpacity(0.035), t.card),
+                        Color.alphaBlend(cor.withAlpha(9), t.card),
                       ],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
                     border: expanded
                         ? Border(
-                            bottom: BorderSide(color: cor.withOpacity(0.12)),
+                            bottom: BorderSide(color: cor.withAlpha(31)),
                           )
                         : null,
                   ),
@@ -763,9 +742,9 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
                         width: 42,
                         height: 42,
                         decoration: BoxDecoration(
-                          color: cor.withOpacity(0.12),
+                          color: cor.withAlpha(31),
                           borderRadius: BorderRadius.circular(t.buttonRadius),
-                          border: Border.all(color: cor.withOpacity(0.16)),
+                          border: Border.all(color: cor.withAlpha(41)),
                         ),
                         child: Icon(icone, color: cor, size: 23),
                       ),
@@ -817,7 +796,7 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
                                 color: _ensureVisible(
                                   t.info,
                                   t.card,
-                                ).withOpacity(0.28),
+                                ).withAlpha(71),
                               ),
                               textStyle: const TextStyle(
                                 fontWeight: FontWeight.w900,
@@ -838,7 +817,7 @@ class _RegimentoInternoScreenState extends State<RegimentoInternoScreen> {
                                 color: _ensureVisible(
                                   t.error,
                                   t.card,
-                                ).withOpacity(0.30),
+                                ).withAlpha(77),
                               ),
                               textStyle: const TextStyle(
                                 fontWeight: FontWeight.w900,
@@ -1020,9 +999,9 @@ class _DialogSecaoState extends State<_DialogSecao> {
                     width: 46,
                     height: 46,
                     decoration: BoxDecoration(
-                      color: primary.withOpacity(0.12),
+                      color: primary.withAlpha(31),
                       borderRadius: BorderRadius.circular(t.buttonRadius),
-                      border: Border.all(color: primary.withOpacity(0.16)),
+                      border: Border.all(color: primary.withAlpha(41)),
                     ),
                     child: Icon(
                       _editando ? Icons.edit_rounded : Icons.add_rounded,
@@ -1077,45 +1056,77 @@ class _DialogSecaoState extends State<_DialogSecao> {
                 ),
               ),
               const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: widget.iconesDisponiveis.asMap().entries.map((entry) {
-                  final index = entry.key;
-                  final icone = entry.value;
-                  final selected = _iconeSelecionado == index;
-                  final corOriginal = icone['cor'] as Color;
-                  final cor = _ensureVisible(corOriginal, t.surface);
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final columns = constraints.maxWidth >= 500 ? 3 : 2;
+                  const gap = 8.0;
+                  final itemWidth = (constraints.maxWidth - gap * (columns - 1)) / columns;
+                  return Wrap(
+                    spacing: gap,
+                    runSpacing: gap,
+                    children: widget.iconesDisponiveis.asMap().entries.map((entry) {
+                      final index = entry.key;
+                      final icone = entry.value;
+                      final selected = _iconeSelecionado == index;
+                      final corOriginal = icone['cor'] as Color;
+                      final cor = _ensureVisible(corOriginal, t.surface);
 
-                  return InkWell(
-                    onTap: () {
-                      setState(() {
-                        _iconeSelecionado = index;
-                        _corSelecionada = corOriginal;
-                      });
-                    },
-                    borderRadius: BorderRadius.circular(16),
-                    child: Container(
-                      width: 54,
-                      height: 54,
-                      decoration: BoxDecoration(
-                        color: selected
-                            ? Color.alphaBlend(cor.withOpacity(0.16), t.cardAlt)
-                            : t.cardAlt,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: selected ? cor : t.border,
-                          width: selected ? 2 : 1,
+                      return SizedBox(
+                        width: itemWidth,
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () {
+                              setState(() {
+                                _iconeSelecionado = index;
+                                _corSelecionada = corOriginal;
+                              });
+                            },
+                            borderRadius: BorderRadius.circular(16),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 160),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                              decoration: BoxDecoration(
+                                color: selected
+                                    ? Color.alphaBlend(cor.withAlpha(36), t.cardAlt)
+                                    : t.cardAlt,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: selected ? cor : t.border, width: selected ? 1.7 : 1),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 36,
+                                    height: 36,
+                                    decoration: BoxDecoration(
+                                      color: cor.withAlpha(26),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Icon(icone['icon'] as IconData, color: cor, size: 20),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      icone['nome'] as String,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: t.textPrimary,
+                                        fontSize: 11.5,
+                                        fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                  if (selected) Icon(Icons.check_circle_rounded, color: cor, size: 17),
+                                ],
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
-                      child: Icon(
-                        icone['icon'] as IconData,
-                        color: cor,
-                        size: 28,
-                      ),
-                    ),
+                      );
+                    }).toList(),
                   );
-                }).toList(),
+                },
               ),
               const SizedBox(height: 18),
               Row(

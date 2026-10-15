@@ -271,10 +271,10 @@ class _VincularAlunoInativoTurmaScreenState
           onChanged: (value) {
             _toggleSelecaoAluno(aluno['id'], value ?? false);
           },
-          fillColor: MaterialStateProperty.resolveWith<Color>((
-            Set<MaterialState> states,
+          fillColor: WidgetStateProperty.resolveWith<Color>((
+            Set<WidgetState> states,
           ) {
-            if (states.contains(MaterialState.selected)) {
+            if (states.contains(WidgetState.selected)) {
               return Colors.red.shade900;
             }
             return Colors.grey;
@@ -320,7 +320,7 @@ class _VincularAlunoInativoTurmaScreenState
                 hintText: 'Buscar aluno inativo...',
                 prefixIcon: const Icon(Icons.search),
                 filled: true,
-                fillColor: Colors.white.withOpacity(0.2),
+                fillColor: Colors.white.withAlpha(51),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
                   borderSide: BorderSide.none,

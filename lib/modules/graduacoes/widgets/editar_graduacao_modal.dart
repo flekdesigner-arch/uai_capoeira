@@ -364,7 +364,7 @@ class _EditarGraduacaoModalState extends State<EditarGraduacaoModal> {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 12, 10, 14),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), t.surface),
+        color: Color.alphaBlend(accent.withAlpha(20), t.surface),
         border: Border(bottom: BorderSide(color: t.border)),
       ),
       child: Column(
@@ -384,9 +384,9 @@ class _EditarGraduacaoModalState extends State<EditarGraduacaoModal> {
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: accent.withOpacity(0.12),
+                  color: accent.withAlpha(31),
                   borderRadius: BorderRadius.circular(t.buttonRadius),
-                  border: Border.all(color: accent.withOpacity(0.16)),
+                  border: Border.all(color: accent.withAlpha(41)),
                 ),
                 child: Icon(
                   Icons.workspace_premium_rounded,
@@ -495,9 +495,9 @@ class _EditarGraduacaoModalState extends State<EditarGraduacaoModal> {
       width: double.infinity,
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), t.card),
+        color: Color.alphaBlend(accent.withAlpha(20), t.card),
         borderRadius: BorderRadius.circular(t.inputRadius),
-        border: Border.all(color: accent.withOpacity(0.16)),
+        border: Border.all(color: accent.withAlpha(41)),
       ),
       child: Row(
         children: [
@@ -562,7 +562,7 @@ class _EditarGraduacaoModalState extends State<EditarGraduacaoModal> {
       padding: const EdgeInsets.only(bottom: 9),
       child: Material(
         color: isSelected
-            ? Color.alphaBlend(cor.withOpacity(0.10), t.card)
+            ? Color.alphaBlend(cor.withAlpha(26), t.card)
             : t.card,
         borderRadius: BorderRadius.circular(t.cardRadius),
         clipBehavior: Clip.antiAlias,
@@ -574,7 +574,7 @@ class _EditarGraduacaoModalState extends State<EditarGraduacaoModal> {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(t.cardRadius),
               border: Border.all(
-                color: isSelected ? cor.withOpacity(0.45) : t.border,
+                color: isSelected ? cor.withAlpha(115) : t.border,
                 width: isSelected ? 1.4 : 1,
               ),
             ),
@@ -617,12 +617,12 @@ class _EditarGraduacaoModalState extends State<EditarGraduacaoModal> {
         color: color,
         shape: BoxShape.circle,
         border: Border.all(
-          color: _readableOn(color).withOpacity(0.40),
+          color: _readableOn(color).withAlpha(102),
           width: 2,
         ),
         boxShadow: [
           BoxShadow(
-            color: color.withOpacity(0.18),
+            color: color.withAlpha(46),
             blurRadius: 8,
             offset: const Offset(0, 3),
           ),
@@ -705,9 +705,9 @@ class _EditarGraduacaoModalState extends State<EditarGraduacaoModal> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), t.cardAlt),
+        color: Color.alphaBlend(accent.withAlpha(20), t.cardAlt),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: accent.withOpacity(0.14)),
+        border: Border.all(color: accent.withAlpha(36)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -746,7 +746,7 @@ class _EditarGraduacaoModalState extends State<EditarGraduacaoModal> {
               onPressed: () => Navigator.pop(context),
               style: OutlinedButton.styleFrom(
                 foregroundColor: t.error,
-                side: BorderSide(color: t.error.withOpacity(0.28)),
+                side: BorderSide(color: t.error.withAlpha(71)),
                 padding: const EdgeInsets.symmetric(vertical: 13),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(t.buttonRadius),

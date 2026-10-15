@@ -1,4 +1,4 @@
-import 'dart:convert';
+import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -251,7 +251,7 @@ class _MigracaoGraduacoesScreenState extends State<MigracaoGraduacoesScreen> {
     String headerLine = lines.first.trim();
     List<String> headers = _parseCsvLine(headerLine);
 
-    print('📋 Cabeçalhos encontrados: $headers');
+    developer.log('📋 Cabeçalhos encontrados: $headers');
 
     for (int i = 1; i < lines.length; i++) {
       String line = lines[i].trim();
@@ -381,7 +381,7 @@ class _MigracaoGraduacoesScreenState extends State<MigracaoGraduacoesScreen> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: _statusColor.withOpacity(0.1),
+                  color: _statusColor.withAlpha(26),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: _statusColor),
                 ),
@@ -479,14 +479,14 @@ class _MigracaoGraduacoesScreenState extends State<MigracaoGraduacoesScreen> {
                             final log = _graduacoesLogs[index];
                             Color textColor = Colors.black87;
 
-                            if (log.contains('✅'))
+                            if (log.contains('✅')) {
                               textColor = Colors.green.shade700;
-                            else if (log.contains('❌'))
-                              textColor = Colors.red.shade700;
+                            } else if (log.contains('❌'))
+                              { textColor = Colors.red.shade700; }
                             else if (log.contains('👥'))
-                              textColor = Colors.blue.shade700;
+                              { textColor = Colors.blue.shade700; }
                             else if (log.contains('ℹ️'))
-                              textColor = Colors.orange.shade700;
+                              { textColor = Colors.orange.shade700; }
 
                             return Padding(
                               padding: const EdgeInsets.only(bottom: 4),
@@ -546,10 +546,10 @@ class _MigracaoGraduacoesScreenState extends State<MigracaoGraduacoesScreen> {
                             final log = _alunosLogs[index];
                             Color textColor = Colors.blue.shade700;
 
-                            if (log.contains('✅'))
+                            if (log.contains('✅')) {
                               textColor = Colors.green.shade700;
-                            else if (log.contains('❌'))
-                              textColor = Colors.red.shade700;
+                            } else if (log.contains('❌'))
+                              { textColor = Colors.red.shade700; }
 
                             return Padding(
                               padding: const EdgeInsets.only(bottom: 2),
@@ -578,7 +578,7 @@ class _MigracaoGraduacoesScreenState extends State<MigracaoGraduacoesScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withAlpha(26),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: color),
       ),

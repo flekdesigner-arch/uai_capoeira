@@ -21,66 +21,42 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
   bool _salvando = false;
 
   final List<Map<String, dynamic>> _iconesDisponiveis = [
-    {
-      'nome': 'Introdução',
-      'icon': Icons.menu_book_rounded,
-      'iconName': 'menu_book',
-      'cor': const Color(0xFF800020),
-    },
-    {
-      'nome': 'Raízes',
-      'icon': Icons.forest_rounded,
-      'iconName': 'forest',
-      'cor': const Color(0xFF0055AA),
-    },
-    {
-      'nome': 'Expansão',
-      'icon': Icons.expand_rounded,
-      'iconName': 'expand',
-      'cor': const Color(0xFFCC6600),
-    },
-    {
-      'nome': 'Missão',
-      'icon': Icons.flag_rounded,
-      'iconName': 'flag',
-      'cor': const Color(0xFF228844),
-    },
-    {
-      'nome': 'Legado',
-      'icon': Icons.history_rounded,
-      'iconName': 'history',
-      'cor': const Color(0xFFAA0066),
-    },
-    {
-      'nome': 'Conclusão',
-      'icon': Icons.done_all_rounded,
-      'iconName': 'done_all',
-      'cor': const Color(0xFF8A8A00),
-    },
-    {
-      'nome': 'História',
-      'icon': Icons.auto_stories_rounded,
-      'iconName': 'auto_stories',
-      'cor': Colors.purple,
-    },
-    {
-      'nome': 'Fotos',
-      'icon': Icons.photo_library_rounded,
-      'iconName': 'photo_library',
-      'cor': Colors.teal,
-    },
-    {
-      'nome': 'Fundadores',
-      'icon': Icons.group_rounded,
-      'iconName': 'group',
-      'cor': Colors.orange,
-    },
-    {
-      'nome': 'Eventos',
-      'icon': Icons.event_rounded,
-      'iconName': 'event',
-      'cor': Colors.red,
-    },
+    {'nome': 'História', 'icon': Icons.auto_stories_rounded, 'iconName': 'auto_stories', 'cor': Color(0xFF8E244D)},
+    {'nome': 'Livro', 'icon': Icons.menu_book_rounded, 'iconName': 'menu_book', 'cor': Color(0xFF7B1E3A)},
+    {'nome': 'Raízes', 'icon': Icons.park_rounded, 'iconName': 'park', 'cor': Color(0xFF2E7D32)},
+    {'nome': 'Natureza', 'icon': Icons.eco_rounded, 'iconName': 'eco', 'cor': Color(0xFF388E3C)},
+    {'nome': 'Missão', 'icon': Icons.flag_rounded, 'iconName': 'flag', 'cor': Color(0xFF2E7D32)},
+    {'nome': 'Valores', 'icon': Icons.favorite_rounded, 'iconName': 'favorite', 'cor': Color(0xFFC62828)},
+    {'nome': 'Legado', 'icon': Icons.history_edu_rounded, 'iconName': 'history_edu', 'cor': Color(0xFF7B1FA2)},
+    {'nome': 'Tempo', 'icon': Icons.timeline_rounded, 'iconName': 'timeline', 'cor': Color(0xFF6A1B9A)},
+    {'nome': 'Expansão', 'icon': Icons.trending_up_rounded, 'iconName': 'trending_up', 'cor': Color(0xFFEF6C00)},
+    {'nome': 'Conquista', 'icon': Icons.emoji_events_rounded, 'iconName': 'emoji_events', 'cor': Color(0xFFF9A825)},
+    {'nome': 'Capoeira', 'icon': Icons.sports_martial_arts_rounded, 'iconName': 'sports_martial_arts', 'cor': Color(0xFFB71C1C)},
+    {'nome': 'Comunidade', 'icon': Icons.groups_rounded, 'iconName': 'groups', 'cor': Color(0xFF00695C)},
+    {'nome': 'Fundadores', 'icon': Icons.diversity_3_rounded, 'iconName': 'diversity_3', 'cor': Color(0xFFAD1457)},
+    {'nome': 'Pessoa', 'icon': Icons.person_rounded, 'iconName': 'person', 'cor': Color(0xFF455A64)},
+    {'nome': 'Educação', 'icon': Icons.school_rounded, 'iconName': 'school', 'cor': Color(0xFF1565C0)},
+    {'nome': 'Cultura', 'icon': Icons.theater_comedy_rounded, 'iconName': 'theater_comedy', 'cor': Color(0xFF6A1B9A)},
+    {'nome': 'Música', 'icon': Icons.music_note_rounded, 'iconName': 'music_note', 'cor': Color(0xFF00838F)},
+    {'nome': 'Mundo', 'icon': Icons.public_rounded, 'iconName': 'public', 'cor': Color(0xFF0277BD)},
+    {'nome': 'Local', 'icon': Icons.location_on_rounded, 'iconName': 'location_on', 'cor': Color(0xFFD84315)},
+    {'nome': 'Eventos', 'icon': Icons.event_rounded, 'iconName': 'event', 'cor': Color(0xFFC62828)},
+    {'nome': 'Fotos', 'icon': Icons.photo_library_rounded, 'iconName': 'photo_library', 'cor': Color(0xFF00796B)},
+    {'nome': 'Ideias', 'icon': Icons.lightbulb_rounded, 'iconName': 'lightbulb', 'cor': Color(0xFFF57F17)},
+    {'nome': 'Propósito', 'icon': Icons.explore_rounded, 'iconName': 'explore', 'cor': Color(0xFF3949AB)},
+    {'nome': 'Compromisso', 'icon': Icons.handshake_rounded, 'iconName': 'handshake', 'cor': Color(0xFF5D4037)},
+    {'nome': 'Impacto', 'icon': Icons.volunteer_activism_rounded, 'iconName': 'volunteer_activism', 'cor': Color(0xFFAD1457)},
+    {'nome': 'Inclusão', 'icon': Icons.accessibility_new_rounded, 'iconName': 'accessibility_new', 'cor': Color(0xFF00897B)},
+    {'nome': 'Família', 'icon': Icons.family_restroom_rounded, 'iconName': 'family_restroom', 'cor': Color(0xFF5E35B1)},
+    {'nome': 'Parceria', 'icon': Icons.hub_rounded, 'iconName': 'hub', 'cor': Color(0xFF546E7A)},
+    {'nome': 'Proteção', 'icon': Icons.shield_rounded, 'iconName': 'shield', 'cor': Color(0xFF2E7D32)},
+    {'nome': 'Meta', 'icon': Icons.track_changes_rounded, 'iconName': 'track_changes', 'cor': Color(0xFFD32F2F)},
+    {'nome': 'Estrela', 'icon': Icons.star_rounded, 'iconName': 'star', 'cor': Color(0xFFF9A825)},
+    {'nome': 'Destaque', 'icon': Icons.workspace_premium_rounded, 'iconName': 'workspace_premium', 'cor': Color(0xFFEF6C00)},
+    {'nome': 'Coração', 'icon': Icons.favorite_border_rounded, 'iconName': 'favorite_border', 'cor': Color(0xFFC2185B)},
+    {'nome': 'Conclusão', 'icon': Icons.done_all_rounded, 'iconName': 'done_all', 'cor': Color(0xFF827717)},
+    {'nome': 'Texto', 'icon': Icons.article_rounded, 'iconName': 'article', 'cor': Color(0xFF455A64)},
+    {'nome': 'Citação', 'icon': Icons.format_quote_rounded, 'iconName': 'format_quote', 'cor': Color(0xFF7B1FA2)},
   ];
 
   @override
@@ -131,8 +107,37 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
         return Icons.photo_library_rounded;
       case 'group':
         return Icons.group_rounded;
-      case 'event':
-        return Icons.event_rounded;
+      case 'event': return Icons.event_rounded;
+      case 'park': return Icons.park_rounded;
+      case 'eco': return Icons.eco_rounded;
+      case 'history_edu': return Icons.history_edu_rounded;
+      case 'timeline': return Icons.timeline_rounded;
+      case 'trending_up': return Icons.trending_up_rounded;
+      case 'emoji_events': return Icons.emoji_events_rounded;
+      case 'sports_martial_arts': return Icons.sports_martial_arts_rounded;
+      case 'groups': return Icons.groups_rounded;
+      case 'diversity_3': return Icons.diversity_3_rounded;
+      case 'person': return Icons.person_rounded;
+      case 'school': return Icons.school_rounded;
+      case 'theater_comedy': return Icons.theater_comedy_rounded;
+      case 'music_note': return Icons.music_note_rounded;
+      case 'public': return Icons.public_rounded;
+      case 'location_on': return Icons.location_on_rounded;
+      case 'lightbulb': return Icons.lightbulb_rounded;
+      case 'explore': return Icons.explore_rounded;
+      case 'handshake': return Icons.handshake_rounded;
+      case 'volunteer_activism': return Icons.volunteer_activism_rounded;
+      case 'accessibility_new': return Icons.accessibility_new_rounded;
+      case 'family_restroom': return Icons.family_restroom_rounded;
+      case 'hub': return Icons.hub_rounded;
+      case 'shield': return Icons.shield_rounded;
+      case 'track_changes': return Icons.track_changes_rounded;
+      case 'star': return Icons.star_rounded;
+      case 'workspace_premium': return Icons.workspace_premium_rounded;
+      case 'favorite': return Icons.favorite_rounded;
+      case 'favorite_border': return Icons.favorite_border_rounded;
+      case 'article': return Icons.article_rounded;
+      case 'format_quote': return Icons.format_quote_rounded;
       default:
         return Icons.description_rounded;
     }
@@ -166,7 +171,6 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
 
   void _moverSecao(int oldIndex, int newIndex) {
     setState(() {
-      if (newIndex > oldIndex) newIndex -= 1;
 
       final item = _secoes.removeAt(oldIndex);
       _secoes.insert(newIndex, item);
@@ -211,42 +215,42 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
         'id': 'introducao',
         'titulo': '📖 INTRODUÇÃO',
         'icone': 'menu_book',
-        'cor': const Color(0xFF800020).value,
+        'cor': const Color(0xFF800020).toARGB32(),
         'conteudo': _getIntroducaoPadrao(),
       },
       {
         'id': 'raizes',
         'titulo': '🌳 RAÍZES DA FUNDAÇÃO',
         'icone': 'forest',
-        'cor': const Color(0xFF0055AA).value,
+        'cor': const Color(0xFF0055AA).toARGB32(),
         'conteudo': _getRaizesPadrao(),
       },
       {
         'id': 'expansao',
         'titulo': '📈 EXPANSÃO E CONSOLIDAÇÃO',
         'icone': 'expand',
-        'cor': const Color(0xFFCC6600).value,
+        'cor': const Color(0xFFCC6600).toARGB32(),
         'conteudo': _getExpansaoPadrao(),
       },
       {
         'id': 'missao',
         'titulo': '🎯 MISSÃO E VALORES',
         'icone': 'flag',
-        'cor': const Color(0xFF228844).value,
+        'cor': const Color(0xFF228844).toARGB32(),
         'conteudo': _getMissaoPadrao(),
       },
       {
         'id': 'legado',
         'titulo': '⭐ LEGADO E ATUALIDADE',
         'icone': 'history',
-        'cor': const Color(0xFFAA0066).value,
+        'cor': const Color(0xFFAA0066).toARGB32(),
         'conteudo': _getLegadoPadrao(),
       },
       {
         'id': 'conclusao',
         'titulo': '✨ CONCLUSÃO',
         'icone': 'done_all',
-        'cor': const Color(0xFF8A8A00).value,
+        'cor': const Color(0xFF8A8A00).toARGB32(),
         'conteudo': _getConclusaoPadrao(),
       },
     ];
@@ -328,7 +332,7 @@ Sob a liderança de seus fundadores - Taika Altair (Mestre Grilo), Paulo Afonso 
               'id': novoId,
               'titulo': titulo,
               'icone': iconName,
-              'cor': cor.value,
+              'cor': cor.toARGB32(),
               'conteudo': 'Digite o conteúdo aqui...',
             });
             _secoesExpandidas.add(novoId);
@@ -350,7 +354,7 @@ Sob a liderança de seus fundadores - Taika Altair (Mestre Grilo), Paulo Afonso 
           setState(() {
             _secoes[index]['titulo'] = titulo;
             _secoes[index]['icone'] = iconName;
-            _secoes[index]['cor'] = cor.value;
+            _secoes[index]['cor'] = cor.toARGB32();
           });
         },
       ),
@@ -466,7 +470,7 @@ Sob a liderança de seus fundadores - Taika Altair (Mestre Grilo), Paulo Afonso 
         child: ReorderableListView.builder(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(14, 14, 14, 112),
-          onReorder: (oldIndex, newIndex) {
+          onReorderItem: (oldIndex, newIndex) {
             if (oldIndex == 0 || newIndex == 0) return;
             _moverSecao(oldIndex - 1, newIndex - 1);
           },
@@ -478,7 +482,7 @@ Sob a liderança de seus fundadores - Taika Altair (Mestre Grilo), Paulo Afonso 
                 padding: const EdgeInsets.only(bottom: 14),
                 child: Center(
                   child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 980),
+                    constraints: const BoxConstraints(maxWidth: 1180),
                     child: _buildHero(),
                   ),
                 ),
@@ -493,7 +497,7 @@ Sob a liderança de seus fundadores - Taika Altair (Mestre Grilo), Paulo Afonso 
               padding: const EdgeInsets.only(bottom: 14),
               child: Center(
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 980),
+                  constraints: const BoxConstraints(maxWidth: 1180),
                   child: _buildSecao(
                     index: itemIndex,
                     reorderIndex: index,
@@ -569,9 +573,9 @@ Sob a liderança de seus fundadores - Taika Altair (Mestre Grilo), Paulo Afonso 
           final logo = Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: onPrimary.withOpacity(0.95),
+              color: onPrimary.withAlpha(242),
               borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: onPrimary.withOpacity(0.18)),
+              border: Border.all(color: onPrimary.withAlpha(46)),
             ),
             child: _logoService.buildLogo(height: 58),
           );
@@ -596,17 +600,17 @@ Sob a liderança de seus fundadores - Taika Altair (Mestre Grilo), Paulo Afonso 
                 'União, Amizade e Inteligência',
                 textAlign: narrow ? TextAlign.center : TextAlign.left,
                 style: TextStyle(
-                  color: onPrimary.withOpacity(0.92),
+                  color: onPrimary.withAlpha(235),
                   fontSize: 14,
                   fontWeight: FontWeight.w800,
                 ),
               ),
               const SizedBox(height: 8),
               Text(
-                'Edite a história do grupo, organize as seções e salve o conteúdo exibido no site.',
+                'Construa a memória institucional do grupo com capítulos, identidade visual e uma experiência pública elegante.',
                 textAlign: narrow ? TextAlign.center : TextAlign.left,
                 style: TextStyle(
-                  color: onPrimary.withOpacity(0.82),
+                  color: onPrimary.withAlpha(209),
                   fontSize: 13,
                   height: 1.35,
                 ),
@@ -623,11 +627,11 @@ Sob a liderança de seus fundadores - Taika Altair (Mestre Grilo), Paulo Afonso 
                   ),
                   _whiteChip(
                     icon: Icons.edit_note_rounded,
-                    label: 'Toque para editar',
+                    label: 'Editor por capítulos',
                   ),
                   _whiteChip(
                     icon: Icons.drag_indicator_rounded,
-                    label: 'Arraste para ordenar',
+                    label: 'Ordem livre',
                   ),
                 ],
               ),
@@ -656,9 +660,9 @@ Sob a liderança de seus fundadores - Taika Altair (Mestre Grilo), Paulo Afonso 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: onPrimary.withOpacity(0.14),
+        color: onPrimary.withAlpha(36),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: onPrimary.withOpacity(0.16)),
+        border: Border.all(color: onPrimary.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -701,7 +705,7 @@ Sob a liderança de seus fundadores - Taika Altair (Mestre Grilo), Paulo Afonso 
       duration: const Duration(milliseconds: 180),
       curve: Curves.easeOut,
       decoration: _cardDecoration(
-        borderColor: accent.withOpacity(expanded ? 0.28 : 0.16),
+        borderColor: accent.withAlpha(expanded ? 71 : 41),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(t.cardRadius),
@@ -721,7 +725,7 @@ Sob a liderança de seus fundadores - Taika Altair (Mestre Grilo), Paulo Afonso 
                     gradient: LinearGradient(
                       colors: [
                         Color.alphaBlend(
-                          accent.withOpacity(expanded ? 0.14 : 0.09),
+                          accent.withAlpha(expanded ? 36 : 23),
                           t.card,
                         ),
                         t.card,
@@ -731,7 +735,7 @@ Sob a liderança de seus fundadores - Taika Altair (Mestre Grilo), Paulo Afonso 
                     ),
                     border: expanded
                         ? Border(
-                            bottom: BorderSide(color: accent.withOpacity(0.14)),
+                            bottom: BorderSide(color: accent.withAlpha(36)),
                           )
                         : null,
                   ),
@@ -754,9 +758,9 @@ Sob a liderança de seus fundadores - Taika Altair (Mestre Grilo), Paulo Afonso 
                         width: 44,
                         height: 44,
                         decoration: BoxDecoration(
-                          color: accent.withOpacity(0.12),
+                          color: accent.withAlpha(31),
                           borderRadius: BorderRadius.circular(t.buttonRadius),
-                          border: Border.all(color: accent.withOpacity(0.16)),
+                          border: Border.all(color: accent.withAlpha(41)),
                         ),
                         child: Icon(icone, color: accent, size: 24),
                       ),
@@ -802,9 +806,9 @@ Sob a liderança de seus fundadores - Taika Altair (Mestre Grilo), Paulo Afonso 
                           vertical: 4,
                         ),
                         decoration: BoxDecoration(
-                          color: accent.withOpacity(0.10),
+                          color: accent.withAlpha(26),
                           borderRadius: BorderRadius.circular(99),
-                          border: Border.all(color: accent.withOpacity(0.14)),
+                          border: Border.all(color: accent.withAlpha(36)),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -909,7 +913,7 @@ Sob a liderança de seus fundadores - Taika Altair (Mestre Grilo), Paulo Afonso 
     final visible = _ensureVisible(color, t.card);
 
     return Material(
-      color: Color.alphaBlend(visible.withOpacity(0.10), t.cardAlt),
+      color: Color.alphaBlend(visible.withAlpha(26), t.cardAlt),
       borderRadius: BorderRadius.circular(99),
       child: InkWell(
         onTap: onTap,
@@ -918,7 +922,7 @@ Sob a liderança de seus fundadores - Taika Altair (Mestre Grilo), Paulo Afonso 
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(99),
-            border: Border.all(color: visible.withOpacity(0.18)),
+            border: Border.all(color: visible.withAlpha(46)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -1064,9 +1068,9 @@ class _DialogSecaoState extends State<_DialogSecao> {
                     width: 46,
                     height: 46,
                     decoration: BoxDecoration(
-                      color: accent.withOpacity(0.12),
+                      color: accent.withAlpha(31),
                       borderRadius: BorderRadius.circular(t.buttonRadius),
-                      border: Border.all(color: accent.withOpacity(0.16)),
+                      border: Border.all(color: accent.withAlpha(41)),
                     ),
                     child: Icon(
                       _editando ? Icons.edit_rounded : Icons.add_rounded,
@@ -1123,43 +1127,59 @@ class _DialogSecaoState extends State<_DialogSecao> {
                 ),
               ),
               const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: widget.iconesDisponiveis.asMap().entries.map((entry) {
-                  final index = entry.key;
-                  final icone = entry.value;
-                  final selected = _iconeSelecionado == index;
-                  final cor = icone['cor'] as Color;
-                  final visible = _ensureVisible(cor, t.surface);
-
-                  return InkWell(
-                    onTap: () {
-                      setState(() {
-                        _iconeSelecionado = index;
-                        _corSelecionada = cor;
-                      });
-                    },
-                    borderRadius: BorderRadius.circular(16),
-                    child: Container(
-                      width: 54,
-                      height: 54,
-                      decoration: BoxDecoration(
-                        color: selected ? visible.withOpacity(0.14) : t.cardAlt,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: selected ? visible : t.border,
-                          width: selected ? 2 : 1,
+              LayoutBuilder(
+                builder: (context, c) {
+                  final columns = c.maxWidth >= 500 ? 4 : c.maxWidth >= 360 ? 3 : 2;
+                  const gap = 8.0;
+                  final itemWidth = (c.maxWidth - gap * (columns - 1)) / columns;
+                  return Wrap(
+                    spacing: gap,
+                    runSpacing: gap,
+                    children: widget.iconesDisponiveis.asMap().entries.map((entry) {
+                      final index = entry.key;
+                      final icone = entry.value;
+                      final selected = _iconeSelecionado == index;
+                      final cor = icone['cor'] as Color;
+                      final visible = _ensureVisible(cor, t.surface);
+                      return SizedBox(
+                        width: itemWidth,
+                        child: Material(
+                          color: selected ? visible.withAlpha(31) : t.cardAlt,
+                          borderRadius: BorderRadius.circular(16),
+                          child: InkWell(
+                            onTap: () => setState(() {
+                              _iconeSelecionado = index;
+                              _corSelecionada = cor;
+                            }),
+                            borderRadius: BorderRadius.circular(16),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 160),
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 10),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: selected ? visible : t.border, width: selected ? 2 : 1),
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(icone['icon'] as IconData, color: visible, size: 25),
+                                  const SizedBox(height: 5),
+                                  Text(
+                                    icone['nome'].toString(),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(color: selected ? visible : t.textSecondary, fontSize: 10.5, fontWeight: FontWeight.w800),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
-                      child: Icon(
-                        icone['icon'] as IconData,
-                        color: visible,
-                        size: 28,
-                      ),
-                    ),
+                      );
+                    }).toList(),
                   );
-                }).toList(),
+                },
               ),
               const SizedBox(height: 18),
               Row(

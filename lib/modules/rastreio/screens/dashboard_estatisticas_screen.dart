@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
@@ -15,7 +17,19 @@ class DashboardEstatisticasScreen extends StatefulWidget {
 class _DashboardEstatisticasScreenState
     extends State<DashboardEstatisticasScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseFunctions _functions =
+      FirebaseFunctions.instanceFor(region: 'us-central1');
   final ScrollController _scrollController = ScrollController();
+
+  // TRACKING PATCH 05:
+  // O dashboard abre lendo apenas o cache agregado do Firebase.
+  // Sessões brutas só são carregadas quando a aba "Sessões" é aberta.
+  Map<String, dynamic> _cacheDashboard = {};
+  DateTime? _cacheGeradoEm;
+  bool _cacheExiste = false;
+  bool _reconstruindoCache = false;
+  bool _sessoesInicializadas = false;
+  bool _carregandoSessoes = false;
 
   Map<String, dynamic> _dadosAgregados = {};
   List<Map<String, dynamic>> _acessosCarregados = [];
@@ -33,6 +47,7 @@ class _DashboardEstatisticasScreenState
   bool _temMaisDados = true;
 
   String _filtroPeriodo = 'todos';
+  int _abaDashboard = 0;
 
   DocumentSnapshot? _ultimoDocumento;
   final int _limitePorPagina = 30;
@@ -68,14 +83,14 @@ class _DashboardEstatisticasScreenState
     final t = context.uai;
     final bg = base ?? t.card;
     final accent = _ensureVisible(color, bg);
-    return Color.alphaBlend(accent.withOpacity(0.10), bg);
+    return Color.alphaBlend(accent.withAlpha(26), bg);
   }
 
   Color _softBorder(Color color, {Color? base}) {
     final t = context.uai;
     final bg = base ?? t.card;
     final accent = _ensureVisible(color, bg);
-    return accent.withOpacity(0.22);
+    return accent.withAlpha(56);
   }
 
   @override
@@ -92,6 +107,7 @@ class _DashboardEstatisticasScreenState
   }
 
   void _onScroll() {
+    if (_abaDashboard != 3 || !_sessoesInicializadas) return;
     if (!_scrollController.hasClients) return;
 
     final posicao = _scrollController.position;
@@ -101,48 +117,207 @@ class _DashboardEstatisticasScreenState
   }
 
   Future<void> _carregarTudo() async {
-    await Future.wait([_carregarDadosAgregados(), _carregarPrimeiraPagina()]);
+    await _carregarCacheDashboard();
   }
 
   Future<void> _atualizarTudo() async {
-    await _carregarTudo();
+    if (_reconstruindoCache) return;
 
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Dashboard atualizado com sucesso'),
-        backgroundColor: Colors.green.shade700,
-        behavior: SnackBarBehavior.floating,
+    if (mounted) {
+      setState(() => _reconstruindoCache = true);
+    }
+
+    try {
+      final callable =
+          _functions.httpsCallable('reconstruirCacheDashboardTracking');
+      final result = await callable.call(<String, dynamic>{
+        'origem': 'pull_to_refresh_dashboard',
+      });
+
+      final raw = result.data;
+      final data = raw is Map
+          ? Map<String, dynamic>.from(raw)
+          : <String, dynamic>{};
+
+      if (data['success'] != true) {
+        throw StateError(
+          data['message']?.toString() ?? 'Falha ao reconstruir cache.',
+        );
+      }
+
+      final cacheRaw = data['cache'];
+      if (cacheRaw is Map) {
+        _aplicarCacheDashboard(Map<String, dynamic>.from(cacheRaw));
+      } else {
+        await _carregarCacheDashboard();
+      }
+
+      // Se o administrador estiver olhando sessões, atualiza somente a
+      // primeira página (30 docs) depois do rebuild.
+      if (_abaDashboard == 3 && _sessoesInicializadas) {
+        await _carregarPrimeiraPagina();
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Estatísticas reconstruídas • ${data['sessoesLidas'] ?? 0} sessões processadas',
+          ),
+          backgroundColor: Colors.green.shade700,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } on FirebaseFunctionsException catch (e) {
+      if (!mounted) return;
+      _mostrarSnack(
+        e.message ?? 'Não foi possível atualizar as estatísticas.',
+        erro: true,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      _mostrarSnack(
+        'Não foi possível atualizar as estatísticas.',
+        erro: true,
+      );
+    } finally {
+      if (mounted) setState(() => _reconstruindoCache = false);
+    }
+  }
+
+  Future<void> _carregarCacheDashboard() async {
+    if (mounted) setState(() => _carregandoInicial = true);
+
+    try {
+      final callable = _functions.httpsCallable('obterCacheDashboardTracking');
+      final result = await callable.call();
+      final raw = result.data;
+      final data = raw is Map
+          ? Map<String, dynamic>.from(raw)
+          : <String, dynamic>{};
+
+      if (data['success'] == true && data['cache'] is Map) {
+        _aplicarCacheDashboard(
+          Map<String, dynamic>.from(data['cache'] as Map),
+        );
+      } else {
+        // Primeiro uso depois do patch: mostra o painel leve e deixa o admin
+        // puxar para baixo para gerar o primeiro cache.
+        if (mounted) {
+          setState(() {
+            _cacheExiste = false;
+            _cacheDashboard = {};
+            _dadosAgregados = {};
+            _totalAcessos = 0;
+            _visitasHoje = 0;
+            _visitasSemana = 0;
+            _visitasMes = 0;
+            _acessosPorHora = {};
+            _acessosPorDia = {};
+          });
+        }
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _cacheExiste = false);
+      }
+    } finally {
+      if (mounted) setState(() => _carregandoInicial = false);
+    }
+  }
+
+  Map<String, dynamic> _mapDinamico(dynamic value) {
+    return value is Map ? Map<String, dynamic>.from(value) : <String, dynamic>{};
+  }
+
+  Map<String, int> _mapStringInt(dynamic value) {
+    if (value is! Map) return <String, int>{};
+    return value.map(
+      (key, value) => MapEntry(
+        key.toString(),
+        value is num ? value.round() : int.tryParse(value.toString()) ?? 0,
       ),
     );
   }
 
-  Future<void> _carregarDadosAgregados() async {
-    try {
-      final docAgregado = await _firestore
-          .collection('estatisticas')
-          .doc('contadores_agregados')
-          .get();
+  String get _chavePeriodoCache {
+    return switch (_filtroPeriodo) {
+      'hoje' => 'hoje',
+      'semana' => 'semana',
+      'mes' => 'mes',
+      _ => 'todos',
+    };
+  }
 
-      if (!mounted) return;
+  Map<String, dynamic> get _cachePeriodoAtual {
+    final periodos = _mapDinamico(_cacheDashboard['periodos']);
+    return _mapDinamico(periodos[_chavePeriodoCache]);
+  }
 
-      if (docAgregado.exists && docAgregado.data() != null) {
-        final data = docAgregado.data()!;
+  void _aplicarCacheDashboard(Map<String, dynamic> cache) {
+    final periodos = _mapDinamico(cache['periodos']);
+    final todos = _mapDinamico(periodos['todos']);
+    final hoje = _mapDinamico(periodos['hoje']);
+    final semana = _mapDinamico(periodos['semana']);
+    final mes = _mapDinamico(periodos['mes']);
 
-        setState(() {
-          _dadosAgregados = _converterNotacaoPontoParaArvore(data);
-          _totalAcessos = (data['total_visitas'] ?? 0) as int;
-        });
-      }
-    } catch (e) {
-      debugPrint('❌ Erro ao carregar dados agregados: $e');
+    DateTime? geradoEm;
+    final iso = cache['gerado_em_iso']?.toString();
+    if (iso != null && iso.isNotEmpty) {
+      geradoEm = DateTime.tryParse(iso)?.toLocal();
     }
+
+    final localizacaoLegacy = _mapDinamico(cache['localizacao_legacy']);
+
+    if (!mounted) return;
+    setState(() {
+      _cacheDashboard = cache;
+      _cacheExiste = true;
+      _cacheGeradoEm = geradoEm;
+      _dadosAgregados = _converterNotacaoPontoParaArvore(localizacaoLegacy);
+      _totalAcessos = (todos['total_visitas'] as num?)?.round() ?? 0;
+      _visitasHoje = (hoje['total_visitas'] as num?)?.round() ?? 0;
+      _visitasSemana = (semana['total_visitas'] as num?)?.round() ?? 0;
+      _visitasMes = (mes['total_visitas'] as num?)?.round() ?? 0;
+
+      final atual = _mapDinamico(periodos[_chavePeriodoCache]);
+      _acessosPorHora = _mapStringInt(atual['acessos_por_hora']);
+      _acessosPorDia = _mapStringInt(atual['acessos_por_dia']);
+    });
+  }
+
+  void _aplicarPeriodoCacheSelecionado() {
+    if (!_cacheExiste) return;
+    final atual = _cachePeriodoAtual;
+    setState(() {
+      _acessosPorHora = _mapStringInt(atual['acessos_por_hora']);
+      _acessosPorDia = _mapStringInt(atual['acessos_por_dia']);
+    });
+  }
+
+  String _textoAtualizacaoCache() {
+    final data = _cacheGeradoEm;
+    if (data == null) return 'Cache ainda não gerado';
+    final diff = DateTime.now().difference(data);
+    if (diff.inMinutes < 1) return 'Atualizado agora';
+    if (diff.inMinutes < 60) return 'Atualizado há ${diff.inMinutes} min';
+    if (diff.inHours < 24) return 'Atualizado há ${diff.inHours} h';
+    return 'Atualizado em ${data.day.toString().padLeft(2, '0')}/'
+        '${data.month.toString().padLeft(2, '0')} '
+        '${data.hour.toString().padLeft(2, '0')}:'
+        '${data.minute.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _garantirSessoesCarregadas() async {
+    if (_sessoesInicializadas || _carregandoSessoes) return;
+    _sessoesInicializadas = true;
+    await _carregarPrimeiraPagina();
   }
 
   Future<void> _carregarPrimeiraPagina() async {
     if (mounted) {
       setState(() {
-        _carregandoInicial = true;
+        _carregandoSessoes = true;
         _acessosCarregados = [];
         _ultimoDocumento = null;
         _temMaisDados = true;
@@ -169,20 +344,18 @@ class _DashboardEstatisticasScreenState
         _acessosCarregados = acessos;
         _ultimoDocumento = snapshot.docs.isNotEmpty ? snapshot.docs.last : null;
         _temMaisDados = snapshot.docs.length == _limitePorPagina;
-        _carregandoInicial = false;
+        _carregandoSessoes = false;
       });
 
-      _recalcularEstatisticasCompletas();
     } catch (e) {
       debugPrint('❌ Erro ao carregar primeira página: $e');
-      if (mounted) setState(() => _carregandoInicial = false);
+      if (mounted) setState(() => _carregandoSessoes = false);
     }
   }
 
   Future<void> _carregarMaisAcessos() async {
     if (_carregandoMais ||
         !_temMaisDados ||
-        _carregandoInicial ||
         _ultimoDocumento == null) {
       return;
     }
@@ -215,7 +388,6 @@ class _DashboardEstatisticasScreenState
         _carregandoMais = false;
       });
 
-      _recalcularEstatisticasCompletas();
     } catch (e) {
       debugPrint('❌ Erro ao carregar mais acessos: $e');
       if (mounted) setState(() => _carregandoMais = false);
@@ -413,6 +585,7 @@ class _DashboardEstatisticasScreenState
       'etapas': _contarEventos(eventos, 'etapa_formulario'),
       'erros': _contarEventos(eventos, 'erro_formulario'),
       'conversoes': _contarEventos(eventos, 'conversao'),
+      'funil': _contarEventos(eventos, 'funil_inscricao'),
       'campos': _contarEventos(eventos, 'campo_formulario'),
       'snapshots': _contarEventos(eventos, 'snapshot_formulario'),
       'rolagens': _contarEventos(eventos, 'rolagem'),
@@ -459,12 +632,27 @@ class _DashboardEstatisticasScreenState
 
     final minutos = segundos ~/ 60;
     final resto = segundos % 60;
-    if (minutos < 60)
+    if (minutos < 60) {
       return resto == 0 ? '${minutos}min' : '${minutos}min ${resto}s';
+    }
 
     final horas = minutos ~/ 60;
     final minutosRestantes = minutos % 60;
     return '${horas}h ${minutosRestantes}min';
+  }
+
+  bool _eventoEhSuspeito(Map<String, dynamic> evento) {
+    final metadataRaw = evento['metadata'];
+    if (metadataRaw is! Map) return false;
+    final metadata = Map<String, dynamic>.from(metadataRaw);
+
+    if (metadata['suspeito'] == true ||
+        metadata['tem_conteudo_suspeito'] == true) {
+      return true;
+    }
+
+    final campos = metadata['campos_suspeitos'];
+    return campos is List && campos.isNotEmpty;
   }
 
   String _descricaoEvento(Map<String, dynamic> evento) {
@@ -487,11 +675,17 @@ class _DashboardEstatisticasScreenState
       case 'snapshot_formulario':
         final suspeitos = metadata['campos_suspeitos'];
         if (suspeitos is List && suspeitos.isNotEmpty) {
-          return 'Snapshot com campos suspeitos: ${suspeitos.join(', ')}';
+          return '⚠ Atenção: campos suspeitos — ${suspeitos.join(', ')}';
         }
         return 'Snapshot de ${metadata['total_campos'] ?? 0} campos';
       case 'conversao':
         return 'Conversão registrada';
+      case 'funil_inscricao':
+        final etapa = metadata['etapa_nome']?.toString();
+        final acao = metadata['acao']?.toString() ?? evento['origem']?.toString() ?? '';
+        return [acao, if (etapa != null && etapa.isNotEmpty) etapa]
+            .where((e) => e.trim().isNotEmpty)
+            .join(' • ');
       case 'rolagem':
         return 'Rolagem até ${metadata['percentual'] ?? evento['nome']}';
       case 'filtro':
@@ -503,6 +697,266 @@ class _DashboardEstatisticasScreenState
       default:
         return '${evento['tipo'] ?? ''} • Origem: ${evento['origem'] ?? 'N/A'}';
     }
+  }
+
+  bool _eventoTecnicoRuido(Map<String, dynamic> evento) {
+    final tipo = evento['tipo']?.toString() ?? '';
+    final metadata = _metadataEvento(evento);
+
+    if (tipo == 'campo_formulario') return !_eventoEhSuspeito(evento);
+    if (tipo == 'snapshot_formulario') return !_eventoEhSuspeito(evento);
+
+    if (tipo == 'formulario') {
+      final acao = metadata['acao']?.toString() ?? evento['origem']?.toString() ?? '';
+      const importantes = {
+        'abandonou_inscricao',
+        'tentou_enviar_inscricao',
+        'cancelou_saida_inscricao',
+      };
+      return !importantes.contains(acao);
+    }
+
+    return false;
+  }
+
+  List<Map<String, dynamic>> _eventosTimelinePrincipal(
+    List<Map<String, dynamic>> eventos,
+  ) {
+    return eventos.where((e) => !_eventoTecnicoRuido(e)).toList(growable: false);
+  }
+
+  bool _eventoEhInscricao(Map<String, dynamic> evento) {
+    final tipo = evento['tipo']?.toString() ?? '';
+    final nome = evento['nome']?.toString() ?? '';
+    final pagina = evento['pagina_origem']?.toString() ?? '';
+    final metadata = _metadataEvento(evento);
+    return tipo == 'funil_inscricao' ||
+        nome.contains('inscricao_publica') ||
+        pagina.contains('inscricao_publica') ||
+        metadata['formulario']?.toString() == 'inscricao_publica';
+  }
+
+  bool _sessaoVisualizouInscricao(List<Map<String, dynamic>> eventos) {
+    return eventos.any((e) {
+      final tipo = e['tipo']?.toString();
+      final nome = e['nome']?.toString();
+      return (tipo == 'pagina' || tipo == 'tela') && nome == 'inscricao_publica' ||
+          e['tipo']?.toString() == 'funil_inscricao';
+    });
+  }
+
+  bool _sessaoTemMarco(
+    List<Map<String, dynamic>> eventos,
+    String marco, {
+    String? fallbackTipo,
+    String? fallbackNome,
+  }) {
+    if (eventos.any((e) =>
+        e['tipo']?.toString() == 'funil_inscricao' &&
+        e['nome']?.toString() == marco)) {
+      return true;
+    }
+    if (fallbackTipo != null) {
+      return eventos.any((e) =>
+          e['tipo']?.toString() == fallbackTipo &&
+          (fallbackNome == null || e['nome']?.toString() == fallbackNome));
+    }
+    return false;
+  }
+
+  Map<String, dynamic> _metricasFunilInscricao() {
+    if (_cacheExiste) {
+      final funil = _mapDinamico(_cachePeriodoAtual['funil_inscricao']);
+      return {
+        'visualizou': (funil['visualizou'] as num?)?.round() ?? 0,
+        'iniciou': (funil['iniciou'] as num?)?.round() ?? 0,
+        'revisao': (funil['revisao'] as num?)?.round() ?? 0,
+        'envio': (funil['envio'] as num?)?.round() ?? 0,
+        'concluiu': (funil['concluiu'] as num?)?.round() ?? 0,
+        'abandonou': (funil['abandonou'] as num?)?.round() ?? 0,
+        'erros': (funil['erros'] as num?)?.round() ?? 0,
+        'conversao': (funil['conversao'] as num?)?.toDouble() ?? 0.0,
+        'media_tempo': (funil['media_tempo'] as num?)?.round() ?? 0,
+        'etapas': _mapStringInt(funil['etapas']),
+        'maior_abandono': funil['maior_abandono'],
+        'maior_abandono_qtd':
+            (funil['maior_abandono_qtd'] as num?)?.round() ?? 0,
+      };
+    }
+
+    var visualizou = 0;
+    var iniciou = 0;
+    var revisao = 0;
+    var envio = 0;
+    var concluiu = 0;
+    var abandonou = 0;
+    var erros = 0;
+    var somaTempo = 0;
+    var tempos = 0;
+    final etapas = <String, int>{};
+    final abandonosEtapa = <String, int>{};
+
+    for (final acesso in _getAcessosFiltrados()) {
+      final eventos = _eventosDoDocumento(acesso);
+      if (!_sessaoVisualizouInscricao(eventos)) continue;
+      visualizou++;
+
+      final temInicio = _sessaoTemMarco(eventos, 'inicio_formulario') ||
+          eventos.any((e) => e['tipo']?.toString() == 'etapa_formulario');
+      if (temInicio) iniciou++;
+
+      final etapasSessao = <String>{};
+      for (final evento in eventos) {
+        final metadata = _metadataEvento(evento);
+        if (evento['tipo']?.toString() == 'etapa_formulario' &&
+            metadata['acao']?.toString() == 'entrou') {
+          final etapa = metadata['nome_etapa']?.toString() ?? evento['nome']?.toString();
+          if (etapa != null && etapa.isNotEmpty) etapasSessao.add(etapa);
+        }
+        if (evento['tipo']?.toString() == 'funil_inscricao' &&
+            evento['nome']?.toString() == 'etapa_visualizada') {
+          final etapa = metadata['etapa_nome']?.toString();
+          if (etapa != null && etapa.isNotEmpty) etapasSessao.add(etapa);
+        }
+      }
+      for (final etapa in etapasSessao) {
+        etapas[etapa] = (etapas[etapa] ?? 0) + 1;
+      }
+
+      if (etapasSessao.contains('revisao')) revisao++;
+
+      final temEnvio = _sessaoTemMarco(eventos, 'envio_iniciado') ||
+          eventos.any((e) {
+            if (e['tipo']?.toString() != 'formulario') return false;
+            final m = _metadataEvento(e);
+            return m['acao']?.toString() == 'tentou_enviar_inscricao';
+          });
+      if (temEnvio) envio++;
+
+      final temConclusao = _sessaoTemMarco(
+            eventos,
+            'concluiu_inscricao',
+            fallbackTipo: 'conversao',
+            fallbackNome: 'inscricao_publica_enviada',
+          );
+      if (temConclusao) {
+        concluiu++;
+        for (final e in eventos.reversed) {
+          if (e['tipo']?.toString() == 'conversao' &&
+              e['nome']?.toString() == 'inscricao_publica_enviada') {
+            final m = _metadataEvento(e);
+            final t = m['tempo_total_inscricao_segundos'];
+            if (t is num) {
+              somaTempo += t.round();
+              tempos++;
+            }
+            break;
+          }
+        }
+      }
+
+      final abandono = eventos.cast<Map<String, dynamic>?>().firstWhere(
+        (e) {
+          if (e == null) return false;
+          if (e['tipo']?.toString() == 'funil_inscricao' &&
+              e['nome']?.toString() == 'abandono') {
+            return true;
+          }
+          if (e['tipo']?.toString() == 'formulario') {
+            return _metadataEvento(e)['acao']?.toString() == 'abandonou_inscricao';
+          }
+          return false;
+        },
+        orElse: () => null,
+      );
+      if (abandono != null && !temConclusao) {
+        abandonou++;
+        final m = _metadataEvento(abandono);
+        final etapa = (m['etapa_nome'] ?? m['nome_etapa_atual'])?.toString();
+        if (etapa != null && etapa.isNotEmpty) {
+          abandonosEtapa[etapa] = (abandonosEtapa[etapa] ?? 0) + 1;
+        }
+      }
+
+      erros += eventos.where((e) => e['tipo']?.toString() == 'erro_formulario').length;
+    }
+
+    final conversao = visualizou == 0 ? 0.0 : (concluiu / visualizou) * 100;
+    final mediaTempo = tempos == 0 ? 0 : (somaTempo / tempos).round();
+    String? maiorAbandono;
+    var maiorAbandonoQtd = 0;
+    for (final entry in abandonosEtapa.entries) {
+      if (entry.value > maiorAbandonoQtd) {
+        maiorAbandono = entry.key;
+        maiorAbandonoQtd = entry.value;
+      }
+    }
+
+    return {
+      'visualizou': visualizou,
+      'iniciou': iniciou,
+      'revisao': revisao,
+      'envio': envio,
+      'concluiu': concluiu,
+      'abandonou': abandonou,
+      'erros': erros,
+      'conversao': conversao,
+      'media_tempo': mediaTempo,
+      'etapas': etapas,
+      'maior_abandono': maiorAbandono,
+      'maior_abandono_qtd': maiorAbandonoQtd,
+    };
+  }
+
+  Map<String, Map<String, num>> _metricasPaginas() {
+    if (_cacheExiste) {
+      final raw = _cachePeriodoAtual['paginas'];
+      if (raw is Map) {
+        final out = <String, Map<String, num>>{};
+        raw.forEach((key, value) {
+          final item = _mapDinamico(value);
+          out[key.toString()] = <String, num>{
+            'sessoes': (item['sessoes'] as num?) ?? 0,
+            'duracao': (item['duracao'] as num?) ?? 0,
+          };
+        });
+        return out;
+      }
+    }
+
+    final resultado = <String, Map<String, num>>{};
+
+    for (final acesso in _getAcessosFiltrados()) {
+      final eventos = _eventosDoDocumento(acesso);
+      final paginasSessao = <String>{};
+      final duracoes = <String, int>{};
+
+      for (final evento in eventos) {
+        final tipo = evento['tipo']?.toString();
+        final nome = evento['nome']?.toString().trim() ?? '';
+        if (nome.isEmpty) continue;
+
+        if (tipo == 'pagina') paginasSessao.add(nome);
+        if (tipo == 'tela') {
+          final m = _metadataEvento(evento);
+          if (m['acao']?.toString() == 'entrou') paginasSessao.add(nome);
+          final d = m['duracao_segundos'];
+          if (d is num && d > 0) {
+            duracoes[nome] = (duracoes[nome] ?? 0) + d.round();
+          }
+        }
+      }
+
+      for (final pagina in paginasSessao) {
+        final atual = resultado.putIfAbsent(
+          pagina,
+          () => <String, num>{'sessoes': 0, 'duracao': 0},
+        );
+        atual['sessoes'] = (atual['sessoes'] ?? 0) + 1;
+        atual['duracao'] = (atual['duracao'] ?? 0) + (duracoes[pagina] ?? 0);
+      }
+    }
+    return resultado;
   }
 
   void _mostrarRastroDocumento(Map<String, dynamic> documento) {
@@ -535,7 +989,7 @@ class _DashboardEstatisticasScreenState
                 borderRadius: BorderRadius.circular(26),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.18),
+                    color: Colors.black.withAlpha(46),
                     blurRadius: 22,
                     offset: const Offset(0, 8),
                   ),
@@ -570,7 +1024,7 @@ class _DashboardEstatisticasScreenState
                         const SizedBox(height: 10),
                         _buildDispositivoCard(documento),
                         const SizedBox(height: 14),
-                        _buildTimeline(eventosMap, compact),
+                        _buildTimeline(_eventosTimelinePrincipal(eventosMap), compact),
                         const SizedBox(height: 14),
                         _buildInfoAcesso(documento, latitude, longitude),
                       ],
@@ -720,9 +1174,15 @@ class _DashboardEstatisticasScreenState
         elevation: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: 'Atualizar',
-            onPressed: _atualizarTudo,
+            icon: _reconstruindoCache
+                ? const SizedBox(
+                    width: 19,
+                    height: 19,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh_rounded),
+            tooltip: 'Reconstruir cache das estatísticas',
+            onPressed: _reconstruindoCache ? null : _atualizarTudo,
           ),
         ],
       ),
@@ -733,6 +1193,7 @@ class _DashboardEstatisticasScreenState
               onRefresh: _atualizarTudo,
               child: CustomScrollView(
                 controller: _scrollController,
+                physics: const AlwaysScrollableScrollPhysics(),
                 slivers: [
                   SliverToBoxAdapter(
                     child: Padding(
@@ -750,19 +1211,32 @@ class _DashboardEstatisticasScreenState
                             children: [
                               _buildHeroDashboard(compact),
                               const SizedBox(height: 12),
-                              _buildCardsRapidos(),
-                              const SizedBox(height: 14),
-                              _buildGraficosSection(compact),
-                              const SizedBox(height: 14),
-                              _buildTopCidadesEstados(),
-                              const SizedBox(height: 14),
-                              _buildFiltroPeriodo(),
+                              _buildDashboardTabs(),
                               const SizedBox(height: 10),
-                              _buildListaAcessos(),
-                              if (_carregandoMais) _buildLoadingIndicator(),
-                              if (!_temMaisDados &&
-                                  _acessosCarregados.isNotEmpty)
-                                _buildFimLista(),
+                              _buildCacheStatus(compact),
+                              const SizedBox(height: 14),
+                              if (_abaDashboard == 0) ...[
+                                _buildCardsRapidos(),
+                                const SizedBox(height: 14),
+                                _buildGraficosSection(compact),
+                                const SizedBox(height: 14),
+                                _buildTopCidadesEstados(),
+                              ] else if (_abaDashboard == 1) ...[
+                                _buildPaginasV2(),
+                              ] else if (_abaDashboard == 2) ...[
+                                _buildInscricoesV2(),
+                              ] else ...[
+                                _buildFiltroPeriodo(),
+                                const SizedBox(height: 10),
+                                if (_carregandoSessoes &&
+                                    _acessosCarregados.isEmpty)
+                                  _buildLoadingSessoes()
+                                else
+                                  _buildListaAcessos(),
+                                if (_carregandoMais) _buildLoadingIndicator(),
+                                if (!_temMaisDados && _acessosCarregados.isNotEmpty)
+                                  _buildFimLista(),
+                              ],
                             ],
                           ),
                         ),
@@ -772,6 +1246,68 @@ class _DashboardEstatisticasScreenState
                 ],
               ),
             ),
+    );
+  }
+
+  Widget _buildCacheStatus(bool compact) {
+    final cor = _cacheExiste ? Colors.green : Colors.orange;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: _cardDecoration(
+        radius: 16,
+        borderColor: _softBorder(cor),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            _cacheExiste ? Icons.cloud_done_rounded : Icons.cloud_sync_rounded,
+            size: 18,
+            color: _softOnCard(cor),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _cacheExiste
+                  ? '${_textoAtualizacaoCache()} • painel servido pelo cache'
+                  : 'Cache ainda não gerado • puxe para baixo para construir',
+              style: TextStyle(
+                color: context.uai.textSecondary,
+                fontSize: compact ? 10.8 : 12,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          if (_reconstruindoCache) ...[
+            const SizedBox(width: 8),
+            const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLoadingSessoes() {
+    return Container(
+      padding: const EdgeInsets.all(26),
+      decoration: _cardDecoration(radius: 24),
+      child: Column(
+        children: [
+          CircularProgressIndicator(color: context.uai.primary),
+          const SizedBox(height: 10),
+          Text(
+            'Carregando as 30 sessões mais recentes...',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: context.uai.textSecondary,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -798,9 +1334,476 @@ class _DashboardEstatisticasScreenState
     );
   }
 
-  Widget _buildHeroDashboard(bool compact) {
-    final filtrados = _getAcessosFiltrados();
+  Widget _buildDashboardTabs() {
+    final itens = const [
+      (Icons.dashboard_rounded, 'Visão geral'),
+      (Icons.web_rounded, 'Páginas'),
+      (Icons.how_to_reg_rounded, 'Inscrições'),
+      (Icons.history_rounded, 'Sessões'),
+    ];
 
+    return Container(
+      padding: const EdgeInsets.all(6),
+      decoration: _cardDecoration(radius: 20),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compacto = constraints.maxWidth < 720;
+          return Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: List.generate(itens.length, (index) {
+              final selecionado = _abaDashboard == index;
+              final item = itens[index];
+              return SizedBox(
+                width: compacto ? (constraints.maxWidth - 6) / 2 : null,
+                child: Material(
+                  color: selecionado
+                      ? _softFill(context.uai.primary)
+                      : Colors.transparent,
+                  borderRadius: BorderRadius.circular(15),
+                  child: InkWell(
+                    onTap: () {
+                      setState(() => _abaDashboard = index);
+                      if (index == 3) {
+                        unawaited(_garantirSessoesCarregadas());
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(15),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 13,
+                        vertical: 11,
+                      ),
+                      child: Row(
+                        mainAxisSize: compacto ? MainAxisSize.max : MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            item.$1,
+                            size: 18,
+                            color: selecionado
+                                ? _softOnCard(context.uai.primary)
+                                : context.uai.textSecondary,
+                          ),
+                          const SizedBox(width: 7),
+                          Flexible(
+                            child: Text(
+                              item.$2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: selecionado
+                                    ? _softOnCard(context.uai.primary)
+                                    : context.uai.textSecondary,
+                                fontWeight: FontWeight.w900,
+                                fontSize: 12.5,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildMetricV2({
+    required String titulo,
+    required String valor,
+    required IconData icone,
+    required Color cor,
+    String? subtitulo,
+  }) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 150),
+      padding: const EdgeInsets.all(14),
+      decoration: _cardDecoration(radius: 20, borderColor: _softBorder(cor)),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: _softFill(cor),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icone, color: _softOnCard(cor), size: 21),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  valor,
+                  style: TextStyle(
+                    color: context.uai.textPrimary,
+                    fontSize: 20,
+                    height: 1,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  titulo,
+                  style: TextStyle(
+                    color: context.uai.textSecondary,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                if (subtitulo != null) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    subtitulo,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: context.uai.textMuted,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetricGrid(List<Widget> cards) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final largura = constraints.maxWidth;
+        final colunas = largura >= 980 ? 4 : largura >= 620 ? 2 : 1;
+        final larguraCard = (largura - ((colunas - 1) * 10)) / colunas;
+        return Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: cards
+              .map((card) => SizedBox(width: larguraCard, child: card))
+              .toList(),
+        );
+      },
+    );
+  }
+
+  Widget _buildPaginasV2() {
+    final metricas = _metricasPaginas();
+    final entries = metricas.entries.toList()
+      ..sort((a, b) => (b.value['sessoes'] ?? 0).compareTo(a.value['sessoes'] ?? 0));
+
+    if (entries.isEmpty) {
+      return _buildEmptyV2(
+        Icons.web_asset_off_rounded,
+        'Ainda não há navegação de páginas suficiente neste período.',
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildFiltroPeriodo(),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(15),
+          decoration: _cardDecoration(radius: 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _sectionHeader(
+                icon: Icons.web_stories_rounded,
+                title: 'Páginas do site',
+                color: Colors.purple,
+                trailing: '${entries.length} páginas',
+              ),
+              const SizedBox(height: 12),
+              ...entries.map((entry) {
+                final sessoes = (entry.value['sessoes'] ?? 0).round();
+                final duracao = (entry.value['duracao'] ?? 0).round();
+                final media = sessoes == 0 ? 0 : duracao ~/ sessoes;
+                final max = (entries.first.value['sessoes'] ?? 1).toDouble();
+                final progresso = max <= 0 ? 0.0 : (sessoes / max).clamp(0.0, 1.0);
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _capitalizar(entry.key.replaceAll('_', ' ')),
+                              style: TextStyle(
+                                color: context.uai.textPrimary,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            '$sessoes sessões',
+                            style: TextStyle(
+                              color: context.uai.textSecondary,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          if (media > 0) ...[
+                            const SizedBox(width: 8),
+                            Text(
+                              '• ${_formatarDuracao(media)} méd.',
+                              style: TextStyle(
+                                color: context.uai.textMuted,
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 7),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(99),
+                        child: LinearProgressIndicator(
+                          value: progresso,
+                          minHeight: 7,
+                          backgroundColor: context.uai.border.withAlpha(89),
+                          color: _softOnCard(Colors.purple),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInscricoesV2() {
+    final f = _metricasFunilInscricao();
+    final visualizou = f['visualizou'] as int;
+    final iniciou = f['iniciou'] as int;
+    final revisao = f['revisao'] as int;
+    final envio = f['envio'] as int;
+    final concluiu = f['concluiu'] as int;
+    final abandonou = f['abandonou'] as int;
+    final erros = f['erros'] as int;
+    final conversao = f['conversao'] as double;
+    final mediaTempo = f['media_tempo'] as int;
+    final etapas = Map<String, int>.from(f['etapas'] as Map);
+    final maiorAbandono = f['maior_abandono']?.toString();
+    final maiorAbandonoQtd = f['maior_abandono_qtd'] as int;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildFiltroPeriodo(),
+        const SizedBox(height: 12),
+        _buildMetricGrid([
+          _buildMetricV2(
+            titulo: 'Visualizaram inscrição',
+            valor: '$visualizou',
+            icone: Icons.visibility_rounded,
+            cor: Colors.blue,
+          ),
+          _buildMetricV2(
+            titulo: 'Concluíram',
+            valor: '$concluiu',
+            icone: Icons.verified_rounded,
+            cor: Colors.green,
+          ),
+          _buildMetricV2(
+            titulo: 'Conversão',
+            valor: '${conversao.toStringAsFixed(1)}%',
+            icone: Icons.trending_up_rounded,
+            cor: Colors.teal,
+          ),
+          _buildMetricV2(
+            titulo: 'Tempo médio',
+            valor: _formatarDuracao(mediaTempo),
+            icone: Icons.timer_rounded,
+            cor: Colors.orange,
+            subtitulo: 'das inscrições concluídas',
+          ),
+        ]),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(15),
+          decoration: _cardDecoration(radius: 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _sectionHeader(
+                icon: Icons.filter_alt_rounded,
+                title: 'Funil da aula experimental',
+                color: Colors.teal,
+                trailing: '$visualizou sessões',
+              ),
+              const SizedBox(height: 14),
+              _buildFunnelLine('Visualizou', visualizou, visualizou, Colors.blue),
+              _buildFunnelLine('Iniciou', iniciou, visualizou, Colors.indigo),
+              _buildFunnelLine('Chegou à revisão', revisao, visualizou, Colors.purple),
+              _buildFunnelLine('Tentou enviar', envio, visualizou, Colors.orange),
+              _buildFunnelLine('Concluiu', concluiu, visualizou, Colors.green),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        _buildMetricGrid([
+          _buildMetricV2(
+            titulo: 'Abandonos',
+            valor: '$abandonou',
+            icone: Icons.exit_to_app_rounded,
+            cor: Colors.deepOrange,
+            subtitulo: maiorAbandono == null
+                ? 'sem etapa dominante'
+                : 'mais comum: ${maiorAbandono.replaceAll('_', ' ')} ($maiorAbandonoQtd)',
+          ),
+          _buildMetricV2(
+            titulo: 'Erros de formulário',
+            valor: '$erros',
+            icone: Icons.warning_amber_rounded,
+            cor: Colors.red,
+          ),
+        ]),
+        if (etapas.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(15),
+            decoration: _cardDecoration(radius: 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _sectionHeader(
+                  icon: Icons.stairs_rounded,
+                  title: 'Alcance por etapa',
+                  color: Colors.purple,
+                ),
+                const SizedBox(height: 12),
+                ..._ordemEtapasInscricao.map((etapa) {
+                  final valor = etapas[etapa] ?? 0;
+                  return _buildFunnelLine(
+                    _tituloEtapa(etapa),
+                    valor,
+                    visualizou,
+                    Colors.purple,
+                  );
+                }),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  static const List<String> _ordemEtapasInscricao = [
+    'boas_vindas',
+    'foto_aluno',
+    'dados_aluno',
+    'acesso_email',
+    'contatos',
+    'endereco',
+    'documento',
+    'revisao',
+  ];
+
+  String _tituloEtapa(String etapa) {
+    const titulos = {
+      'boas_vindas': 'Boas-vindas',
+      'foto_aluno': 'Foto do aluno',
+      'dados_aluno': 'Dados do aluno',
+      'acesso_email': 'Acesso/e-mail',
+      'contatos': 'Contatos',
+      'endereco': 'Endereço',
+      'documento': 'Documento',
+      'revisao': 'Revisão',
+    };
+    return titulos[etapa] ?? _capitalizar(etapa.replaceAll('_', ' '));
+  }
+
+  Widget _buildFunnelLine(
+    String titulo,
+    int valor,
+    int total,
+    Color cor,
+  ) {
+    final progresso = total <= 0 ? 0.0 : (valor / total).clamp(0.0, 1.0);
+    final percentual = total <= 0 ? 0.0 : (valor / total) * 100;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  titulo,
+                  style: TextStyle(
+                    color: context.uai.textPrimary,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 12.5,
+                  ),
+                ),
+              ),
+              Text(
+                '$valor • ${percentual.toStringAsFixed(1)}%',
+                style: TextStyle(
+                  color: context.uai.textSecondary,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 11,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(99),
+            child: LinearProgressIndicator(
+              value: progresso,
+              minHeight: 8,
+              backgroundColor: context.uai.border.withAlpha(89),
+              color: _softOnCard(cor),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyV2(IconData icon, String texto) {
+    return Container(
+      padding: const EdgeInsets.all(30),
+      decoration: _cardDecoration(radius: 24),
+      child: Column(
+        children: [
+          Icon(icon, size: 48, color: context.uai.textMuted),
+          const SizedBox(height: 10),
+          Text(
+            texto,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: context.uai.textSecondary,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeroDashboard(bool compact) {
     return Container(
       padding: EdgeInsets.all(compact ? 16 : 22),
       decoration: BoxDecoration(
@@ -812,7 +1815,7 @@ class _DashboardEstatisticasScreenState
         borderRadius: BorderRadius.circular(compact ? 24 : 30),
         boxShadow: [
           BoxShadow(
-            color: context.uai.primary.withOpacity(0.14),
+            color: context.uai.primary.withAlpha(36),
             blurRadius: 12,
             offset: const Offset(0, 5),
           ),
@@ -826,9 +1829,9 @@ class _DashboardEstatisticasScreenState
             width: compact ? 58 : 68,
             height: compact ? 58 : 68,
             decoration: BoxDecoration(
-              color: _onPrimary().withOpacity(0.14),
+              color: _onPrimary().withAlpha(36),
               borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: _onPrimary().withOpacity(0.16)),
+              border: Border.all(color: _onPrimary().withAlpha(41)),
             ),
             child: Icon(
               Icons.query_stats_rounded,
@@ -857,7 +1860,7 @@ class _DashboardEstatisticasScreenState
                 'Acompanhe acessos, localização, cliques e comportamento dos visitantes.',
                 textAlign: narrow ? TextAlign.center : TextAlign.left,
                 style: TextStyle(
-                  color: _onPrimary().withOpacity(0.82),
+                  color: _onPrimary().withAlpha(209),
                   fontSize: compact ? 12.8 : 15,
                   height: 1.35,
                   fontWeight: FontWeight.w600,
@@ -874,8 +1877,8 @@ class _DashboardEstatisticasScreenState
                     '$_totalAcessos visitas',
                   ),
                   _buildWhiteChip(
-                    Icons.history_rounded,
-                    '${filtrados.length} carregados',
+                    Icons.cloud_done_rounded,
+                    _cacheExiste ? _textoAtualizacaoCache() : 'cache pendente',
                   ),
                   _buildWhiteChip(Icons.location_on_rounded, 'Mapa integrado'),
                 ],
@@ -903,9 +1906,9 @@ class _DashboardEstatisticasScreenState
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: _onPrimary().withOpacity(0.14),
+        color: _onPrimary().withAlpha(36),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: _onPrimary().withOpacity(0.16)),
+        border: Border.all(color: _onPrimary().withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -970,7 +1973,7 @@ class _DashboardEstatisticasScreenState
       padding: const EdgeInsets.all(13),
       decoration: _cardDecoration(
         radius: 22,
-        borderColor: card.color.withOpacity(0.10),
+        borderColor: card.color.withAlpha(26),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -980,7 +1983,7 @@ class _DashboardEstatisticasScreenState
             width: 38,
             height: 38,
             decoration: BoxDecoration(
-              color: card.color.withOpacity(0.09),
+              color: card.color.withAlpha(23),
               borderRadius: BorderRadius.circular(14),
             ),
             child: Icon(card.icon, color: card.color, size: 21),
@@ -1016,8 +2019,8 @@ class _DashboardEstatisticasScreenState
       builder: (context, constraints) {
         final wide = constraints.maxWidth >= 900;
 
-        final hora = _buildGraficoHoras();
-        final dia = _buildGraficoDiasSemana();
+        final hora = _buildGraficoHoras(compact);
+        final dia = _buildGraficoDiasSemana(compact);
 
         if (hora is SizedBox && dia is SizedBox) return const SizedBox.shrink();
 
@@ -1044,7 +2047,7 @@ class _DashboardEstatisticasScreenState
     );
   }
 
-  Widget _buildGraficoHoras() {
+  Widget _buildGraficoHoras(bool compact) {
     if (_acessosPorHora.isEmpty) return const SizedBox.shrink();
 
     final horasOrdenadas = _acessosPorHora.entries.toList()
@@ -1055,6 +2058,7 @@ class _DashboardEstatisticasScreenState
             .reduce((a, b) => a > b ? a : b)
             .toDouble() +
         1;
+    final intervaloY = maxY <= 5 ? 1.0 : (maxY / 5).ceilToDouble();
 
     return _chartCard(
       title: 'Acessos por hora',
@@ -1086,11 +2090,13 @@ class _DashboardEstatisticasScreenState
                 getTitlesWidget: (value, meta) {
                   final index = value.toInt();
                   if (index >= 0 && index < horasOrdenadas.length) {
+                    if (compact && index % 3 != 0) return const SizedBox.shrink();
+                    final label = horasOrdenadas[index].key;
                     return Padding(
                       padding: const EdgeInsets.only(top: 8),
                       child: Text(
-                        horasOrdenadas[index].key,
-                        style: const TextStyle(fontSize: 9),
+                        compact ? label.substring(0, 2) : label,
+                        style: TextStyle(fontSize: compact ? 8 : 9),
                       ),
                     );
                   }
@@ -1102,6 +2108,7 @@ class _DashboardEstatisticasScreenState
             leftTitles: AxisTitles(
               sideTitles: SideTitles(
                 showTitles: true,
+                interval: intervaloY,
                 reservedSize: 30,
                 getTitlesWidget: (value, meta) {
                   if (value % 1 == 0) {
@@ -1125,7 +2132,7 @@ class _DashboardEstatisticasScreenState
           gridData: FlGridData(
             show: true,
             drawVerticalLine: false,
-            horizontalInterval: 1,
+            horizontalInterval: intervaloY,
           ),
           borderData: FlBorderData(show: false),
           barGroups: horasOrdenadas.asMap().entries.map((entry) {
@@ -1135,7 +2142,7 @@ class _DashboardEstatisticasScreenState
                 BarChartRodData(
                   toY: entry.value.value.toDouble(),
                   color: Colors.purple.shade300,
-                  width: 14,
+                  width: compact ? 8 : 14,
                   borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(5),
                   ),
@@ -1148,7 +2155,7 @@ class _DashboardEstatisticasScreenState
     );
   }
 
-  Widget _buildGraficoDiasSemana() {
+  Widget _buildGraficoDiasSemana(bool compact) {
     if (_acessosPorDia.isEmpty) return const SizedBox.shrink();
 
     final diasOrdem = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab', 'Dom'];
@@ -1161,6 +2168,7 @@ class _DashboardEstatisticasScreenState
             .reduce((a, b) => a > b ? a : b)
             .toDouble() +
         1;
+    final intervaloY = maxY <= 5 ? 1.0 : (maxY / 5).ceilToDouble();
 
     return _chartCard(
       title: 'Acessos por dia',
@@ -1208,6 +2216,7 @@ class _DashboardEstatisticasScreenState
             leftTitles: AxisTitles(
               sideTitles: SideTitles(
                 showTitles: true,
+                interval: intervaloY,
                 reservedSize: 30,
                 getTitlesWidget: (value, meta) {
                   if (value % 1 == 0) {
@@ -1231,7 +2240,7 @@ class _DashboardEstatisticasScreenState
           gridData: FlGridData(
             show: true,
             drawVerticalLine: false,
-            horizontalInterval: 1,
+            horizontalInterval: intervaloY,
           ),
           borderData: FlBorderData(show: false),
           barGroups: dadosOrdenados.asMap().entries.map((entry) {
@@ -1241,7 +2250,7 @@ class _DashboardEstatisticasScreenState
                 BarChartRodData(
                   toY: entry.value.value.toDouble(),
                   color: Colors.teal.shade300,
-                  width: 18,
+                  width: compact ? 12 : 18,
                   borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(5),
                   ),
@@ -1268,7 +2277,10 @@ class _DashboardEstatisticasScreenState
         children: [
           _sectionHeader(icon: icon, title: title, color: color),
           const SizedBox(height: 16),
-          SizedBox(height: 176, child: child),
+          SizedBox(
+            height: MediaQuery.sizeOf(context).width < 520 ? 210 : 176,
+            child: child,
+          ),
         ],
       ),
     );
@@ -1403,9 +2415,9 @@ class _DashboardEstatisticasScreenState
     return Container(
       padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), t.cardAlt),
+        color: Color.alphaBlend(accent.withAlpha(20), t.cardAlt),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: accent.withOpacity(0.18)),
+        border: Border.all(color: accent.withAlpha(46)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1416,9 +2428,9 @@ class _DashboardEstatisticasScreenState
                 width: 30,
                 height: 30,
                 decoration: BoxDecoration(
-                  color: Color.alphaBlend(accent.withOpacity(0.14), t.card),
+                  color: Color.alphaBlend(accent.withAlpha(36), t.card),
                   borderRadius: BorderRadius.circular(11),
-                  border: Border.all(color: accent.withOpacity(0.16)),
+                  border: Border.all(color: accent.withAlpha(41)),
                 ),
                 child: Icon(icone, size: 17, color: accent),
               ),
@@ -1460,9 +2472,9 @@ class _DashboardEstatisticasScreenState
                       vertical: 5,
                     ),
                     decoration: BoxDecoration(
-                      color: Color.alphaBlend(accent.withOpacity(0.12), t.card),
+                      color: Color.alphaBlend(accent.withAlpha(31), t.card),
                       borderRadius: BorderRadius.circular(99),
-                      border: Border.all(color: accent.withOpacity(0.18)),
+                      border: Border.all(color: accent.withAlpha(46)),
                     ),
                     child: Text(
                       '${entry.value}',
@@ -1529,7 +2541,10 @@ class _DashboardEstatisticasScreenState
     return ChoiceChip(
       label: Text(label),
       selected: selecionado,
-      onSelected: (_) => setState(() => _filtroPeriodo = valor),
+      onSelected: (_) {
+        setState(() => _filtroPeriodo = valor);
+        _aplicarPeriodoCacheSelecionado();
+      },
       backgroundColor: context.uai.background,
       selectedColor: context.uai.primary,
       labelStyle: TextStyle(
@@ -1591,7 +2606,7 @@ class _DashboardEstatisticasScreenState
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             itemCount: acessosFiltrados.length,
-            separatorBuilder: (_, __) =>
+            separatorBuilder: (_, _) =>
                 Divider(height: 1, color: context.uai.cardAlt),
             itemBuilder: (context, index) =>
                 _buildAcessoItem(acessosFiltrados[index]),
@@ -1816,9 +2831,9 @@ class _DashboardEstatisticasScreenState
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: _onPrimary().withOpacity(0.14),
+              color: _onPrimary().withAlpha(36),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: _onPrimary().withOpacity(0.16)),
+              border: Border.all(color: _onPrimary().withAlpha(41)),
             ),
             child: Icon(
               Icons.timeline_rounded,
@@ -1845,7 +2860,7 @@ class _DashboardEstatisticasScreenState
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: _readableOn(Colors.blue.shade900).withOpacity(0.78),
+                    color: _readableOn(Colors.blue.shade900).withAlpha(199),
                     fontSize: 11.5,
                     fontWeight: FontWeight.w600,
                   ),
@@ -1930,7 +2945,7 @@ class _DashboardEstatisticasScreenState
             padding: const EdgeInsets.all(10),
             decoration: _cardDecoration(
               radius: 18,
-              borderColor: item.color.withOpacity(0.12),
+              borderColor: item.color.withAlpha(31),
             ),
             child: Column(
               children: [
@@ -2215,12 +3230,12 @@ class _DashboardEstatisticasScreenState
   ) {
     final tipo = evento['tipo']?.toString() ?? 'evento';
     final nome = evento['nome']?.toString() ?? 'Evento';
-    final origem = evento['origem']?.toString() ?? 'N/A';
     final hora = _formatarHoraEvento(
       evento['data_hora'] ?? evento['timestamp'],
     );
+    final suspeito = _eventoEhSuspeito(evento);
 
-    final (icone, cor) = switch (tipo) {
+    final (iconeBase, corBase) = switch (tipo) {
       'menu' => (Icons.menu_rounded, Colors.green),
       'botao_social' => (Icons.share_rounded, Colors.blue),
       'clique' => (Icons.ads_click_rounded, Colors.orange),
@@ -2231,6 +3246,7 @@ class _DashboardEstatisticasScreenState
       'etapa_formulario' => (Icons.stairs_rounded, Colors.purple),
       'erro_formulario' => (Icons.warning_rounded, Colors.red),
       'conversao' => (Icons.verified_rounded, Colors.green),
+      'funil_inscricao' => (Icons.filter_alt_rounded, Colors.teal),
       'campo_formulario' => (Icons.edit_note_rounded, Colors.blue),
       'snapshot_formulario' => (Icons.fact_check_rounded, Colors.cyan),
       'rolagem' => (Icons.swap_vert_rounded, Colors.brown),
@@ -2238,6 +3254,8 @@ class _DashboardEstatisticasScreenState
       'item_visualizado' => (Icons.visibility_rounded, Colors.pink),
       _ => (Icons.touch_app_rounded, Colors.grey),
     };
+    final icone = suspeito ? Icons.warning_amber_rounded : iconeBase;
+    final cor = suspeito ? Colors.amber.shade800 : corBase;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 9),
@@ -2267,7 +3285,10 @@ class _DashboardEstatisticasScreenState
               decoration: BoxDecoration(
                 color: context.uai.surface,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: context.uai.border),
+                border: Border.all(
+                  color: suspeito ? _softBorder(cor) : context.uai.border,
+                  width: suspeito ? 1.4 : 1,
+                ),
               ),
               child: Row(
                 children: [
@@ -2275,15 +3296,29 @@ class _DashboardEstatisticasScreenState
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          nome,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: context.uai.textPrimary,
-                            fontSize: compact ? 12.2 : 13,
-                            fontWeight: FontWeight.w900,
-                          ),
+                        Row(
+                          children: [
+                            if (suspeito) ...[
+                              Icon(
+                                Icons.warning_amber_rounded,
+                                size: 14,
+                                color: _softOnCard(cor),
+                              ),
+                              const SizedBox(width: 5),
+                            ],
+                            Expanded(
+                              child: Text(
+                                nome,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: context.uai.textPrimary,
+                                  fontSize: compact ? 12.2 : 13,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 3),
                         Text(
@@ -2535,9 +3570,9 @@ class _DashboardEstatisticasScreenState
           width: 36,
           height: 36,
           decoration: BoxDecoration(
-            color: Color.alphaBlend(accent.withOpacity(0.12), t.cardAlt),
+            color: Color.alphaBlend(accent.withAlpha(31), t.cardAlt),
             borderRadius: BorderRadius.circular(13),
-            border: Border.all(color: accent.withOpacity(0.16)),
+            border: Border.all(color: accent.withAlpha(41)),
           ),
           child: Icon(icon, color: accent, size: 20),
         ),

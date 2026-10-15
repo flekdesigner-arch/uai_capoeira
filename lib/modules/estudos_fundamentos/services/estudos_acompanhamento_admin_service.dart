@@ -102,7 +102,7 @@ class EstudosAcompanhamentoAdminService {
       for (final doc in docs) {
         if (porId.length >= limite) break;
         final aluno = AlunoVinculadoEstudos.tryFromDoc(doc);
-        if (aluno != null && aluno.vinculadoGoogle) {
+        if (aluno != null && aluno.vinculadoConta) {
           porId[aluno.id] = aluno;
         }
       }
@@ -458,10 +458,11 @@ class AlunoVinculadoEstudos {
   final String turma;
   final String academia;
   final String graduacao;
-  final String googleEmail;
-  final String googleNome;
-  final String googleUid;
-  final bool googleVinculadoFlag;
+  final String contaEmail;
+  final String contaNome;
+  final String contaUid;
+  final String metodoVinculo;
+  final bool contaVinculadaFlag;
   final DateTime? vinculadoEm;
   final DateTime? ultimoAcesso;
 
@@ -472,10 +473,11 @@ class AlunoVinculadoEstudos {
     required this.turma,
     required this.academia,
     required this.graduacao,
-    required this.googleEmail,
-    required this.googleNome,
-    required this.googleUid,
-    required this.googleVinculadoFlag,
+    required this.contaEmail,
+    required this.contaNome,
+    required this.contaUid,
+    required this.metodoVinculo,
+    required this.contaVinculadaFlag,
     this.vinculadoEm,
     this.ultimoAcesso,
   });
@@ -509,6 +511,23 @@ class AlunoVinculadoEstudos {
     String id,
     Map<String, dynamic> data,
   ) {
+    final contaUaiUid = _asString(data['conta_uai_uid']);
+    final googleUid = _asString(data['areaAlunoGoogleUid']);
+    final contaUid = contaUaiUid.isNotEmpty ? contaUaiUid : googleUid;
+    final contaEmail = _firstText(data, [
+      'email_conta_uai',
+      'areaAlunoGoogleEmail',
+    ]);
+    final contaNome = _firstText(data, [
+      'areaAlunoGoogleNome',
+      'nome_responsavel',
+    ]);
+    final metodoVinculo = contaUaiUid.isNotEmpty
+        ? 'Conta UAI'
+        : (googleUid.isNotEmpty || data['areaAlunoGoogleVinculado'] == true)
+            ? 'Google'
+            : '';
+
     return AlunoVinculadoEstudos(
       id: id,
       nome: _asString(data['nome'], fallback: 'Aluno sem nome'),
@@ -525,33 +544,39 @@ class AlunoVinculadoEstudos {
         'graduacao',
         'graduacao_id',
       ]),
-      googleEmail: _asString(data['areaAlunoGoogleEmail']),
-      googleNome: _asString(data['areaAlunoGoogleNome']),
-      googleUid: _asString(data['areaAlunoGoogleUid']),
-      googleVinculadoFlag: _asBool(data['areaAlunoGoogleVinculado']),
+      contaEmail: contaEmail,
+      contaNome: contaNome,
+      contaUid: contaUid,
+      metodoVinculo: metodoVinculo,
+      contaVinculadaFlag:
+          data['areaAlunoGoogleVinculado'] == true || contaUaiUid.isNotEmpty,
       vinculadoEm: _asDate(
         data['areaAlunoVinculadoEm'] ?? data['areaAlunoGoogleVinculadoEm'],
       ),
       ultimoAcesso: _asDate(
-        data['areaAlunoUltimoAcessoGoogleEm'] ??
-            data['areaAlunoUltimoAcessoEm'],
+        data['areaAlunoUltimoAcessoEm'] ??
+            data['areaAlunoUltimoAcessoGoogleEm'],
       ),
     );
   }
 
-  bool get vinculadoGoogle =>
-      googleVinculadoFlag ||
-      googleUid.isNotEmpty ||
-      googleEmail.isNotEmpty ||
-      googleNome.isNotEmpty;
+  bool get vinculadoConta =>
+      contaVinculadaFlag || contaUid.isNotEmpty || contaEmail.isNotEmpty;
+
+  // Getters legados preservados para não quebrar widgets/relatórios antigos.
+  String get googleEmail => contaEmail;
+  String get googleNome => contaNome;
+  String get googleUid => contaUid;
+  bool get vinculadoGoogle => vinculadoConta;
 
   String get busca => [
     nome,
     turma,
     academia,
     graduacao,
-    googleEmail,
-    googleNome,
+    contaEmail,
+    contaNome,
+    metodoVinculo,
   ].join(' ').toLowerCase();
 }
 

@@ -1,12 +1,21 @@
+import 'package:uai_capoeira/core/session_log/session_log_service.dart';
+import 'package:uai_capoeira/modules/alunos/parentesco/rede_parentesco_screen.dart';
 import 'dart:async';
+import 'dart:convert';
 
-import 'package:cached_network_image/cached_network_image.dart';
+import 'alunos_json_export_stub.dart'
+    if (dart.library.io) 'alunos_json_export_io.dart' as json_file;
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
+import 'package:intl/intl.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:xml/xml.dart' as xml;
 
 import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'package:uai_capoeira/core/image_cache/uai_student_photo.dart';
 
 import 'aluno_detalhe_screen.dart';
 import 'editar_aluno_screen.dart';
@@ -25,7 +34,10 @@ class _AlunosScreenState extends State<AlunosScreen> {
         : const Color(0xFFFFFFFF);
   }
 
-  Color _onPrimary() => _readableOn(context.uai.primary);
+  // Snapshot usado pela lista (stream nativo), evitando Query.get no Windows.
+  // Não guarda apenas o filtro visível: contém todos os documentos carregados.
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _docsAlunosExportacao = [];
+  bool _docsAlunosVieramDoCache = false;
 
   String? _svgContent;
   String _searchQuery = '';
@@ -45,6 +57,8 @@ class _AlunosScreenState extends State<AlunosScreen> {
   ];
 
   Timer? _searchDebounce;
+  bool _podeExportarAlunos = false;
+  bool _exportandoAlunos = false;
 
   final Map<String, Map<String, dynamic>> _graduacoesCache = {};
   final Map<String, String> _svgCache = {};
@@ -55,6 +69,7 @@ class _AlunosScreenState extends State<AlunosScreen> {
     super.initState();
     _loadSvg();
     _preloadGraduacoes();
+    _verificarPermissaoExportacao();
   }
 
   @override
@@ -106,6 +121,232 @@ class _AlunosScreenState extends State<AlunosScreen> {
     });
   }
 
+  // Exportação administrativa de diagnóstico: somente Windows desktop.
+  // Uma consulta independente garante que a busca e o filtro da tela não
+  // alterem acidentalmente a quantidade de documentos exportados.
+  bool get _exportacaoDisponivelNoWindows =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+
+  Future<void> _verificarPermissaoExportacao() async {
+    if (!_exportacaoDisponivelNoWindows) return;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('usuarios')
+          .doc(user.uid)
+          .get(const GetOptions(source: Source.server));
+      final peso = doc.data()?['peso_permissao'];
+      if (!mounted) return;
+      setState(() => _podeExportarAlunos = peso is num && peso >= 90);
+    } catch (e) {
+      debugPrint('Exportação de alunos: não foi possível validar permissão: $e');
+    }
+  }
+
+  // Mantém estrutura, chaves e tipos para comparar fichas antigas e novas.
+  // Para compartilhamento externo, não exporta valores pessoais livres.
+  dynamic _valorParaJson(dynamic value, {required bool anonimizar, String key = ''}) {
+    if (value == null || value is bool || value is num) return value;
+    if (value is Timestamp) {
+      return {'__tipo': 'timestamp', 'valor': anonimizar ? '<data>' : value.toDate().toIso8601String()};
+    }
+    if (value is DateTime) {
+      return {'__tipo': 'datetime', 'valor': anonimizar ? '<data>' : value.toIso8601String()};
+    }
+    if (value is DocumentReference) {
+      return {'__tipo': 'reference', 'valor': anonimizar ? '<referencia>' : value.path};
+    }
+    if (value is GeoPoint) {
+      return {'__tipo': 'geopoint', 'valor': anonimizar ? '<coordenadas>' : {'latitude': value.latitude, 'longitude': value.longitude}};
+    }
+    if (value is List) {
+      return value.map((e) => _valorParaJson(e, anonimizar: anonimizar, key: key)).toList();
+    }
+    if (value is Map) {
+      return value.map<String, dynamic>((k, v) => MapEntry(
+        k.toString(),
+        _valorParaJson(v, anonimizar: anonimizar, key: k.toString()),
+      ));
+    }
+    if (value is String && anonimizar) {
+      final campo = key.toLowerCase();
+      // Categorias/estados são importantes para comparar o schema.
+      const chavesNaoPessoais = <String>{
+        'status_atividade', 'status', 'sexo', 'origem', 'tipo',
+        'grau_emergencia', 'grau_responsavel', 'parentesco',
+        'estado_civil', 'tipo_sanguineo', 'turno', 'modalidade',
+      };
+      if (chavesNaoPessoais.contains(campo)) return value;
+      if (value.trim().isEmpty) return '';
+      return '<texto_omitido: ${value.length} caracteres>';
+    }
+    if (value is String) return value;
+    return value.toString();
+  }
+
+  Future<void> _abrirExportacaoAlunos() async {
+    if (!_exportacaoDisponivelNoWindows ||
+        !_podeExportarAlunos || _exportandoAlunos) {
+      return;
+    }
+
+    String filtro = 'TODOS';
+    bool anonimizar = true;
+    final configuracao = await showDialog<(String, bool)>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setLocalState) {
+          final t = dialogContext.uai;
+          return AlertDialog(
+            title: const Text('Exportar documentos dos alunos'),
+            content: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 460),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Escolha os documentos da coleção alunos para gerar um JSON de diagnóstico.'),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    initialValue: filtro,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Quais alunos exportar?',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 'TODOS', child: Text('Todos os alunos')),
+                      DropdownMenuItem(value: 'ATIVO(A)', child: Text('Somente ativos')),
+                      DropdownMenuItem(value: 'INATIVO(A)', child: Text('Somente inativos')),
+                    ],
+                    onChanged: (v) {
+                      if (v != null) setLocalState(() => filtro = v);
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: anonimizar,
+                    title: const Text('Ocultar dados pessoais (recomendado)'),
+                    subtitle: const Text('Preserva nomes de campos, estruturas e tipos, mas oculta valores pessoais.'),
+                    onChanged: (v) => setLocalState(() => anonimizar = v ?? true),
+                  ),
+                  if (!anonimizar)
+                    Text(
+                      'Atenção: o JSON completo conterá dados pessoais e possivelmente informações de saúde de alunos menores. Não compartilhe este arquivo sem necessidade e proteção adequada.',
+                      style: TextStyle(color: t.error, fontSize: 12),
+                    ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancelar'),
+              ),
+              FilledButton.icon(
+                icon: const Icon(Icons.download_rounded),
+                label: const Text('Gerar JSON'),
+                onPressed: () => Navigator.pop(dialogContext, (filtro, anonimizar)),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    if (configuracao == null || !mounted) return;
+
+    setState(() => _exportandoAlunos = true);
+    var etapaExportacao = 'validando permissão';
+    try {
+      // A autorização é rechecada antes da leitura em massa.
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) throw StateError('Sessão encerrada.');
+      final permissao = await FirebaseFirestore.instance
+          .collection('usuarios')
+          .doc(user.uid)
+          .get(const GetOptions(source: Source.server));
+      final peso = permissao.data()?['peso_permissao'];
+      if (peso is! num || peso < 90) throw StateError('Permissão administrativa necessária.');
+
+      etapaExportacao = 'lendo a lista de alunos já carregada';
+      final filtroSelecionado = configuracao.$1;
+      final anonimizarDados = configuracao.$2;
+      // O StreamBuilder já fornece um snapshot utilizável no Windows.
+      // Consultas Query.get() nesta versão do plugin retornam ocasionalmente
+      // QueryDocumentSnapshot com _data nulo, mesmo quando doc.data() é exigido.
+      final documentos = List<QueryDocumentSnapshot<Map<String, dynamic>>>.of(
+        _docsAlunosExportacao,
+      );
+      if (documentos.isEmpty) {
+        throw StateError(
+          'A lista de alunos ainda não foi carregada. Aguarde e tente novamente.',
+        );
+      }
+      final registros = <Map<String, dynamic>>[];
+      for (final doc in documentos) {
+        // Um erro na leitura nunca deve produzir um JSON falsamente completo.
+        final Map<String, dynamic> data;
+        try {
+          data = doc.data();
+        } catch (e) {
+          throw StateError('Falha na leitura do aluno ${doc.id}: $e');
+        }
+        if (filtroSelecionado != 'TODOS' &&
+            data['status_atividade'] != filtroSelecionado) {
+          continue;
+        }
+        registros.add({
+          'id': anonimizarDados ? 'aluno_${registros.length + 1}' : doc.id,
+          'dados': _valorParaJson(data, anonimizar: anonimizarDados),
+        });
+      }
+
+      final exportacao = {
+        'formato': 'uai_capoeira_alunos_diagnostico_v1',
+        'gerado_em': DateTime.now().toIso8601String(),
+        'colecao': 'alunos',
+        'filtro_status': filtroSelecionado,
+        'anonimizado': anonimizarDados,
+        'total_documentos': registros.length,
+        'total_documentos_na_lista': documentos.length,
+        'dados_em_cache_local': _docsAlunosVieramDoCache,
+        'observacao': 'Somente documentos da coleção alunos. Não inclui subcoleções.',
+        'documentos': registros,
+      };
+      etapaExportacao = 'serializando documentos em JSON';
+      final conteudo = const JsonEncoder.withIndent('  ').convert(exportacao);
+      if (!mounted) return;
+      final agora = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+      final tipo = filtroSelecionado == 'TODOS' ? 'todos' :
+          filtroSelecionado == 'ATIVO(A)' ? 'ativos' : 'inativos';
+      final filename = 'uai_alunos_${tipo}_${anonimizarDados ? 'anonimo' : 'completo'}_$agora.json';
+      // Gravação nativa, sem diálogo de plugins: em Windows utiliza Downloads.
+      // A versão Web/Android não executa este caminho (botão oculto).
+      etapaExportacao = 'gravando em Downloads';
+      final bytes = Uint8List.fromList(utf8.encode(conteudo));
+      final caminhoSalvo = await json_file.salvarJsonAlunosWindows(
+        filename,
+        bytes,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('JSON salvo: ${registros.length} documento(s).\n$caminhoSalvo'),
+        backgroundColor: context.uai.success,
+      ));
+    } catch (e, stack) {
+      debugPrint('Falha na exportação JSON dos alunos na etapa $etapaExportacao: $e\n$stack');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Falha ao exportar ($etapaExportacao): $e'),
+        backgroundColor: context.uai.error,
+      ));
+    } finally {
+      if (mounted) setState(() => _exportandoAlunos = false);
+    }
+  }
+
   Future<void> _loadSvg() async {
     try {
       final content = await DefaultAssetBundle.of(
@@ -127,15 +368,16 @@ class _AlunosScreenState extends State<AlunosScreen> {
           .get();
 
       for (final doc in snapshot.docs) {
-        final nomeGraduacao = doc['nome_graduacao']?.toString();
+        final graduacaoDados = doc.data();
+        final nomeGraduacao = graduacaoDados['nome_graduacao']?.toString();
 
         if (nomeGraduacao != null && nomeGraduacao.isNotEmpty) {
           _graduacoesCache[nomeGraduacao] = {
             'id': doc.id,
-            'hex_cor1': doc['hex_cor1'],
-            'hex_cor2': doc['hex_cor2'],
-            'hex_ponta1': doc['hex_ponta1'],
-            'hex_ponta2': doc['hex_ponta2'],
+            'hex_cor1': graduacaoDados['hex_cor1'],
+            'hex_cor2': graduacaoDados['hex_cor2'],
+            'hex_ponta1': graduacaoDados['hex_ponta1'],
+            'hex_ponta2': graduacaoDados['hex_ponta2'],
             'nome_graduacao': nomeGraduacao,
           };
         }
@@ -262,7 +504,7 @@ class _AlunosScreenState extends State<AlunosScreen> {
       if (element.name.local.isNotEmpty) {
         final style = element.getAttribute('style') ?? '';
         final hex =
-            '#${color.value.toRadixString(16).substring(2).toLowerCase()}';
+            '#${color.toARGB32().toRadixString(16).substring(2).toLowerCase()}';
         final newStyle = style.replaceAll(RegExp(r'fill:#[0-9a-fA-F]{6}'), '');
         element.setAttribute('style', 'fill:$hex;$newStyle');
       }
@@ -330,9 +572,12 @@ class _AlunosScreenState extends State<AlunosScreen> {
   }
 
   void _abrirDetalheAluno(String alunoId) {
+    unawaited(SessionLogService.instance.recordEntityAccess(
+      module: 'alunos.detalhe', entityType: 'aluno', entityId: alunoId));
     Navigator.push(
       context,
       MaterialPageRoute(
+        settings: const RouteSettings(name: '/alunos/detalhe'),
         builder: (context) => AlunoDetalheScreen(alunoId: alunoId),
       ),
     );
@@ -341,7 +586,10 @@ class _AlunosScreenState extends State<AlunosScreen> {
   void _abrirCadastroAluno() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => EditarAlunoScreen()),
+      MaterialPageRoute(
+        settings: const RouteSettings(name: '/alunos/cadastro'),
+        builder: (context) => EditarAlunoScreen(),
+      ),
     );
   }
 
@@ -383,6 +631,19 @@ class _AlunosScreenState extends State<AlunosScreen> {
         style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
       ),
       actions: [
+        if (_exportacaoDisponivelNoWindows && _podeExportarAlunos)
+          IconButton(
+            tooltip: 'Exportar JSON dos alunos',
+            icon: _exportandoAlunos
+                ? const SizedBox(
+                    width: 19,
+                    height: 19,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.file_download_outlined),
+            onPressed: _exportandoAlunos ? null : _abrirExportacaoAlunos,
+          ),
+ IconButton(tooltip: "Organizar parentescos", icon: const Icon(Icons.family_restroom), onPressed: () => abrirRedeParentesco(context, abrirPerfil: _abrirDetalheAluno)),
         IconButton(
           icon: Icon(_viewModeIcons[_viewMode], color: appBarFg),
           tooltip: _viewModeTooltips[_viewMode],
@@ -412,7 +673,7 @@ class _AlunosScreenState extends State<AlunosScreen> {
                       ),
                       decoration: InputDecoration(
                         hintText: narrow ? 'Buscar...' : 'Buscar por nome...',
-                        hintStyle: TextStyle(color: appBarFg.withOpacity(0.72)),
+                        hintStyle: TextStyle(color: appBarFg.withAlpha(184)),
                         prefixIcon: Icon(Icons.search_rounded, color: appBarFg),
                         suffixIcon: _searchQuery.isNotEmpty
                             ? IconButton(
@@ -425,7 +686,7 @@ class _AlunosScreenState extends State<AlunosScreen> {
                               )
                             : null,
                         filled: true,
-                        fillColor: appBarFg.withOpacity(0.12),
+                        fillColor: appBarFg.withAlpha(31),
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 12,
                           vertical: 10,
@@ -433,13 +694,13 @@ class _AlunosScreenState extends State<AlunosScreen> {
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(t.buttonRadius),
                           borderSide: BorderSide(
-                            color: appBarFg.withOpacity(0.14),
+                            color: appBarFg.withAlpha(36),
                           ),
                         ),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(t.buttonRadius),
                           borderSide: BorderSide(
-                            color: appBarFg.withOpacity(0.14),
+                            color: appBarFg.withAlpha(36),
                           ),
                         ),
                         focusedBorder: OutlineInputBorder(
@@ -529,7 +790,7 @@ class _AlunosScreenState extends State<AlunosScreen> {
             width: 43,
             height: 43,
             decoration: BoxDecoration(
-              color: t.primary.withOpacity(0.10),
+              color: t.primary.withAlpha(26),
               borderRadius: BorderRadius.circular(t.buttonRadius),
             ),
             child: Icon(Icons.groups_rounded, color: t.primary),
@@ -566,9 +827,9 @@ class _AlunosScreenState extends State<AlunosScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
               decoration: BoxDecoration(
-                color: t.primary.withOpacity(0.10),
+                color: t.primary.withAlpha(26),
                 borderRadius: BorderRadius.circular(99),
-                border: Border.all(color: t.primary.withOpacity(0.18)),
+                border: Border.all(color: t.primary.withAlpha(46)),
               ),
               child: Text(
                 '$totalFiltrado/$totalGeral',
@@ -823,6 +1084,7 @@ class _AlunosScreenState extends State<AlunosScreen> {
                 clipBehavior: Clip.antiAlias,
                 child: InkWell(
                   onTap: () => _abrirDetalheAluno(aluno.id),
+ onLongPress: () => abrirRedeParentesco(context, alunoId: aluno.id, abrirPerfil: _abrirDetalheAluno),
                   child: Container(
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(t.cardRadius - 5),
@@ -837,11 +1099,12 @@ class _AlunosScreenState extends State<AlunosScreen> {
                               width: 92,
                               height: 92,
                               child: fotoUrl != null && fotoUrl.isNotEmpty
-                                  ? CachedNetworkImage(
+                                  ? UaiStudentPhoto(
+                                      studentId: aluno.id,
                                       imageUrl: fotoUrl,
+                                      profile: UaiStudentPhotoProfile.list,
                                       fit: BoxFit.cover,
-                                      errorWidget: (context, url, error) =>
-                                          _placeholderIcon(),
+                                      fallback: _placeholderIcon(),
                                     )
                                   : _placeholderIcon(),
                             ),
@@ -851,7 +1114,7 @@ class _AlunosScreenState extends State<AlunosScreen> {
                               right: 0,
                               child: Container(
                                 height: 23,
-                                color: t.primary.withOpacity(0.92),
+                                color: t.primary.withAlpha(235),
                                 child: Center(
                                   child: Text(
                                     '$idade ANOS',
@@ -904,6 +1167,7 @@ class _AlunosScreenState extends State<AlunosScreen> {
                             ),
                           ),
                         ),
+                        IconButton(tooltip: "Ver parentes", icon: const Icon(Icons.family_restroom, size: 20), onPressed: () => abrirRedeParentesco(context, alunoId: aluno.id, abrirPerfil: _abrirDetalheAluno)),
                         if (hasValidGraduation)
                           Container(
                             width: 66,
@@ -962,6 +1226,7 @@ class _AlunosScreenState extends State<AlunosScreen> {
               clipBehavior: Clip.antiAlias,
               child: InkWell(
                 onTap: () => _abrirDetalheAluno(aluno.id),
+ onLongPress: () => abrirRedeParentesco(context, alunoId: aluno.id, abrirPerfil: _abrirDetalheAluno),
                 child: Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(t.cardRadius - 5),
@@ -976,11 +1241,12 @@ class _AlunosScreenState extends State<AlunosScreen> {
                           children: [
                             Positioned.fill(
                               child: fotoUrl != null && fotoUrl.isNotEmpty
-                                  ? CachedNetworkImage(
+                                  ? UaiStudentPhoto(
+                                      studentId: aluno.id,
                                       imageUrl: fotoUrl,
+                                      profile: UaiStudentPhotoProfile.grid,
                                       fit: BoxFit.cover,
-                                      errorWidget: (context, url, error) =>
-                                          _placeholderIcon(size: 74),
+                                      fallback: _placeholderIcon(size: 74),
                                     )
                                   : _placeholderIcon(size: 74),
                             ),
@@ -990,7 +1256,7 @@ class _AlunosScreenState extends State<AlunosScreen> {
                               right: 0,
                               child: Container(
                                 height: 27,
-                                color: t.primary.withOpacity(0.92),
+                                color: t.primary.withAlpha(235),
                                 child: Center(
                                   child: Text(
                                     '$idade ANOS',
@@ -1106,6 +1372,7 @@ class _AlunosScreenState extends State<AlunosScreen> {
                 clipBehavior: Clip.antiAlias,
                 child: InkWell(
                   onTap: () => _abrirDetalheAluno(aluno.id),
+ onLongPress: () => abrirRedeParentesco(context, alunoId: aluno.id, abrirPerfil: _abrirDetalheAluno),
                   child: Container(
                     height: 58,
                     padding: const EdgeInsets.symmetric(horizontal: 9),
@@ -1124,10 +1391,12 @@ class _AlunosScreenState extends State<AlunosScreen> {
                           ),
                           child: fotoUrl != null && fotoUrl.isNotEmpty
                               ? ClipOval(
-                                  child: CachedNetworkImage(
+                                  child: UaiStudentPhoto(
+                                    studentId: aluno.id,
                                     imageUrl: fotoUrl,
+                                    profile: UaiStudentPhotoProfile.compact,
                                     fit: BoxFit.cover,
-                                    errorWidget: (context, url, error) => Icon(
+                                    fallback: Icon(
                                       Icons.person_rounded,
                                       size: 28,
                                       color: t.textMuted,
@@ -1216,6 +1485,8 @@ class _AlunosScreenState extends State<AlunosScreen> {
           }
 
           final allDocs = snapshot.data!.docs;
+          _docsAlunosExportacao = allDocs;
+          _docsAlunosVieramDoCache = snapshot.data!.metadata.isFromCache;
           final filteredDocs = _filtrarAlunos(allDocs);
 
           if (filteredDocs.isEmpty && _searchQuery.isNotEmpty) {

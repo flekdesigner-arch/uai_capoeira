@@ -198,9 +198,9 @@ class _EditarTextosScreenState extends State<EditarTextosScreen> {
             width: 62,
             height: 62,
             decoration: BoxDecoration(
-              color: onPrimary.withOpacity(0.14),
+              color: onPrimary.withAlpha(36),
               borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: onPrimary.withOpacity(0.16)),
+              border: Border.all(color: onPrimary.withAlpha(41)),
             ),
             child: Icon(Icons.edit_note_rounded, color: onPrimary, size: 34),
           );
@@ -225,7 +225,7 @@ class _EditarTextosScreenState extends State<EditarTextosScreen> {
                 'Edite os títulos e descrições exibidos no menu e nas seções públicas do site.',
                 textAlign: narrow ? TextAlign.center : TextAlign.left,
                 style: TextStyle(
-                  color: onPrimary.withOpacity(0.82),
+                  color: onPrimary.withAlpha(209),
                   fontSize: 13,
                   height: 1.35,
                   fontWeight: FontWeight.w500,
@@ -272,9 +272,9 @@ class _EditarTextosScreenState extends State<EditarTextosScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: onPrimary.withOpacity(0.14),
+        color: onPrimary.withAlpha(36),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: onPrimary.withOpacity(0.16)),
+        border: Border.all(color: onPrimary.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -317,7 +317,7 @@ class _EditarTextosScreenState extends State<EditarTextosScreen> {
       decoration: BoxDecoration(
         color: t.card,
         borderRadius: BorderRadius.circular(t.cardRadius),
-        border: Border.all(color: accent.withOpacity(0.16)),
+        border: Border.all(color: accent.withAlpha(41)),
         boxShadow: t.softShadow,
       ),
       child: Column(
@@ -329,9 +329,9 @@ class _EditarTextosScreenState extends State<EditarTextosScreen> {
                 width: 46,
                 height: 46,
                 decoration: BoxDecoration(
-                  color: Color.alphaBlend(accent.withOpacity(0.13), t.cardAlt),
+                  color: Color.alphaBlend(accent.withAlpha(33), t.cardAlt),
                   borderRadius: BorderRadius.circular(t.buttonRadius),
-                  border: Border.all(color: accent.withOpacity(0.18)),
+                  border: Border.all(color: accent.withAlpha(46)),
                 ),
                 child: Icon(icon, color: accent, size: 24),
               ),

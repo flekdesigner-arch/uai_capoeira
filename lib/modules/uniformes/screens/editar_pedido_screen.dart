@@ -52,19 +52,7 @@ class _EditarPedidoScreenState extends State<EditarPedidoScreen> {
         : const Color(0xFFFFFFFF);
   }
 
-  Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance())
-        .abs();
-    if (diff >= 0.26) return color;
 
-    final bgIsDark = background.computeLuminance() < 0.45;
-    final hsl = HSLColor.fromColor(color);
-
-    return hsl
-        .withLightness(bgIsDark ? 0.72 : 0.32)
-        .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
-        .toColor();
-  }
 
   @override
   void initState() {
@@ -411,12 +399,12 @@ class _EditarPedidoScreenState extends State<EditarPedidoScreen> {
                               backgroundImage: imageProvider,
                               radius: 20,
                             ),
-                            placeholder: (_, __) => CircleAvatar(
+                            placeholder: (_, _) => CircleAvatar(
                               radius: 20,
                               backgroundColor: cardAlt,
                               child: Icon(Icons.person, color: textMuted),
                             ),
-                            errorWidget: (_, __, ___) => CircleAvatar(
+                            errorWidget: (_, _, _) => CircleAvatar(
                               radius: 20,
                               backgroundColor: cardAlt,
                               child: Icon(Icons.person, color: textMuted),
@@ -748,7 +736,7 @@ class _EditarPedidoScreenState extends State<EditarPedidoScreen> {
                               states,
                             ) {
                               if (states.contains(WidgetState.selected)) {
-                                return primary.withOpacity(0.1);
+                                return primary.withAlpha(26);
                               }
                               return cardAlt;
                             }),
@@ -810,7 +798,7 @@ class _EditarPedidoScreenState extends State<EditarPedidoScreen> {
                               states,
                             ) {
                               if (states.contains(WidgetState.selected)) {
-                                return primary.withOpacity(0.1);
+                                return primary.withAlpha(26);
                               }
                               return cardAlt;
                             }),
@@ -1018,9 +1006,9 @@ class _SelecionarRemessaDialogState extends State<_SelecionarRemessaDialog> {
                     .snapshots(),
                 builder: (context, snapshot) {
                   if (!snapshot.hasData)
-                    return Center(
+                    { return Center(
                       child: CircularProgressIndicator(color: primary),
-                    );
+                    ); }
                   var docs = snapshot.data!.docs;
                   if (_search.isNotEmpty) {
                     docs = docs.where((d) {
@@ -1030,12 +1018,12 @@ class _SelecionarRemessaDialogState extends State<_SelecionarRemessaDialog> {
                     }).toList();
                   }
                   if (docs.isEmpty)
-                    return Center(
+                    { return Center(
                       child: Text(
                         'Nenhuma remessa encontrada',
                         style: TextStyle(color: textMuted),
                       ),
-                    );
+                    ); }
                   return ListView.builder(
                     itemCount: docs.length,
                     itemBuilder: (_, i) {
@@ -1232,7 +1220,7 @@ class _SelecionarItemPedidoDialogState
                     final quantidadeEstoque = variacao['quantidade'] ?? 0;
                     return ListTile(
                       leading: CircleAvatar(
-                        backgroundColor: context.uai.primary.withOpacity(0.1),
+                        backgroundColor: context.uai.primary.withAlpha(26),
                         child: Text(
                           tamanho.toString().toUpperCase(),
                           style: TextStyle(
@@ -1302,7 +1290,7 @@ class _SelecionarItemPedidoDialogState
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(context.uai.cardRadius),
       ),
-      child: Container(
+      child: SizedBox(
         width: double.maxFinite,
         height: MediaQuery.of(context).size.height * 0.7,
         child: Column(
@@ -1388,9 +1376,9 @@ class _SelecionarItemPedidoDialogState
                     .snapshots(),
                 builder: (context, snapshot) {
                   if (!snapshot.hasData)
-                    return Center(
+                    { return Center(
                       child: CircularProgressIndicator(color: primary),
-                    );
+                    ); }
 
                   var docs = snapshot.data!.docs.where((doc) {
                     final data = doc.data() as Map<String, dynamic>;
@@ -1451,7 +1439,7 @@ class _SelecionarItemPedidoDialogState
                           width: 40,
                           height: 40,
                           decoration: BoxDecoration(
-                            color: primary.withOpacity(0.1),
+                            color: primary.withAlpha(26),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: fotoUrl != null && fotoUrl.isNotEmpty
@@ -1460,11 +1448,11 @@ class _SelecionarItemPedidoDialogState
                                   child: CachedNetworkImage(
                                     imageUrl: fotoUrl,
                                     fit: BoxFit.cover,
-                                    placeholder: (_, __) => Icon(
+                                    placeholder: (_, _) => Icon(
                                       Icons.shopping_bag,
                                       color: primary,
                                     ),
-                                    errorWidget: (_, __, ___) => Icon(
+                                    errorWidget: (_, _, _) => Icon(
                                       Icons.shopping_bag,
                                       color: primary,
                                     ),

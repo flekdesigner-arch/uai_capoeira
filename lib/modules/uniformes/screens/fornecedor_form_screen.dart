@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/uniformes/services/fornecedor_service.dart';
 
@@ -131,11 +130,6 @@ class _FornecedorFormScreenState extends State<FornecedorFormScreen> {
   Widget build(BuildContext context) {
     final primary = context.uai.primary;
     final onPrimary = _readableOn(primary);
-    final textPrimary = context.uai.textPrimary;
-    final textSecondary = context.uai.textSecondary;
-    final textMuted = context.uai.textMuted;
-    final border = context.uai.border;
-    final cardAlt = context.uai.cardAlt;
 
     return Scaffold(
       backgroundColor: context.uai.background,

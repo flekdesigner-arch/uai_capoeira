@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'dart:typed_data';
 
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/shared/painters/signature_painter.dart';
@@ -29,6 +28,7 @@ class _SignatureScreenState extends State<SignatureScreen> {
   late SignatureController _signatureController;
 
   bool _isLoading = false;
+  bool _tinhaAssinatura = false;
   String? _erroMensagem;
 
   @override
@@ -56,7 +56,9 @@ class _SignatureScreenState extends State<SignatureScreen> {
   }
 
   void _onSignatureChanged() {
-    if (!mounted) return;
+    if (!mounted || _tinhaAssinatura == _signatureController.hasSignature)
+      { return; }
+    _tinhaAssinatura = _signatureController.hasSignature;
     setState(() {});
   }
 
@@ -221,9 +223,9 @@ class _SignatureScreenState extends State<SignatureScreen> {
       margin: const EdgeInsets.fromLTRB(12, 12, 12, 6),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), t.card),
+        color: Color.alphaBlend(accent.withAlpha(20), t.card),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: accent.withOpacity(0.16)),
+        border: Border.all(color: accent.withAlpha(41)),
       ),
       child: Row(
         children: [
@@ -322,12 +324,12 @@ class _SignatureScreenState extends State<SignatureScreen> {
       constraints: const BoxConstraints(maxWidth: 230),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       decoration: BoxDecoration(
-        color: forceLightCard ? Colors.white.withOpacity(0.94) : t.card,
+        color: forceLightCard ? Colors.white.withAlpha(240) : t.card,
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: accent.withOpacity(0.18)),
+        border: Border.all(color: accent.withAlpha(46)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.10),
+            color: Colors.black.withAlpha(26),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -364,9 +366,9 @@ class _SignatureScreenState extends State<SignatureScreen> {
       constraints: const BoxConstraints(maxWidth: 260),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.62),
+        color: Colors.black.withAlpha(158),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: Colors.white.withOpacity(0.14)),
+        border: Border.all(color: Colors.white.withAlpha(36)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -423,9 +425,7 @@ class _SignatureScreenState extends State<SignatureScreen> {
             Positioned.fill(
               child: RepaintBoundary(
                 child: SignaturePad(
-                  key: ValueKey(
-                    'signature-pad-${hasSignature ? 'signed' : 'empty'}',
-                  ),
+                  key: const ValueKey('signature-pad'),
                   controller: _signatureController,
                   penColor: Colors.black,
                   strokeWidth: landscapeFull ? 3.6 : 3.2,
@@ -439,9 +439,9 @@ class _SignatureScreenState extends State<SignatureScreen> {
                     showCenterText: showBigHint && !hasSignature,
                     centerText: 'Assine aqui',
                     isLandscape: landscapeFull,
-                    guideColor: Colors.grey.withOpacity(0.16),
-                    baseLineColor: primary.withOpacity(0.18),
-                    textColor: Colors.grey.withOpacity(0.28),
+                    guideColor: Colors.grey.withAlpha(41),
+                    baseLineColor: primary.withAlpha(46),
+                    textColor: Colors.grey.withAlpha(71),
                   ),
                 ),
               ),
@@ -501,12 +501,12 @@ class _SignatureScreenState extends State<SignatureScreen> {
         constraints: const BoxConstraints(maxWidth: 620),
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.62),
+          color: Colors.black.withAlpha(158),
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: Colors.white.withOpacity(0.12)),
+          border: Border.all(color: Colors.white.withAlpha(31)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.20),
+              color: Colors.black.withAlpha(51),
               blurRadius: 16,
               offset: const Offset(0, 6),
             ),
@@ -535,9 +535,9 @@ class _SignatureScreenState extends State<SignatureScreen> {
       style: OutlinedButton.styleFrom(
         foregroundColor: dark ? Colors.white : t.textPrimary,
         side: BorderSide(
-          color: dark ? Colors.white.withOpacity(0.32) : t.border,
+          color: dark ? Colors.white.withAlpha(82) : t.border,
         ),
-        backgroundColor: dark ? Colors.white.withOpacity(0.08) : t.card,
+        backgroundColor: dark ? Colors.white.withAlpha(20) : t.card,
         padding: const EdgeInsets.symmetric(vertical: 13),
         textStyle: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12),
         shape: RoundedRectangleBorder(
@@ -559,10 +559,10 @@ class _SignatureScreenState extends State<SignatureScreen> {
         foregroundColor: dark ? Colors.white : primary,
         side: BorderSide(
           color: dark
-              ? Colors.white.withOpacity(0.32)
-              : primary.withOpacity(0.22),
+              ? Colors.white.withAlpha(82)
+              : primary.withAlpha(56),
         ),
-        backgroundColor: dark ? Colors.white.withOpacity(0.08) : t.card,
+        backgroundColor: dark ? Colors.white.withAlpha(20) : t.card,
         padding: const EdgeInsets.symmetric(vertical: 13),
         textStyle: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12),
         shape: RoundedRectangleBorder(
@@ -692,14 +692,14 @@ class _SignatureScreenState extends State<SignatureScreen> {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: forceLight
-            ? const Color(0xFFFFF1F2).withOpacity(0.96)
-            : Color.alphaBlend(danger.withOpacity(0.08), t.card),
+            ? const Color(0xFFFFF1F2).withAlpha(245)
+            : Color.alphaBlend(danger.withAlpha(20), t.card),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: danger.withOpacity(0.18)),
+        border: Border.all(color: danger.withAlpha(46)),
         boxShadow: compact
             ? [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.10),
+                  color: Colors.black.withAlpha(26),
                   blurRadius: 10,
                   offset: const Offset(0, 4),
                 ),
@@ -767,7 +767,7 @@ class _SignatureGuidePainter extends CustomPainter {
     canvas.drawLine(Offset(startX, baseY), Offset(endX, baseY), baseLinePaint);
 
     final verticalPaint = Paint()
-      ..color = guideColor.withOpacity(0.50)
+      ..color = guideColor.withAlpha(128)
       ..strokeWidth = 1;
 
     canvas.drawLine(

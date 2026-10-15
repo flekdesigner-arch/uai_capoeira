@@ -1,9 +1,11 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/certificados/models/certificado_preview_data.dart';
 import 'package:uai_capoeira/modules/certificados/models/certificado_slot_model.dart';
+import 'package:uai_capoeira/modules/certificados/models/certificado_studio_model.dart';
 import 'package:uai_capoeira/modules/certificados/models/certificado_template_tipo.dart';
 import 'package:uai_capoeira/modules/certificados/services/certificado_svg_service.dart';
 import 'package:uai_capoeira/modules/eventos/models/evento_model.dart';
@@ -23,6 +25,18 @@ class CertificadoPreviewWidget extends StatefulWidget {
   /// Configuração visual dinâmica dos textos.
   /// Quando não vier nada, usa o padrão atual do certificado.
   final Map<String, CertificadoTextoCampoConfig>? textosConfig;
+  final CertificadoVisualConfig? visualConfig;
+  final CertificadoStudioConfig? studioConfig;
+  final bool studioInteractive;
+  final String? selectedStudioLayerId;
+  final ValueChanged<String>? onStudioLayerSelected;
+  final ValueChanged<CertificadoStudioLayer>? onStudioLayerChanged;
+  final String? selectedStudioTextId;
+  final ValueChanged<String>? onStudioTextSelected;
+  final ValueChanged<CertificadoStudioTextLayer>? onStudioTextChanged;
+  final bool studioQrSelected;
+  final VoidCallback? onStudioQrSelected;
+  final ValueChanged<CertificadoStudioQrConfig>? onStudioQrChanged;
 
   const CertificadoPreviewWidget({
     super.key,
@@ -37,6 +51,18 @@ class CertificadoPreviewWidget extends StatefulWidget {
     this.exportKey,
     this.maxHeight,
     this.textosConfig,
+    this.visualConfig,
+    this.studioConfig,
+    this.studioInteractive = false,
+    this.selectedStudioLayerId,
+    this.onStudioLayerSelected,
+    this.onStudioLayerChanged,
+    this.selectedStudioTextId,
+    this.onStudioTextSelected,
+    this.onStudioTextChanged,
+    this.studioQrSelected = false,
+    this.onStudioQrSelected,
+    this.onStudioQrChanged,
   });
 
   @override
@@ -46,6 +72,12 @@ class CertificadoPreviewWidget extends StatefulWidget {
 
 class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
   final CertificadoSvgService _service = const CertificadoSvgService();
+
+  bool get _touchStudioUi =>
+      widget.studioInteractive && MediaQuery.sizeOf(context).shortestSide < 700;
+
+  double get _studioHandleSize => _touchStudioUi ? 24.0 : 12.0;
+  double get _studioHandleOffset => _touchStudioUi ? -10.0 : -5.0;
 
   late Future<_CertificadoPreviewPayload> _futurePayload;
 
@@ -64,8 +96,12 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
         oldWidget.cor1 != widget.cor1 ||
         oldWidget.cor2 != widget.cor2 ||
         oldWidget.corContorno != widget.corContorno ||
-        oldWidget.data != widget.data ||
+        _previewDataFingerprint(oldWidget.data) !=
+            _previewDataFingerprint(widget.data) ||
         oldWidget.textosConfig != widget.textosConfig ||
+        oldWidget.visualConfig != widget.visualConfig ||
+        _studioAssetsFingerprint(oldWidget.studioConfig) !=
+            _studioAssetsFingerprint(widget.studioConfig) ||
         oldWidget.showTextOverlay != widget.showTextOverlay;
 
     if (changed) {
@@ -73,28 +109,123 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
     }
   }
 
+  String _previewDataFingerprint(CertificadoPreviewData? data) {
+    if (data == null) return '';
+    final buffer = StringBuffer()
+      ..write(data.alunoNome)
+      ..write('|${data.cpf}')
+      ..write('|${data.sexo}')
+      ..write('|${data.graduacaoNova}')
+      ..write('|${data.frase}')
+      ..write('|${data.localData}');
+    for (final a in data.assinaturas) {
+      buffer.write('|${a.nome}:${a.apelido}');
+    }
+    return buffer.toString();
+  }
+
+  String _studioAssetsFingerprint(CertificadoStudioConfig? studio) {
+    if (studio == null) return '';
+    final buffer = StringBuffer()
+      ..write(studio.baseEmBranco)
+      ..write('|')
+      ..write(studio.baseSvgStoragePath)
+      ..write('|${studio.basePreviewStoragePath}')
+      ..write('|${studio.orientacaoPagina}:${studio.paginaLarguraMm}:${studio.paginaAlturaMm}:${studio.ajusteBaseSvg}')
+      ..write('|')
+      ..write(studio.substituicoesCor.entries.map((e) => '${e.key}:${e.value}').join(','))
+      ..write('|qr:${studio.qrCode.toMap()}');
+    for (final layer in studio.camadas) {
+      buffer
+        ..write('|${layer.id}:${layer.storagePath}:${layer.previewStoragePath}:${layer.visivel}:')
+        ..write(layer.substituicoesCor.entries.map((e) => '${e.key}:${e.value}').join(','));
+    }
+    return buffer.toString();
+  }
+
+  Color _hexColor(String? value, Color fallback) {
+    final clean = (value ?? '').trim().replaceAll('#', '');
+    if (!RegExp(r'^[0-9A-Fa-f]{6}$').hasMatch(clean)) return fallback;
+    return Color(int.parse('FF$clean', radix: 16));
+  }
+
   void _reloadPayload() {
     _futurePayload = _loadPayload();
   }
 
   Future<_CertificadoPreviewPayload> _loadPayload() async {
-    final svg = await _service.gerarPreviewColorido(
-      tipo: widget.tipo,
-      cor1: widget.cor1,
-      cor2: widget.cor2,
-      corContorno: widget.corContorno,
+    final visual = widget.visualConfig;
+    final studio = widget.studioConfig;
+    final externalBase = studio?.baseSvgStoragePath?.trim().isNotEmpty == true;
+    final previewPath = studio?.basePreviewStoragePath?.trim() ?? '';
+
+    Uint8List? basePreviewBytes;
+    String svg;
+
+    if (externalBase && previewPath.isNotEmpty) {
+      // SVG Corel pesado: o Canvas usa o PNG cacheado e não tenta compilar
+      // milhares de paths no flutter_svg. O SVG mestre continua no Storage.
+      basePreviewBytes = await _service.carregarBytesStorage(
+        previewPath,
+        maxBytes: 20 * 1024 * 1024,
+      );
+      svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 $_documentWidth $_documentHeight"></svg>';
+    } else {
+      svg = await _service.gerarPreviewColorido(
+        tipo: widget.tipo,
+        cor1: widget.cor1,
+        cor2: widget.cor2,
+        corContorno: widget.corContorno,
+        corFundo: visual == null
+            ? null
+            : _hexColor(visual.corFundo, const Color(0xFFEBECEC)),
+        corEstrutura: visual == null
+            ? null
+            : _hexColor(visual.corEstrutura, const Color(0xFF373435)),
+        corDestaque: visual == null
+            ? null
+            : _hexColor(visual.corDestaque, const Color(0xFFB83336)),
+        corDetalhe: visual == null
+            ? null
+            : _hexColor(visual.corDetalhe, const Color(0xFFBDBFC1)),
+        studioConfig: widget.studioConfig,
+      );
+    }
+
+    final baseSlots = await _service.carregarSlotsDoGuia(widget.tipo);
+    final slots = _service.aplicarLayoutsStudio(baseSlots, widget.studioConfig);
+    final camadas = <_CertificadoStudioLayerPayload>[];
+    final studioLayers = studio?.camadas
+            .where((e) => e.visivel && e.storagePath.trim().isNotEmpty)
+            .toList() ??
+        const <CertificadoStudioLayer>[];
+    for (final layer in studioLayers) {
+      final layerPreviewPath = layer.previewStoragePath?.trim() ?? '';
+      if (layerPreviewPath.isNotEmpty) {
+        final bytes = await _service.carregarBytesStorage(
+          layerPreviewPath,
+          maxBytes: 20 * 1024 * 1024,
+        );
+        camadas.add(_CertificadoStudioLayerPayload(layer: layer, previewBytes: bytes));
+      } else {
+        var layerSvg = await _service.carregarSvgStorage(layer.storagePath);
+        layerSvg = _service.aplicarSubstituicoesCores(layerSvg, layer.substituicoesCor);
+        camadas.add(_CertificadoStudioLayerPayload(layer: layer, svg: layerSvg));
+      }
+    }
+
+    return _CertificadoPreviewPayload(
+      svg: svg,
+      basePreviewBytes: basePreviewBytes,
+      slots: slots,
+      camadas: camadas,
     );
-
-    final slots = await _service.carregarSlotsDoGuia(widget.tipo);
-
-    return _CertificadoPreviewPayload(svg: svg, slots: slots);
   }
 
-  Color _readableOn(Color background) {
-    return background.computeLuminance() > 0.48
-        ? const Color(0xFF111827)
-        : const Color(0xFFFFFFFF);
-  }
+  double get _documentWidth => widget.studioConfig?.larguraDocumentoMm ?? 297.0;
+  double get _documentHeight => widget.studioConfig?.alturaDocumentoMm ?? 210.0;
+
+
 
   Color _ensureVisible(Color color, Color background) {
     final diff = (color.computeLuminance() - background.computeLuminance())
@@ -124,9 +255,15 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
         border: Border.all(color: t.border),
         boxShadow: t.softShadow,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
+      child: LayoutBuilder(
+        builder: (context, outerConstraints) {
+          final shortViewport =
+              outerConstraints.hasBoundedHeight && outerConstraints.maxHeight < 560;
+
+          final content = Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
           if (widget.showHeader) ...[
             Row(
               children: [
@@ -135,11 +272,11 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
                   height: 42,
                   decoration: BoxDecoration(
                     color: Color.alphaBlend(
-                      accent.withOpacity(0.12),
+                      accent.withAlpha(31),
                       t.cardAlt,
                     ),
                     borderRadius: BorderRadius.circular(t.buttonRadius),
-                    border: Border.all(color: accent.withOpacity(0.14)),
+                    border: Border.all(color: accent.withAlpha(36)),
                   ),
                   child: Icon(widget.tipo.icon, color: accent),
                 ),
@@ -186,7 +323,7 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return _buildPreviewFrame(
-                  childBuilder: (_, __, ___) => Center(
+                  childBuilder: (_, _, _) => Center(
                     child: CircularProgressIndicator(color: t.primary),
                   ),
                 );
@@ -195,7 +332,7 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
               if (snapshot.hasError ||
                   (snapshot.data?.svg.trim().isEmpty ?? true)) {
                 return _buildPreviewFrame(
-                  childBuilder: (_, __, ___) => Padding(
+                  childBuilder: (_, _, _) => Padding(
                     padding: const EdgeInsets.all(18),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -243,7 +380,9 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
                 childBuilder: (innerWidth, innerHeight, scale) {
                   return _buildCertificateStack(
                     svg: payload.svg,
+                    basePreviewBytes: payload.basePreviewBytes,
                     slots: payload.slots,
+                    camadas: payload.camadas,
                     data: data,
                     scale: scale,
                     loadingColor: t.primary,
@@ -295,7 +434,26 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
               },
             ),
           ],
-        ],
+            ],
+          );
+
+          // Em janelas menores, split view, PWA e celulares a altura disponível
+          // pode ser menor que a altura natural do preview + cabeçalho/chips.
+          // Em vez de estourar RenderFlex, permitimos rolagem vertical local.
+          // Em telas grandes o widget continua sem scroll e com o layout atual.
+          if (shortViewport) {
+            return Scrollbar(
+              thumbVisibility: false,
+              child: SingleChildScrollView(
+                primary: false,
+                physics: const ClampingScrollPhysics(),
+                child: content,
+              ),
+            );
+          }
+
+          return content;
+        },
       ),
     );
   }
@@ -306,7 +464,7 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
   }) {
     showDialog<void>(
       context: context,
-      barrierColor: Colors.black.withOpacity(0.92),
+      barrierColor: Colors.black.withAlpha(235),
       builder: (dialogContext) {
         return Dialog.fullscreen(
           backgroundColor: Colors.black,
@@ -316,7 +474,7 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
                 Container(
                   padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.92),
+                    color: Colors.black.withAlpha(235),
                     border: const Border(
                       bottom: BorderSide(color: Colors.white12),
                     ),
@@ -344,7 +502,7 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                color: Colors.white.withOpacity(0.72),
+                                color: Colors.white.withAlpha(184),
                                 fontWeight: FontWeight.w600,
                                 fontSize: 11,
                               ),
@@ -374,10 +532,11 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
                           final availableWidth = constraints.maxWidth;
                           final availableHeight = constraints.maxHeight;
 
-                          // A4 paisagem: 297 x 210.
-                          // Aqui usamos o maior tamanho possível sem cortar.
-                          final scaleByWidth = availableWidth / 297;
-                          final scaleByHeight = availableHeight / 210;
+                          // Documento A4 definido pelo Studio.
+                          final pageW = _documentWidth;
+                          final pageH = _documentHeight;
+                          final scaleByWidth = availableWidth / pageW;
+                          final scaleByHeight = availableHeight / pageH;
                           final baseScale = scaleByWidth < scaleByHeight
                               ? scaleByWidth
                               : scaleByHeight;
@@ -386,14 +545,14 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
                           final scale = baseScale.clamp(1.0, 4.0);
 
                           return Container(
-                            width: 297 * scale,
-                            height: 210 * scale,
+                            width: pageW * scale,
+                            height: pageH * scale,
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(6),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withOpacity(0.45),
+                                  color: Colors.black.withAlpha(115),
                                   blurRadius: 24,
                                   offset: const Offset(0, 10),
                                 ),
@@ -402,7 +561,9 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
                             clipBehavior: Clip.antiAlias,
                             child: _buildCertificateStack(
                               svg: payload.svg,
+                              basePreviewBytes: payload.basePreviewBytes,
                               slots: payload.slots,
+                              camadas: payload.camadas,
                               data: data,
                               scale: scale,
                               loadingColor: const Color(0xFFB71C1C),
@@ -416,12 +577,12 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
-                  color: Colors.black.withOpacity(0.92),
+                  color: Colors.black.withAlpha(235),
                   child: Text(
                     'Toque no X para fechar. Use scroll/gesto de pinça para aproximar.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.70),
+                      color: Colors.white.withAlpha(179),
                       fontSize: 11.5,
                       fontWeight: FontWeight.w600,
                     ),
@@ -437,7 +598,9 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
 
   Widget _buildCertificateStack({
     required String svg,
+    Uint8List? basePreviewBytes,
     required Map<String, CertificadoSlotModel> slots,
+    required List<_CertificadoStudioLayerPayload> camadas,
     required CertificadoPreviewData data,
     required double scale,
     Color loadingColor = const Color(0xFFB71C1C),
@@ -449,25 +612,372 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        SvgPicture.string(
-          svg,
-          fit: BoxFit.contain,
-          placeholderBuilder: (_) {
-            return Center(
-              child: CircularProgressIndicator(color: loadingColor),
-            );
-          },
-        ),
+        if (basePreviewBytes != null)
+          Image.memory(
+            basePreviewBytes,
+            fit: BoxFit.fill,
+            gaplessPlayback: true,
+            filterQuality: FilterQuality.high,
+          )
+        else
+          SvgPicture.string(
+            svg,
+            fit: BoxFit.contain,
+            placeholderBuilder: (_) {
+              return Center(
+                child: CircularProgressIndicator(color: loadingColor),
+              );
+            },
+          ),
+        ..._buildStudioSvgLayers(camadas, scale),
         if (widget.showTextOverlay)
           ..._buildTextOverlay(
             data: data,
             slots: slots,
-            innerWidth: 297 * scale,
-            innerHeight: 210 * scale,
+            innerWidth: _documentWidth * scale,
+            innerHeight: _documentHeight * scale,
             scale: scale,
+          ),
+        ..._buildStudioTextosLivres(data, scale),
+        ..._buildStudioQr(scale),
+      ],
+    );
+  }
+
+  List<Widget> _buildStudioSvgLayers(
+    List<_CertificadoStudioLayerPayload> camadas,
+    double scale,
+  ) {
+    return camadas.map((item) {
+      var layer = item.layer;
+      final currentLayers = widget.studioConfig?.camadas ?? const <CertificadoStudioLayer>[];
+      for (final candidate in currentLayers) {
+        if (candidate.id == item.layer.id) {
+          layer = candidate;
+          break;
+        }
+      }
+      final selected = widget.selectedStudioLayerId == layer.id;
+
+      Widget svg = Opacity(
+        opacity: layer.opacidade.clamp(0.0, 1.0).toDouble(),
+        child: item.previewBytes != null
+            ? Image.memory(
+                item.previewBytes!,
+                fit: BoxFit.fill,
+                gaplessPlayback: true,
+                filterQuality: FilterQuality.high,
+              )
+            : SvgPicture.string(item.svg ?? '', fit: BoxFit.fill),
+      );
+
+      if (widget.studioInteractive) {
+        svg = GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => widget.onStudioLayerSelected?.call(layer.id),
+          onPanStart: (_) => widget.onStudioLayerSelected?.call(layer.id),
+          onPanUpdate: layer.bloqueada
+              ? null
+              : (details) {
+                  widget.onStudioLayerChanged?.call(
+                    layer.copyWith(
+                      x: (layer.x + (details.delta.dx / scale)).clamp(-_documentWidth, _documentWidth * 2).toDouble(),
+                      y: (layer.y + (details.delta.dy / scale)).clamp(-_documentHeight, _documentHeight * 2).toDouble(),
+                    ),
+                  );
+                },
+          child: Stack(
+            fit: StackFit.expand,
+            clipBehavior: Clip.none,
+            children: [
+              svg,
+              if (selected)
+                IgnorePointer(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(color: const Color(0xFF00BCD4), width: 1.5),
+                    ),
+                  ),
+                ),
+              if (selected && !layer.bloqueada)
+                Positioned(
+                  right: _studioHandleOffset,
+                  bottom: _studioHandleOffset,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onPanUpdate: (details) {
+                      widget.onStudioLayerChanged?.call(
+                        layer.copyWith(
+                          largura: (layer.largura + (details.delta.dx / scale)).clamp(2.0, 594.0).toDouble(),
+                          altura: (layer.altura + (details.delta.dy / scale)).clamp(2.0, 420.0).toDouble(),
+                        ),
+                      );
+                    },
+                    child: Container(
+                      width: _studioHandleSize,
+                      height: _studioHandleSize,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF00BCD4),
+                        border: Border.all(color: Colors.white, width: 1),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      } else {
+        svg = IgnorePointer(child: svg);
+      }
+
+      return Positioned(
+        left: layer.x * scale,
+        top: layer.y * scale,
+        width: layer.largura * scale,
+        height: layer.altura * scale,
+        child: svg,
+      );
+    }).toList();
+  }
+
+  List<Widget> _buildStudioQr(double scale) {
+    final studio = widget.studioConfig;
+    if (studio == null || !studio.qrCode.ativo) return const <Widget>[];
+    final qr = studio.qrCode;
+    final fg = _colorFromHex(qr.corQrHex, const Color(0xFF111111));
+    final bg = _colorFromHex(qr.corFundoHex, Colors.white);
+    final border = _colorFromHex(qr.corBordaHex, fg);
+    final labelColor = _colorFromHex(qr.corLegendaHex, fg);
+    final labelHeightMm = qr.mostrarLegenda ? 5.8 : 0.0;
+
+    Widget content = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: qr.tamanhoMm * scale,
+          height: qr.tamanhoMm * scale,
+          child: Container(
+            padding: EdgeInsets.all(qr.margemMm * scale),
+            decoration: BoxDecoration(
+              color: qr.fundoTransparente ? Colors.transparent : bg,
+              borderRadius: BorderRadius.circular(qr.raioMm * scale),
+              border: qr.bordaMm > 0
+                  ? Border.all(color: border, width: qr.bordaMm * scale)
+                  : null,
+            ),
+            child: CustomPaint(
+              painter: _StudioQrPreviewPainter(foreground: fg),
+              child: const SizedBox.expand(),
+            ),
+          ),
+        ),
+        if (qr.mostrarLegenda)
+          SizedBox(
+            height: labelHeightMm * scale,
+            child: Center(
+              child: Text(
+                qr.legenda,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: labelColor,
+                  fontSize: (qr.legendaPt / 3.0) * scale,
+                  fontWeight: FontWeight.w700,
+                  height: 1.0,
+                ),
+              ),
+            ),
           ),
       ],
     );
+
+    if (widget.studioInteractive) {
+      content = GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onStudioQrSelected,
+        onPanStart: (_) => widget.onStudioQrSelected?.call(),
+        onPanUpdate: qr.bloqueado
+            ? null
+            : (details) {
+                widget.onStudioQrChanged?.call(
+                  qr.copyWith(
+                    x: (qr.x + details.delta.dx / scale).clamp(0.0, _documentWidth - 8).toDouble(),
+                    y: (qr.y + details.delta.dy / scale).clamp(0.0, _documentHeight - 8).toDouble(),
+                  ),
+                );
+              },
+        child: Stack(
+          fit: StackFit.expand,
+          clipBehavior: Clip.none,
+          children: [
+            content,
+            if (widget.studioQrSelected)
+              IgnorePointer(
+                child: Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: const Color(0xFF00E5FF), width: 1.5),
+                  ),
+                ),
+              ),
+            if (widget.studioQrSelected && !qr.bloqueado)
+              Positioned(
+                right: _studioHandleOffset,
+                bottom: _studioHandleOffset,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onPanUpdate: (details) {
+                    final delta = (details.delta.dx.abs() >= details.delta.dy.abs()
+                            ? details.delta.dx
+                            : details.delta.dy) /
+                        scale;
+                    widget.onStudioQrChanged?.call(
+                      qr.copyWith(tamanhoMm: (qr.tamanhoMm + delta).clamp(14.0, 60.0).toDouble()),
+                    );
+                  },
+                  child: Container(
+                    width: _studioHandleSize,
+                    height: _studioHandleSize,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF00E5FF),
+                      border: Border.all(color: Colors.white, width: 1),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      );
+    } else {
+      content = IgnorePointer(child: content);
+    }
+
+    return [
+      Positioned(
+        left: qr.x * scale,
+        top: qr.y * scale,
+        width: qr.tamanhoMm * scale,
+        height: (qr.tamanhoMm + labelHeightMm) * scale,
+        child: content,
+      ),
+    ];
+  }
+
+  List<Widget> _buildStudioTextosLivres(
+    CertificadoPreviewData data,
+    double scale,
+  ) {
+    final textos = widget.studioConfig?.textosLivres ?? const <CertificadoStudioTextLayer>[];
+    return textos.where((e) => e.visivel).map((item) {
+      final selected = widget.selectedStudioTextId == item.id;
+      final text = _resolverTextoStudio(item.textoTemplate, data);
+      final align = _textAlignFromConfig(item.alinhamento);
+      final color = _colorFromHex(item.corHex, const Color(0xFF1A0202));
+
+      Widget content = Container(
+        alignment: align == TextAlign.left
+            ? Alignment.topLeft
+            : align == TextAlign.right
+                ? Alignment.topRight
+                : Alignment.topCenter,
+        child: _PreviewParagraphText(
+          text: text,
+          textAlign: align,
+          lineHeight: 1.08,
+          style: TextStyle(
+            color: color,
+            fontSize: (item.tamanho / 3.0) * scale,
+            fontWeight: item.negrito ? FontWeight.w900 : FontWeight.w500,
+            fontFamily: item.fonte,
+            height: 1.0,
+          ),
+        ),
+      );
+
+      if (widget.studioInteractive) {
+        content = GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => widget.onStudioTextSelected?.call(item.id),
+          onPanStart: (_) => widget.onStudioTextSelected?.call(item.id),
+          onPanUpdate: item.bloqueada
+              ? null
+              : (details) {
+                  widget.onStudioTextChanged?.call(
+                    item.copyWith(
+                      x: (item.x + details.delta.dx / scale).clamp(-_documentWidth, _documentWidth * 2).toDouble(),
+                      y: (item.y + details.delta.dy / scale).clamp(-_documentHeight, _documentHeight * 2).toDouble(),
+                    ),
+                  );
+                },
+          child: Stack(
+            fit: StackFit.expand,
+            clipBehavior: Clip.none,
+            children: [
+              content,
+              if (selected)
+                IgnorePointer(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(color: const Color(0xFFFFB300), width: 1.4),
+                    ),
+                  ),
+                ),
+              if (selected && !item.bloqueada)
+                Positioned(
+                  right: _studioHandleOffset,
+                  bottom: _studioHandleOffset,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onPanUpdate: (details) {
+                      widget.onStudioTextChanged?.call(
+                        item.copyWith(
+                          largura: (item.largura + details.delta.dx / scale).clamp(4.0, 594.0).toDouble(),
+                          altura: (item.altura + details.delta.dy / scale).clamp(3.0, 420.0).toDouble(),
+                        ),
+                      );
+                    },
+                    child: Container(
+                      width: _studioHandleSize,
+                      height: _studioHandleSize,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFB300),
+                        border: Border.all(color: Colors.white, width: 1),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      } else {
+        content = IgnorePointer(child: content);
+      }
+
+      return Positioned(
+        left: item.x * scale,
+        top: item.y * scale,
+        width: item.largura * scale,
+        height: item.altura * scale,
+        child: content,
+      );
+    }).toList();
+  }
+
+  String _resolverTextoStudio(String template, CertificadoPreviewData data) {
+    var out = template;
+    final values = <String, String>{
+      '{nome}': data.alunoNome,
+      '{cpf}': data.cpfFormatado,
+      '{graduacao}': data.graduacaoNova,
+      '{frase}': data.frase,
+      '{local_data}': data.localData,
+      '{evento}': 'PRÉVIA DO EVENTO',
+    };
+    values.forEach((key, value) => out = out.replaceAll(key, value));
+    return out;
   }
 
   CertificadoTextoCampoConfig _textoConfig(String campo) {
@@ -709,11 +1219,14 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
       );
     }
 
+    bool blocoAtivo(String id) => widget.studioConfig?.blocoAtivo(id) ?? true;
+
     // As linhas pontilhadas ficam 100% por conta do SVG original.
     // O overlay daqui desenha apenas os textos.
 
     // Nome do aluno: maior, Arial Bold, base inferior do retângulo guia.
-    addSingleLine(
+    if (blocoAtivo('nome')) {
+      addSingleLine(
       slotId: CertificadoSlotIds.alunoNome,
       value: data.alunoNome,
       fontSizeMm: _ptToPreviewMm(cfgNome.tamanho),
@@ -727,13 +1240,14 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
       topOffsetMm: -1.0 + cfgNome.verticalOffsetMm,
       bottomOffsetMm: 1.08,
     );
+    }
 
     // CPF só aparece nos modelos que exigem CPF.
     // No certificado simples, mesmo que o aluno tenha CPF cadastrado, não desenha.
     //
     // O PDF direto usa fallback manual porque alguns SVGs têm a guia do CPF
     // sem id="cpf". A prévia segue a mesma lógica para ficar fiel à impressão.
-    if (widget.tipo.exigeCpf && data.cpfFormatado.isNotEmpty) {
+    if (blocoAtivo('cpf') && widget.tipo.exigeCpf && data.cpfFormatado.isNotEmpty) {
       final cpfSlotOriginal = slots[CertificadoSlotIds.cpf];
 
       final cpfSlot =
@@ -785,7 +1299,8 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
     }
 
     // Graduação: 3mm para a direita, Arial Bold, cor do nome.
-    addSingleLine(
+    if (blocoAtivo('graduacao')) {
+      addSingleLine(
       slotId: CertificadoSlotIds.graduacaoNova,
       value: _graduacaoExibidaComGenero(data.graduacaoNova, data),
       fontSizeMm: _ptToPreviewMm(cfgGraduacao.tamanho),
@@ -800,10 +1315,12 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
       topOffsetMm: cfgGraduacao.verticalOffsetMm,
       bottomOffsetMm: 0.10,
     );
+    }
 
     // Frase: agora alinha no topo do retângulo, não no centro.
     // Ela precisa ocupar visualmente a faixa como no modelo do Photoshop.
-    addMultiLine(
+    if (blocoAtivo('frase')) {
+      addMultiLine(
       slotId: CertificadoSlotIds.frase,
       value: data.fraseFinal(
         tipo: widget.tipo,
@@ -823,8 +1340,10 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
       leftOffsetMm: -2.0,
       widthExtraMm: 4.0,
     );
+    }
 
-    for (var i = 0; i < 5; i++) {
+    if (blocoAtivo('assinatura_nome') || blocoAtivo('assinatura_apelido'))
+    { for (var i = 0; i < 5; i++) {
       final assinatura = i < data.assinaturas.length
           ? data.assinaturas[i]
           : null;
@@ -832,7 +1351,8 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
 
       final numero = i + 1;
 
-      addSingleLine(
+      if (blocoAtivo('assinatura_nome')) {
+        addSingleLine(
         slotId: 'assinatura$numero',
         value: assinatura.nome,
         fontSizeMm: _ptToPreviewMm(cfgAssinaturaNome.tamanho),
@@ -845,8 +1365,10 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
         topOffsetMm: cfgAssinaturaNome.verticalOffsetMm,
         bottomOffsetMm: 0.05,
       );
+      }
 
-      addSingleLine(
+      if (blocoAtivo('assinatura_apelido')) {
+        addSingleLine(
         slotId: 'apelido$numero',
         value: assinatura.apelido,
         fontSizeMm: _ptToPreviewMm(cfgAssinaturaApelido.tamanho),
@@ -859,9 +1381,11 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
         topOffsetMm: cfgAssinaturaApelido.verticalOffsetMm,
         bottomOffsetMm: 0.05,
       );
-    }
+      }
+    } }
 
-    addSingleLine(
+    if (blocoAtivo('local_data')) {
+      addSingleLine(
       slotId: CertificadoSlotIds.localData,
       value: data.localData,
       fontSizeMm: _ptToPreviewMm(cfgLocalData.tamanho),
@@ -875,6 +1399,7 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
       topOffsetMm: cfgLocalData.verticalOffsetMm,
       bottomOffsetMm: 0.08,
     );
+    }
 
     return widgets;
   }
@@ -906,7 +1431,7 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
 
     for (final entry in substituicoes.entries) {
       out = out.replaceAll(
-        RegExp('(?<![A-ZÀ-Ú])' + RegExp.escape(entry.key) + '(?![A-ZÀ-Ú])'),
+        RegExp('(?<![A-ZÀ-Ú])${RegExp.escape(entry.key)}(?![A-ZÀ-Ú])'),
         entry.value,
       );
     }
@@ -939,7 +1464,9 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final maxHeight = widget.maxHeight ?? 520.0;
-        final calculatedHeight = (constraints.maxWidth / (297 / 210)).clamp(
+        final pageW = _documentWidth;
+        final pageH = _documentHeight;
+        final calculatedHeight = (constraints.maxWidth / (pageW / pageH)).clamp(
           180.0,
           maxHeight,
         );
@@ -949,14 +1476,14 @@ class _CertificadoPreviewWidgetState extends State<CertificadoPreviewWidget> {
         const padding = 8.0;
         final innerWidth = constraints.maxWidth - (padding * 2);
         final innerHeight = calculatedHeight - (padding * 2);
-        final scaleX = innerWidth / 297.0;
-        final scaleY = innerHeight / 210.0;
+        final scaleX = innerWidth / pageW;
+        final scaleY = innerHeight / pageH;
         final scale = scaleX < scaleY ? scaleX : scaleY;
 
         final certificadoLimpo = SizedBox(
-          width: 297 * scale,
-          height: 210 * scale,
-          child: childBuilder(297 * scale, 210 * scale, scale),
+          width: pageW * scale,
+          height: pageH * scale,
+          child: childBuilder(pageW * scale, pageH * scale, scale),
         );
 
         final conteudo = exportKey == null
@@ -1100,9 +1627,28 @@ class _PositionedSlotText extends StatelessWidget {
 
 class _CertificadoPreviewPayload {
   final String svg;
+  final Uint8List? basePreviewBytes;
   final Map<String, CertificadoSlotModel> slots;
+  final List<_CertificadoStudioLayerPayload> camadas;
 
-  const _CertificadoPreviewPayload({required this.svg, required this.slots});
+  const _CertificadoPreviewPayload({
+    required this.svg,
+    this.basePreviewBytes,
+    required this.slots,
+    this.camadas = const [],
+  });
+}
+
+class _CertificadoStudioLayerPayload {
+  final CertificadoStudioLayer layer;
+  final String? svg;
+  final Uint8List? previewBytes;
+
+  const _CertificadoStudioLayerPayload({
+    required this.layer,
+    this.svg,
+    this.previewBytes,
+  });
 }
 
 class _ColorDot extends StatelessWidget {
@@ -1160,9 +1706,9 @@ class _InfoChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.10), t.cardAlt),
+        color: Color.alphaBlend(accent.withAlpha(26), t.cardAlt),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: accent.withOpacity(0.18)),
+        border: Border.all(color: accent.withAlpha(46)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1181,4 +1727,49 @@ class _InfoChip extends StatelessWidget {
       ),
     );
   }
+}
+
+
+class _StudioQrPreviewPainter extends CustomPainter {
+  final Color foreground;
+  const _StudioQrPreviewPainter({required this.foreground});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const n = 29;
+    final cell = size.shortestSide / n;
+    final paint = Paint()..color = foreground;
+
+    bool finder(int r, int c, int top, int left) {
+      final rr = r - top, cc = c - left;
+      if (rr < 0 || cc < 0 || rr >= 7 || cc >= 7) return false;
+      final outer = rr == 0 || cc == 0 || rr == 6 || cc == 6;
+      final inner = rr >= 2 && rr <= 4 && cc >= 2 && cc <= 4;
+      return outer || inner;
+    }
+
+    bool reserved(int r, int c) =>
+        (r < 8 && c < 8) || (r < 8 && c >= n - 8) || (r >= n - 8 && c < 8);
+
+    for (var r = 0; r < n; r++) {
+      for (var c = 0; c < n; c++) {
+        var on = finder(r, c, 0, 0) || finder(r, c, 0, n - 7) || finder(r, c, n - 7, 0);
+        if (!on && !reserved(r, c)) {
+          // Matriz determinística de prévia. O QR oficial será gerado somente na emissão V2.
+          final v = (r * 17 + c * 31 + r * c * 7 + (r ^ c) * 11) % 13;
+          on = v < 6 || ((r + c) % 11 == 0);
+        }
+        if (on) {
+          canvas.drawRect(
+            Rect.fromLTWH(c * cell, r * cell, cell + .15, cell + .15),
+            paint,
+          );
+        }
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _StudioQrPreviewPainter oldDelegate) =>
+      oldDelegate.foreground != foreground;
 }

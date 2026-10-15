@@ -5,6 +5,8 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:uai_capoeira/core/caca_bug/caca_bug_actions.dart';
+import 'package:uai_capoeira/core/caca_bug/caca_bug_service.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -17,22 +19,24 @@ import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:xml/xml.dart' as xml;
 import 'package:uai_capoeira/modules/turmas/services/dashboard_turma_cache_service.dart';
 import 'package:uai_capoeira/core/permissions/permissao_service.dart';
 import 'package:uai_capoeira/modules/turmas/models/aluno_snapshot_model.dart';
+import 'package:uai_capoeira/core/image_cache/uai_student_photo.dart';
 
 class DashboardTurmasPage extends StatefulWidget {
   final String turmaId;
   final String turmaNome;
   final String academiaId;
+  final String academiaNome;
 
-  DashboardTurmasPage({
+  const DashboardTurmasPage({
     super.key,
     required this.turmaId,
     required this.turmaNome,
     required this.academiaId,
+    this.academiaNome = '',
   });
 
   @override
@@ -74,14 +78,323 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
   bool _carregandoPermissoes = true;
 
+  bool _cacaBugRegistrouEntradaDashboard = false;
+  bool _cacaBugRegistrouCacheV2 = false;
+  bool _cacaBugRegistrouErroCacheV2 = false;
+  String? _cacaBugUltimaAbaRegistrada;
+  String? _cacaBugUltimoFiltroFrequenciaKey;
+
   bool _usarDashboardCacheV2 = false;
   bool _cacheV2Disponivel = false;
-  bool _processandoCacheServidor = false;
+  final bool _processandoCacheServidor = false;
   Map<String, dynamic>? _dashboardCacheMeta;
   Map<String, dynamic>? _dashboardCacheDistribuicoes;
   List<AlunoSnapshotModel> _dashboardCacheAlunos = [];
 
   String? _faixaEtariaExpandidaKey;
+
+  Map<String, dynamic> _cacaBugDadosBase() {
+    final nomeTurma = _cacaBugNomeTurma();
+    return {
+      'turmaId': widget.turmaId,
+      'turmaNome': nomeTurma,
+      'academiaId': widget.academiaId,
+      'academiaNome': widget.academiaNome,
+    };
+  }
+
+  String _cacaBugNomeTurma() {
+    final nome = widget.turmaNome.trim();
+    return nome.isEmpty ? 'Turma sem nome' : nome;
+  }
+
+  void _registrarCacaBugEntradaDashboard() {
+    if (_cacaBugRegistrouEntradaDashboard) return;
+    _cacaBugRegistrouEntradaDashboard = true;
+    final nomeTurma = _cacaBugNomeTurma();
+    debugPrint(
+      '[Caça Bug Dashboard] registrando abriu_dashboard_turma: ${widget.turmaId} / $nomeTurma',
+    );
+    unawaited(
+      CacaBugService.instance
+          .registrarEvento(
+            tipo: 'navegacao',
+            acao: CacaBugActions.abriuDashboardTurma,
+            descricao: 'Usu\u00e1rio abriu a Dashboard da turma $nomeTurma',
+            tela: 'DashboardTurmasPage',
+            arquivo: 'lib/modules/turmas/screens/dashboard_turmas_page.dart',
+            rota: '/turmas/dashboard',
+            status: 'success',
+            dados: {..._cacaBugDadosBase(), 'origem': 'initState'},
+          )
+          .then((_) => CacaBugService.instance.flush(force: true)),
+    );
+  }
+
+  void _registrarCacaBugCacheCarregado({
+    required bool forceServer,
+    String origem = 'carregamento_inicial',
+  }) {
+    if (_cacaBugRegistrouCacheV2) return;
+    _cacaBugRegistrouCacheV2 = true;
+    final nomeTurma = _cacaBugNomeTurma();
+    final totalAlunos = _alunosDaTurma.length;
+    final presentes = _alunosDaTurma.fold<int>(
+      0,
+      (total, aluno) => total + _getFrequenciaPorFiltro(aluno),
+    );
+    debugPrint(
+      '[Caça Bug Dashboard] registrando carregou_cache_v2_dashboard: ${widget.turmaId} / $nomeTurma',
+    );
+    unawaited(
+      CacaBugService.instance
+          .registrarEvento(
+            tipo: 'sistema',
+            acao: CacaBugActions.carregouCacheV2Dashboard,
+            descricao:
+                'Usu\u00e1rio carregou o Cache V2 da Dashboard da turma $nomeTurma',
+            tela: 'DashboardTurmasPage',
+            arquivo: 'lib/modules/turmas/screens/dashboard_turmas_page.dart',
+            rota: '/turmas/dashboard',
+            status: 'success',
+            dados: {
+              ..._cacaBugDadosBase(),
+              'alunosCount': totalAlunos,
+              'presentesCount': presentes,
+              'ausentesCount': totalAlunos > presentes
+                  ? totalAlunos - presentes
+                  : 0,
+              'cacheSource': forceServer ? 'servidor' : 'cache_local',
+              'cacheVersion': 'v2',
+              'origem': origem,
+              'temDados': totalAlunos > 0,
+              'atualizadoEm': _ultimaAtualizacao?.toIso8601String(),
+              'cacheRecalculadoEm': _ultimaSyncLogs?.toIso8601String(),
+            },
+          )
+          .then((_) => CacaBugService.instance.flush(force: true)),
+    );
+  }
+
+  void _registrarCacaBugErroCache(Object erro) {
+    if (_cacaBugRegistrouErroCacheV2) return;
+    _cacaBugRegistrouErroCacheV2 = true;
+    unawaited(
+      CacaBugService.instance
+          .registrarErro(
+            acao: CacaBugActions.erroCarregarCacheV2Dashboard,
+            descricao:
+                'Erro ao carregar o Cache V2 da Dashboard da turma ${widget.turmaNome}',
+            tela: 'DashboardTurmasPage',
+            arquivo: 'lib/modules/turmas/screens/dashboard_turmas_page.dart',
+            rota: '/turmas/dashboard',
+            erro: erro,
+            dados: {..._cacaBugDadosBase(), 'cacheVersion': 'v2'},
+          )
+          .then((_) => CacaBugService.instance.flush(force: true)),
+    );
+  }
+
+  void _registrarCacaBugMudouAba(String abaNome) {
+    if (_cacaBugUltimaAbaRegistrada == abaNome) return;
+    _cacaBugUltimaAbaRegistrada = abaNome;
+    unawaited(
+      CacaBugService.instance
+          .registrarEvento(
+            tipo: 'acao_usuario',
+            acao: CacaBugActions.mudouAbaDashboard,
+            descricao:
+                'Usu\u00e1rio abriu a aba $abaNome da Dashboard da turma ${widget.turmaNome}',
+            tela: 'DashboardTurmasPage',
+            arquivo: 'lib/modules/turmas/screens/dashboard_turmas_page.dart',
+            rota: '/turmas/dashboard',
+            status: 'success',
+            dados: {
+              ..._cacaBugDadosBase(),
+              'aba': abaNome.toLowerCase(),
+              'abaNome': abaNome,
+            },
+          )
+          .then((_) => CacaBugService.instance.flush(force: true)),
+    );
+  }
+
+  String _cacaBugFiltroFrequenciaKey({
+    required String filtro,
+    String? mes,
+    String? ano,
+  }) {
+    final filtroNormalizado = filtro.trim();
+    final mesKey = filtroNormalizado == 'Mês' ? mes?.trim() ?? '' : '';
+    final anoKey = filtroNormalizado == 'Mês' || filtroNormalizado == 'Ano'
+        ? ano?.trim() ?? ''
+        : '';
+    return [filtroNormalizado, mesKey, anoKey].join('|');
+  }
+
+  String _cacaBugDescricaoFiltroFrequencia({
+    required String filtro,
+    String? mes,
+    String? ano,
+  }) {
+    final filtroNormalizado = filtro.trim();
+    final nomeTurma = _cacaBugNomeTurma();
+
+    if (filtroNormalizado == 'Mês') {
+      final mesAno = _cacaBugMesAnoFiltro(mes: mes, ano: ano);
+      return 'Usu\u00e1rio aplicou filtro de frequ\u00eancia Mês $mesAno na turma $nomeTurma';
+    }
+
+    if (filtroNormalizado == 'Ano' && (ano ?? '').trim().isNotEmpty) {
+      return 'Usu\u00e1rio aplicou filtro de frequ\u00eancia Ano ${ano!.trim()} na turma $nomeTurma';
+    }
+
+    return 'Usu\u00e1rio aplicou filtro de frequ\u00eancia $filtroNormalizado na turma $nomeTurma';
+  }
+
+  String _cacaBugMesAnoFiltro({String? mes, String? ano}) {
+    final mesTexto = (mes ?? '').trim();
+    final anoTexto = (ano ?? '').trim();
+    final partes = mesTexto.split('-');
+
+    if (partes.length >= 2) {
+      final anoDaChave = partes[0];
+      final mesDaChave = partes[1].padLeft(2, '0');
+      return '$mesDaChave/$anoDaChave';
+    }
+
+    if (mesTexto.isNotEmpty && anoTexto.isNotEmpty) {
+      return '${mesTexto.padLeft(2, '0')}/$anoTexto';
+    }
+
+    return mesTexto.isNotEmpty ? mesTexto : 'sem mês';
+  }
+
+  void _registrarCacaBugFiltroFrequencia({
+    required String filtro,
+    String? mes,
+    String? ano,
+  }) {
+    final chave = _cacaBugFiltroFrequenciaKey(
+      filtro: filtro,
+      mes: mes,
+      ano: ano,
+    );
+    if (_cacaBugUltimoFiltroFrequenciaKey == chave) return;
+    _cacaBugUltimoFiltroFrequenciaKey = chave;
+    unawaited(
+      CacaBugService.instance
+          .registrarEvento(
+            tipo: 'acao_usuario',
+            acao: CacaBugActions.aplicouFiltroFrequencia,
+            descricao: _cacaBugDescricaoFiltroFrequencia(
+              filtro: filtro,
+              mes: mes,
+              ano: ano,
+            ),
+            tela: 'DashboardTurmasPage',
+            arquivo: 'lib/modules/turmas/screens/dashboard_turmas_page.dart',
+            rota: '/turmas/dashboard',
+            status: 'success',
+            dados: {
+              ..._cacaBugDadosBase(),
+              'filtro': filtro.toLowerCase(),
+              'mes': mes,
+              'ano': ano,
+              'aba': 'frequencia',
+            },
+          )
+          .then((_) => CacaBugService.instance.flush(force: true)),
+    );
+  }
+
+  void _registrarCacaBugRecalculoSucesso({
+    required String origem,
+    required int duracaoMs,
+  }) {
+    final nomeTurma = _cacaBugNomeTurma();
+    debugPrint(
+      '[Caça Bug Dashboard] registrando recalculou_cache_v2: ${widget.turmaId} / $nomeTurma',
+    );
+    unawaited(
+      CacaBugService.instance
+          .registrarEvento(
+            tipo: 'acao_usuario',
+            acao: CacaBugActions.recalculouCacheV2,
+            descricao: 'Usu\u00e1rio recalculou o Cache V2 da turma $nomeTurma',
+            tela: 'DashboardTurmasPage',
+            arquivo: 'lib/modules/turmas/screens/dashboard_turmas_page.dart',
+            rota: '/turmas/dashboard',
+            status: 'success',
+            dados: {
+              ..._cacaBugDadosBase(),
+              'cacheVersion': 'v2',
+              'origem': origem,
+              'duracaoMs': duracaoMs,
+              'alunosCount': _alunosDaTurma.length,
+            },
+          )
+          .then((_) => CacaBugService.instance.flush(force: true)),
+    );
+  }
+
+  void _registrarCacaBugRecalculoErro({
+    required Object erro,
+    required String origem,
+  }) {
+    unawaited(
+      CacaBugService.instance
+          .registrarErro(
+            acao: CacaBugActions.erroRecalcularCacheV2,
+            descricao:
+                'Erro ao recalcular o Cache V2 da turma ${widget.turmaNome}',
+            tela: 'DashboardTurmasPage',
+            arquivo: 'lib/modules/turmas/screens/dashboard_turmas_page.dart',
+            rota: '/turmas/dashboard',
+            erro: erro,
+            dados: {..._cacaBugDadosBase(), 'origem': origem},
+          )
+          .then((_) => CacaBugService.instance.flush(force: true)),
+    );
+  }
+
+  void _registrarCacaBugAtualizacaoSucesso({required String origem}) {
+    unawaited(
+      CacaBugService.instance
+          .registrarEvento(
+            tipo: 'acao_usuario',
+            acao: CacaBugActions.atualizouDashboard,
+            descricao:
+                'Usu\u00e1rio atualizou a Dashboard da turma ${widget.turmaNome}',
+            tela: 'DashboardTurmasPage',
+            arquivo: 'lib/modules/turmas/screens/dashboard_turmas_page.dart',
+            rota: '/turmas/dashboard',
+            status: 'success',
+            dados: {..._cacaBugDadosBase(), 'origem': origem},
+          )
+          .then((_) => CacaBugService.instance.flush(force: true)),
+    );
+  }
+
+  void _registrarCacaBugAtualizacaoErro({
+    required Object erro,
+    required String origem,
+  }) {
+    unawaited(
+      CacaBugService.instance
+          .registrarErro(
+            acao: CacaBugActions.erroAtualizarDashboard,
+            descricao:
+                'Erro ao atualizar a Dashboard da turma ${widget.turmaNome}',
+            tela: 'DashboardTurmasPage',
+            arquivo: 'lib/modules/turmas/screens/dashboard_turmas_page.dart',
+            rota: '/turmas/dashboard',
+            erro: erro,
+            dados: {..._cacaBugDadosBase(), 'origem': origem},
+          )
+          .then((_) => CacaBugService.instance.flush(force: true)),
+    );
+  }
 
   Color _readableOn(Color background) {
     return background.computeLuminance() > 0.48
@@ -104,7 +417,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   Color _onCard() => _readableOn(context.uai.card);
-  Color _onCardMuted() => _onCard().withOpacity(0.68);
+  Color _onCardMuted() => _onCard().withAlpha(173);
 
   bool _isNeonOnDark() {
     final primary = context.uai.primary;
@@ -179,7 +492,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       builder: (context, constraints) {
         final width = constraints.maxWidth;
         if (width < 720) {
-          return Column(children: children);
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: children,
+          );
         }
 
         final columns = _dashboardColumns(
@@ -204,9 +520,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   bool get wantKeepAlive => true;
 
   // Cache
-  static int _CACHE_VALIDADE_HORAS = 1;
-  static int _CACHE_VALIDADE_MINUTOS = _CACHE_VALIDADE_HORAS * 60;
-  static int _CACHE_VALIDADE_MS = _CACHE_VALIDADE_HORAS * 60 * 60 * 1000;
+  static final int _cacheValidadeHoras = 1;
+  static final int _cacheValidadeMinutos = _cacheValidadeHoras * 60;
+  static final int _cacheValidadeMs = _cacheValidadeHoras * 60 * 60 * 1000;
 
   // Filtros
   String filtroAtivo = 'Frequência';
@@ -220,10 +536,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
   List<Map<String, dynamic>> _alunosDaTurma = [];
 
-  // Cache de graduações (nome → dados)
+  // Cache de graduações (nome -> dados)
   final Map<String, Map<String, dynamic>> _graduacoesCache = {};
 
-  // Cache de SVG colorido (pré‑colorido durante o carregamento)
+  // Cache de SVG colorido (pré-colorido durante o carregamento)
   final Map<String, String> _svgCache = {};
   String? _svgContent;
 
@@ -252,7 +568,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   DateTime? _ultimaSyncLogs;
   Timer? _timerCache;
 
-  final ScrollController _scrollController = ScrollController();
+  final ScrollController _frequenciaScrollController = ScrollController();
   final ScrollController _tabsScrollController = ScrollController();
   final Map<String, GlobalKey> _tabKeys = {
     'Aluno Destaque': GlobalKey(),
@@ -410,7 +726,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
   Future<bool> _carregarDashboardPeloCacheV2({bool forceServer = true}) async {
     try {
-      debugPrint('🔎 Tentando carregar Dashboard pelo Cache V2...');
+      debugPrint('ðŸ”Ž Tentando carregar Dashboard pelo Cache V2...');
 
       var meta = await _dashboardCacheService.carregarMeta(
         widget.turmaId,
@@ -424,7 +740,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
           meta['necessita_reconstrucao'] == true;
 
       if (metaInvalido) {
-        debugPrint('⚠️ Meta Cache V2 inválido. Reconstruindo no servidor...');
+        debugPrint('Meta Cache V2 inválido. Reconstruindo no servidor...');
         await _dashboardCacheService.reconstruirCache(
           widget.turmaId,
           force: false,
@@ -446,7 +762,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       );
 
       if (alunosCache.isEmpty) {
-        debugPrint('⚠️ Cache de alunos vazio. Tentando reconstruir...');
+        debugPrint('Cache de alunos vazio. Tentando reconstruir...');
         await _dashboardCacheService.reconstruirCache(
           widget.turmaId,
           force: false,
@@ -458,7 +774,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       }
 
       if (meta == null || alunosCache.isEmpty) {
-        debugPrint('❌ Falha crítica: Meta ou Alunos nulos após reconstrução.');
+        debugPrint('Falha crítica: Meta ou Alunos nulos após reconstrução.');
         return false;
       }
 
@@ -471,7 +787,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
           .where((a) => _extrairFotoUrlAluno(a).isEmpty)
           .length;
       debugPrint(
-        '🖼️ Cache V2 fotos: ${alunosConvertidos.length - semFoto}/${alunosConvertidos.length} com foto',
+        'ðŸ–¼ï¸ Cache V2 fotos: ${alunosConvertidos.length - semFoto}/${alunosConvertidos.length} com foto',
       );
 
       if (!mounted) return false;
@@ -512,25 +828,29 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       });
 
       _processarTodosDados();
+      _registrarCacaBugCacheCarregado(
+        forceServer: forceServer,
+        origem: 'carregamento_inicial',
+      );
       debugPrint(
-        '✅ Dashboard carregada pelo Cache V2: ${_alunosDaTurma.length} alunos',
+        'Dashboard carregada pelo Cache V2: ${_alunosDaTurma.length} alunos',
       );
       if (_alunosDaTurma.isNotEmpty) {
         final a = _alunosDaTurma.first;
         final f = a['frequencia_temporal'] ?? {};
         debugPrint(
-          "🧪 Cache V2 Frequência: primeiro aluno ${a['nome']} total=${f['total']} mes=${f['mes']} semana=${f['semana']}",
+          "Cache V2 Frequência: primeiro aluno ${a['nome']} total=${f['total']} mes=${f['mes']} semana=${f['semana']}",
         );
       }
       return true;
     } catch (e) {
-      debugPrint('❌ Erro ao carregar Dashboard pelo Cache V2: $e');
+      debugPrint('Erro ao carregar Dashboard pelo Cache V2: $e');
       return false;
     }
   }
 
   Future<void> _inicializarDashboardInteligente() async {
-    debugPrint('🧠 Inicializando Dashboard com modo inteligente...');
+    debugPrint('ðŸ§  Inicializando Dashboard com modo inteligente...');
 
     setState(() {
       _isLoading = true;
@@ -545,7 +865,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
       if (usarV2) {
         debugPrint(
-          '✅ Cache V2 ativo por flag. Tentando usar snapshots como fonte.',
+          'Cache V2 ativo por flag. Tentando usar snapshots como fonte.',
         );
         final carregouV2 = await _carregarDashboardPeloCacheV2(
           forceServer: true,
@@ -553,18 +873,18 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
         if (carregouV2) {
           debugPrint(
-            '✅ Dashboard carregada pelo Cache V2: ${_alunosDaTurma.length} alunos',
+            'Dashboard carregada pelo Cache V2: ${_alunosDaTurma.length} alunos',
           );
           return;
         }
 
-        debugPrint('⚠️ Cache V2 falhou. Usando fallback antigo.');
+        debugPrint('Cache V2 falhou. Usando fallback antigo.');
       }
 
-      debugPrint('🧱 Dashboard carregada pelo modelo antigo.');
+      debugPrint('ðŸ§± Dashboard carregada pelo modelo antigo.');
       await _carregarAlunosDaTurma();
     } catch (e) {
-      debugPrint('❌ Erro inesperado no fluxo inteligente: $e');
+      debugPrint('Erro inesperado no fluxo inteligente: $e');
       if (mounted) {
         await _carregarAlunosDaTurma();
       }
@@ -578,25 +898,30 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       _rotateController.repeat();
       HapticFeedback.mediumImpact();
 
+      final inicioCacaBug = DateTime.now();
       try {
-        debugPrint('🚀 Reconstruindo Cache V2 no servidor...');
+        debugPrint('ðŸš€ Reconstruindo Cache V2 no servidor...');
         await _dashboardCacheService.reconstruirCache(
           widget.turmaId,
           force: force,
         );
         await _carregarDashboardPeloCacheV2(forceServer: true);
+        _registrarCacaBugRecalculoSucesso(
+          origem: 'pull_to_refresh',
+          duracaoMs: DateTime.now().difference(inicioCacaBug).inMilliseconds,
+        );
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('✅ Dashboard atualizada pelo servidor (V2)'),
+              content: Text('Dashboard atualizada pelo servidor (V2)'),
               backgroundColor: context.uai.success,
               behavior: SnackBarBehavior.floating,
             ),
           );
         }
       } catch (e) {
-        debugPrint('❌ Erro ao atualizar V2: $e');
+        debugPrint('Erro ao atualizar V2: $e');
       } finally {
         if (mounted) {
           _rotateController.stop();
@@ -607,25 +932,6 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     } else {
       await _atualizarDadosReais(recalcularTudo: true);
     }
-  }
-
-  Future<void> _testarDashboardCacheV2SemTrocarFonte() async {
-    // Método desativado do fluxo automático na Etapa 7.
-    // Pode ser chamado manualmente para diagnóstico se necessário.
-    return;
-  }
-
-  Future<void> _carregarCacheV2ParaDiagnostico({
-    bool forceServer = true,
-  }) async {
-    // Método desativado do fluxo automático na Etapa 7.
-    return;
-  }
-
-  Future<void> _verificarUsoDashboardCacheV2() async {
-    // Método desativado do fluxo automático na Etapa 7.
-    // Substituído por _inicializarDashboardInteligente.
-    return;
   }
 
   Future<void> _carregarPermissoes() async {
@@ -706,7 +1012,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         _carregandoPermissoes = false;
       });
     } catch (e) {
-      debugPrint('❌ Erro ao carregar permissões da Dashboard: $e');
+      debugPrint('Erro ao carregar permissões da Dashboard: $e');
       setState(() => _carregandoPermissoes = false);
     }
   }
@@ -714,6 +1020,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   @override
   void initState() {
     super.initState();
+    _registrarCacaBugEntradaDashboard();
     WidgetsBinding.instance.addObserver(this);
 
     _pulseController = AnimationController(
@@ -738,7 +1045,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       }
     });
 
-    _scrollController.addListener(_onScroll);
+    _frequenciaScrollController.addListener(_onScroll);
     _iniciarTimerCache();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -749,7 +1056,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _scrollController.dispose();
+    _frequenciaScrollController.dispose();
     _tabsScrollController.dispose();
     _timerCache?.cancel();
     _pulseController.dispose();
@@ -780,13 +1087,14 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       return;
     }
     final diferenca = DateTime.now().difference(_ultimaAtualizacao!);
-    if (diferenca.inMilliseconds > _CACHE_VALIDADE_MS)
-      await _atualizarDadosReais();
+    if (diferenca.inMilliseconds > _cacheValidadeMs)
+      { await _atualizarDadosReais(); }
   }
 
   void _onScroll() {
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 200) {
+    if (!_frequenciaScrollController.hasClients) return;
+    if (_frequenciaScrollController.position.pixels >=
+        _frequenciaScrollController.position.maxScrollExtent - 200) {
       setState(() => _visibleItems += 20);
     }
   }
@@ -805,7 +1113,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     if (value is int) return value.toDouble();
     if (value is double) return value;
     if (value is String)
-      return double.tryParse(value.replaceAll(',', '.')) ?? 0;
+      { return double.tryParse(value.replaceAll(',', '.')) ?? 0; }
     return 0;
   }
 
@@ -920,10 +1228,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       await _preColorirSvg();
 
       debugPrint(
-        '✅ Dashboard: ${_graduacoesCache.length} graduações carregadas e ${_svgCache.length} SVGs coloridos',
+        'Dashboard: ${_graduacoesCache.length} graduações carregadas e ${_svgCache.length} SVGs coloridos',
       );
     } catch (e) {
-      debugPrint('⚠️ Erro ao carregar graduações no dashboard: $e');
+      debugPrint('Erro ao carregar graduações no dashboard: $e');
     }
   }
 
@@ -960,7 +1268,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   String _colorToSvgHex(Color color) {
-    return '#${color.value.toRadixString(16).substring(2).toLowerCase()}';
+    return '#${color.toARGB32().toRadixString(16).substring(2).toLowerCase()}';
   }
 
   String? _montarSvgGraduacao(Map<String, dynamic> coresGraduacao) {
@@ -1007,7 +1315,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
       return document.toXmlString();
     } catch (e) {
-      debugPrint('⚠️ Erro ao montar SVG da graduação: $e');
+      debugPrint('Erro ao montar SVG da graduação: $e');
       return null;
     }
   }
@@ -1062,7 +1370,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
           _graduacoesCache[nomeGraduacao] = coresGraduacao;
         }
       } catch (e) {
-        debugPrint('⚠️ Erro ao buscar graduação "$nomeGraduacao": $e');
+        debugPrint('Erro ao buscar graduação "$nomeGraduacao": $e');
       }
     }
 
@@ -1115,7 +1423,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
       _avaliacoesAlunos = avaliacoes;
     } catch (e) {
-      debugPrint('⚠️ Erro ao carregar avaliações dos alunos: $e');
+      debugPrint('Erro ao carregar avaliações dos alunos: $e');
       _avaliacoesAlunos = {};
     }
   }
@@ -1150,9 +1458,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       _alunosDaTurma = _parseAlunos(data['alunos']);
       anosDisponiveis = List<String>.from(data['anos_disponiveis'] ?? []);
       if (anosDisponiveis.isEmpty)
-        anosDisponiveis = [DateTime.now().year.toString()];
+        { anosDisponiveis = [DateTime.now().year.toString()]; }
       if (anoSelecionado == null && anosDisponiveis.isNotEmpty)
-        anoSelecionado = anosDisponiveis.first;
+        { anoSelecionado = anosDisponiveis.first; }
       await _carregarAvaliacoesAlunos();
       _processarTodosDados();
       setState(() {
@@ -1234,6 +1542,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       await _preloadGraduacoes();
       await _carregarAvaliacoesAlunos();
       _processarTodosDados();
+      _registrarCacaBugAtualizacaoSucesso(
+        origem: recalcularTudo ? 'manual_recalculo_legado' : 'botao',
+      );
       _rotateController.stop();
       _rotateController.reset();
 
@@ -1247,8 +1558,8 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                 Expanded(
                   child: Text(
                     recalcularTudo
-                        ? '✅ ${processados.length} alunos recalculados pelos logs reais'
-                        : '✅ ${processados.length} alunos sincronizados com contadores inteligentes',
+                        ? '${processados.length} alunos recalculados pelos logs reais'
+                        : '${processados.length} alunos sincronizados com contadores inteligentes',
                   ),
                 ),
               ],
@@ -1263,6 +1574,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         );
       }
     } catch (e) {
+      _registrarCacaBugAtualizacaoErro(
+        erro: e,
+        origem: recalcularTudo ? 'manual_recalculo_legado' : 'botao',
+      );
       _rotateController.stop();
       _rotateController.reset();
       if (mounted) {
@@ -1272,7 +1587,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
               children: [
                 Icon(Icons.error, color: context.uai.card),
                 SizedBox(width: 8),
-                Expanded(child: Text('❌ Erro: $e')),
+                Expanded(child: Text('Erro: $e')),
               ],
             ),
             backgroundColor: context.uai.error,
@@ -1663,7 +1978,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     }
 
     debugPrint(
-      '📊 Dashboard ${widget.turmaNome}: ${idsCargaCompleta.length} alunos em carga completa, '
+      'ðŸ“Š Dashboard ${widget.turmaNome}: ${idsCargaCompleta.length} alunos em carga completa, '
       '${idsIncremental.length} alunos incremental. Forçado: $forcarRecalculoCompleto',
     );
 
@@ -2017,9 +2332,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     String clean = hex.replaceFirst('#', '');
     Color color = context.uai.textMuted;
     if (clean.length == 6)
-      color = Color(int.parse('FF$clean', radix: 16));
+      { color = Color(int.parse('FF$clean', radix: 16)); }
     else if (clean.length == 8)
-      color = Color(int.parse(clean, radix: 16));
+      { color = Color(int.parse(clean, radix: 16)); }
     _colorCache[hex] = color;
     return color;
   }
@@ -2028,7 +2343,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     final luminance = background.computeLuminance();
     return luminance > 0.55
         ? context.uai.textPrimary
-        : Colors.white.withOpacity(0.92);
+        : Colors.white.withAlpha(235);
   }
 
   Color _corTextoChipQuantidade(Color corBase) {
@@ -2047,7 +2362,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       return context.uai.cardAlt;
     }
 
-    return corBase.withOpacity(0.14);
+    return corBase.withAlpha(36);
   }
 
   Color _corBordaChipQuantidade(Color corBase) {
@@ -2055,7 +2370,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       return context.uai.border;
     }
 
-    return corBase.withOpacity(0.26);
+    return corBase.withAlpha(66);
   }
 
   // ==================== UI ====================
@@ -2125,7 +2440,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                               Theme.of(context).appBarTheme.backgroundColor ??
                                   context.uai.primary,
                             ))
-                        .withOpacity(0.70),
+                        .withAlpha(179),
               ),
             ),
           ],
@@ -2194,9 +2509,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         margin: const EdgeInsets.only(right: 8),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: onAppBar.withOpacity(0.14),
+          color: onAppBar.withAlpha(36),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: onAppBar.withOpacity(0.18)),
+          border: Border.all(color: onAppBar.withAlpha(46)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -2218,7 +2533,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
     final agora = DateTime.now();
     final diferenca = agora.difference(_ultimaAtualizacao!);
-    final minutosRestantes = _CACHE_VALIDADE_MINUTOS - diferenca.inMinutes;
+    final minutosRestantes = _cacheValidadeMinutos - diferenca.inMinutes;
     Color cor = minutosRestantes <= 0
         ? context.uai.error
         : (minutosRestantes < 30 ? context.uai.warning : context.uai.success);
@@ -2232,9 +2547,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       margin: const EdgeInsets.only(right: 8),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: chipColor.withOpacity(0.14),
+        color: chipColor.withAlpha(36),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: chipColor.withOpacity(0.18)),
+        border: Border.all(color: chipColor.withAlpha(46)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -2258,7 +2573,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     final totalAlunos = _alunosDaTurma.length;
     final soma = _alunosDaTurma.fold<int>(
       0,
-      (sum, a) => sum + _getFrequenciaPorFiltro(a),
+      (total, a) => total + _getFrequenciaPorFiltro(a),
     );
     final media = totalAlunos > 0 ? (soma / totalAlunos) : 0.0;
     final melhor = _alunosFrequentes.isNotEmpty
@@ -2291,7 +2606,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: context.uai.primary.withOpacity(0.35),
+            color: context.uai.primary.withAlpha(89),
             blurRadius: 18,
             offset: Offset(0, 8),
           ),
@@ -2307,7 +2622,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                 Container(
                   padding: EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: context.uai.card.withOpacity(0.14),
+                    color: context.uai.card.withAlpha(36),
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Icon(
@@ -2333,7 +2648,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                       Text(
                         'Filtro atual: $filtroLabel',
                         style: TextStyle(
-                          color: _onGradient().withOpacity(0.72),
+                          color: _onGradient().withAlpha(184),
                           fontSize: 12,
                         ),
                       ),
@@ -2344,7 +2659,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                   Container(
                     padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
-                      color: context.uai.card.withOpacity(0.14),
+                      color: context.uai.card.withAlpha(36),
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: Row(
@@ -2408,7 +2723,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
               borderRadius: BorderRadius.circular(20),
               child: LinearProgressIndicator(
                 value: totalAlunos > 0 ? (media / 100).clamp(0.0, 1.0) : 0,
-                backgroundColor: context.uai.card.withOpacity(0.18),
+                backgroundColor: context.uai.card.withAlpha(46),
                 valueColor: AlwaysStoppedAnimation<Color>(context.uai.warning),
                 minHeight: 8,
               ),
@@ -2423,9 +2738,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 10, vertical: 12),
       decoration: BoxDecoration(
-        color: _onGradient().withOpacity(0.12),
+        color: _onGradient().withAlpha(31),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _onGradient().withOpacity(0.12)),
+        border: Border.all(color: _onGradient().withAlpha(31)),
       ),
       child: Column(
         children: [
@@ -2445,7 +2760,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
           Text(
             label,
             style: TextStyle(
-              color: _onGradient().withOpacity(0.76),
+              color: _onGradient().withAlpha(194),
               fontSize: 10,
             ),
             maxLines: 1,
@@ -2476,6 +2791,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       }
     });
 
+    _registrarCacaBugMudouAba(titulo);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _centralizarAbaSelecionada(titulo);
     });
@@ -2567,7 +2883,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
             border: Border(bottom: BorderSide(color: context.uai.border)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.08),
+                color: Colors.black.withAlpha(20),
                 blurRadius: 8,
                 offset: Offset(0, 2),
               ),
@@ -2659,13 +2975,13 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
           backgroundColor: context.uai.card,
           selectedColor: cor,
           elevation: ativo ? 4 : 0,
-          shadowColor: cor.withOpacity(0.30),
-          selectedShadowColor: cor.withOpacity(0.34),
+          shadowColor: cor.withAlpha(77),
+          selectedShadowColor: cor.withAlpha(87),
           padding: EdgeInsets.symmetric(horizontal: 9, vertical: 7),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
             side: BorderSide(
-              color: ativo ? cor.withOpacity(0.05) : context.uai.border,
+              color: ativo ? cor.withAlpha(13) : context.uai.border,
             ),
           ),
         ),
@@ -2705,7 +3021,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   Widget _buildAbaFrequencia() => _wrapWithRefreshIndicator(
     color: context.uai.info,
     child: SingleChildScrollView(
-      controller: _scrollController,
+      controller: _frequenciaScrollController,
       physics: const AlwaysScrollableScrollPhysics(),
       padding: _dashboardPagePadding,
       child: _dashboardWidthLimiter(
@@ -2847,8 +3163,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   Widget _buildAbaGraduacao() => _wrapWithRefreshIndicator(
     color: context.uai.associacao,
     child: SingleChildScrollView(
-      controller: _scrollController,
-      physics: AlwaysScrollableScrollPhysics(),
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: _dashboardPagePadding,
       child: _dashboardWidthLimiter(_buildGraficoGraduacao()),
     ),
@@ -2857,8 +3172,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   Widget _buildAbaIdade() => _wrapWithRefreshIndicator(
     color: context.uai.success,
     child: SingleChildScrollView(
-      controller: _scrollController,
-      physics: AlwaysScrollableScrollPhysics(),
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: _dashboardPagePadding,
       child: _dashboardWidthLimiter(_buildGraficoIdade()),
     ),
@@ -2867,8 +3181,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   Widget _buildAbaSexo() => _wrapWithRefreshIndicator(
     color: context.uai.error,
     child: SingleChildScrollView(
-      controller: _scrollController,
-      physics: AlwaysScrollableScrollPhysics(),
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: _dashboardPagePadding,
       child: _dashboardWidthLimiter(_buildFiltroSexo()),
     ),
@@ -2920,7 +3233,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       final frame = await codec.getNextFrame();
       return frame.image;
     } catch (e) {
-      debugPrint('⚠️ Erro ao carregar logo do ranking: $e');
+      debugPrint('Erro ao carregar logo do ranking: $e');
       return null;
     }
   }
@@ -3045,7 +3358,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
   Future<ui.Image?> _carregarFotoAlunoRanking(String? url) async {
     if (url == null || url.trim().isEmpty || !url.startsWith('http'))
-      return null;
+      { return null; }
 
     HttpClient? client;
     try {
@@ -3069,7 +3382,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       final frame = await codec.getNextFrame();
       return frame.image;
     } catch (e) {
-      debugPrint('⚠️ Foto do aluno não carregou no ranking: $e');
+      debugPrint('Foto do aluno não carregou no ranking: $e');
       return null;
     } finally {
       client?.close(force: true);
@@ -3289,7 +3602,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     final fotos = await _precarregarFotosRanking(top10);
     _tiposAulaPdfCache = await _buscarTiposAulaPorAlunoRanking(top10);
     debugPrint(
-      '🖼️ Imagem Top10: tipos por aluno = ${_tiposAulaPdfCache.length}',
+      'ðŸ–¼ï¸ Imagem Top10: tipos por aluno = ${_tiposAulaPdfCache.length}',
     );
 
     double width = 1080;
@@ -3309,24 +3622,24 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     canvas.drawCircle(
       Offset(95, 110),
       140,
-      Paint()..color = Color(0xFFB91C1C).withOpacity(0.045),
+      Paint()..color = Color(0xFFB91C1C).withAlpha(11),
     );
     canvas.drawCircle(
       Offset(width - 110, 250),
       170,
-      Paint()..color = Color(0xFFF59E0B).withOpacity(0.075),
+      Paint()..color = Color(0xFFF59E0B).withAlpha(19),
     );
     canvas.drawCircle(
       Offset(width - 120, height - 150),
       140,
-      Paint()..color = Color(0xFF7C3AED).withOpacity(0.045),
+      Paint()..color = Color(0xFF7C3AED).withAlpha(11),
     );
 
     final mainCard = RRect.fromRectAndRadius(
       Rect.fromLTWH(42, 42, width - 84, height - 84),
       Radius.circular(48),
     );
-    canvas.drawRRect(mainCard, Paint()..color = Colors.white.withOpacity(0.96));
+    canvas.drawRRect(mainCard, Paint()..color = Colors.white.withAlpha(245));
     canvas.drawRRect(
       mainCard,
       Paint()
@@ -3554,7 +3867,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = 2.2
-          ..color = Color(0xFFF59E0B).withOpacity(0.38),
+          ..color = Color(0xFFF59E0B).withAlpha(97),
       );
 
       canvas.drawCircle(
@@ -3714,7 +4027,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.6
-          ..color = accent.withOpacity(0.20),
+          ..color = accent.withAlpha(51),
       );
 
       final rankBox = RRect.fromRectAndRadius(
@@ -3851,7 +4164,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.2
-          ..color = cor.withOpacity(0.18),
+          ..color = cor.withAlpha(46),
       );
 
       final rankBg = RRect.fromRectAndRadius(
@@ -3919,7 +4232,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         Rect.fromLTWH(width - 214, top + 12, 104, 36),
         Radius.circular(17),
       );
-      canvas.drawRRect(badgeRect, Paint()..color = cor.withOpacity(0.12));
+      canvas.drawRRect(badgeRect, Paint()..color = cor.withAlpha(31));
       _drawCanvasText(
         canvas,
         nota.toStringAsFixed(1),
@@ -3994,7 +4307,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                 borderRadius: BorderRadius.circular(26),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.18),
+                    color: Colors.black.withAlpha(46),
                     blurRadius: 24,
                     offset: Offset(0, 10),
                   ),
@@ -4026,7 +4339,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
-                            color: context.uai.warning.withOpacity(0.28),
+                            color: context.uai.warning.withAlpha(71),
                             blurRadius: 18,
                             offset: Offset(0, 8),
                           ),
@@ -4065,7 +4378,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                     child: LinearProgressIndicator(
                       minHeight: 8,
                       color: context.uai.warning,
-                      backgroundColor: context.uai.warning.withOpacity(0.10),
+                      backgroundColor: context.uai.warning.withAlpha(26),
                     ),
                   ),
                   SizedBox(height: 12),
@@ -4097,7 +4410,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
   Future<Uint8List?> _baixarBytesRankingUrl(String? url) async {
     if (url == null || url.trim().isEmpty || !url.startsWith('http'))
-      return null;
+      { return null; }
 
     HttpClient? client;
     try {
@@ -4113,7 +4426,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       final bytes = builder.takeBytes();
       return bytes.isEmpty ? null : bytes;
     } catch (e) {
-      debugPrint('⚠️ Erro ao baixar bytes para PDF: $e');
+      debugPrint('Erro ao baixar bytes para PDF: $e');
       return null;
     } finally {
       client?.close(force: true);
@@ -4206,7 +4519,6 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     double fontSize = 8.5,
     PdfColor? color,
   }) {
-    final resolvedColor = color ?? PdfColor.fromInt(0xFF4B5563);
     final children = <pw.Widget>[];
 
     for (var i = 0; i < itens.length; i++) {
@@ -4445,7 +4757,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     }
 
     debugPrint(
-      '📄 PDF Ranking: tipos por aluno = ${result.length}/${ids.length} alunos | '
+      'PDF Ranking: tipos por aluno = ${result.length}/${ids.length} alunos | '
       '$docsUsados logs usados de $docsLidos lidos | filtro $filtroTemporalFrequencia',
     );
 
@@ -4948,10 +5260,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     final fotos = await _precarregarFotosPdfRanking(top10);
     _tiposAulaPdfCache = await _buscarTiposAulaPorAlunoRanking(top10);
     debugPrint(
-      '📄 PDF Top10 CARDS MAIORES: top10=${top10.length}, top3=${top3.length}, demais=${demais.length}, cacheTipos=${_tiposAulaPdfCache.length}',
+      'PDF Top10 CARDS MAIORES: top10=${top10.length}, top3=${top3.length}, demais=${demais.length}, cacheTipos=${_tiposAulaPdfCache.length}',
     );
     debugPrint(
-      '📄 PDF Top10: top10=${top10.length}, demais=${demais.length}, cacheTipos=${_tiposAulaPdfCache.length}',
+      'PDF Top10: top10=${top10.length}, demais=${demais.length}, cacheTipos=${_tiposAulaPdfCache.length}',
     );
 
     Uint8List? logoBytes;
@@ -4959,7 +5271,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       final data = await rootBundle.load('assets/images/logo_uai.png');
       logoBytes = data.buffer.asUint8List();
     } catch (e) {
-      debugPrint('⚠️ Erro ao carregar logo para PDF: $e');
+      debugPrint('Erro ao carregar logo para PDF: $e');
     }
 
     final logoImage = logoBytes == null ? null : pw.MemoryImage(logoBytes);
@@ -5297,7 +5609,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
             'ranking_aluno_destaque_${safeTurma}_${DateTime.now().millisecondsSinceEpoch}.pdf',
       );
     } catch (e) {
-      debugPrint('❌ Erro ao gerar PDF do ranking: $e');
+      debugPrint('Erro ao gerar PDF do ranking: $e');
 
       if (loadingAberto) {
         _fecharLoadingGerandoRanking();
@@ -5327,10 +5639,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     final alunosPdf = List<Map<String, dynamic>>.from(_alunosDestaque);
     _tiposAulaPdfCache = await _buscarTiposAulaPorAlunoRanking(alunosPdf);
     debugPrint(
-      '📄 PDF Completo LEGÍVEL: alunos=${alunosPdf.length}, cacheTipos=${_tiposAulaPdfCache.length}',
+      'PDF Completo LEGÍVEL: alunos=${alunosPdf.length}, cacheTipos=${_tiposAulaPdfCache.length}',
     );
     debugPrint(
-      '📄 PDF Completo: alunos=${alunosPdf.length}, cacheTipos=${_tiposAulaPdfCache.length}',
+      'PDF Completo: alunos=${alunosPdf.length}, cacheTipos=${_tiposAulaPdfCache.length}',
     );
 
     Uint8List? logoBytes;
@@ -5338,7 +5650,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       final data = await rootBundle.load('assets/images/logo_uai.png');
       logoBytes = data.buffer.asUint8List();
     } catch (e) {
-      debugPrint('⚠️ Erro ao carregar logo para PDF completo: $e');
+      debugPrint('Erro ao carregar logo para PDF completo: $e');
     }
 
     final logoImage = logoBytes == null ? null : pw.MemoryImage(logoBytes);
@@ -5561,7 +5873,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
             'ranking_completo_aluno_destaque_${safeTurma}_${DateTime.now().millisecondsSinceEpoch}.pdf',
       );
     } catch (e) {
-      debugPrint('❌ Erro ao gerar PDF completo do ranking: $e');
+      debugPrint('Erro ao gerar PDF completo do ranking: $e');
 
       if (loadingAberto) {
         _fecharLoadingGerandoRanking();
@@ -5636,7 +5948,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         subject: 'Ranking Aluno Destaque - ${widget.turmaNome}',
       );
     } catch (e) {
-      debugPrint('❌ Erro ao compartilhar ranking: $e');
+      debugPrint('Erro ao compartilhar ranking: $e');
 
       if (loadingAberto) {
         _fecharLoadingGerandoRanking();
@@ -5705,10 +6017,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
           decoration: BoxDecoration(
             color: context.uai.card,
             borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: context.uai.warning.withOpacity(0.18)),
+            border: Border.all(color: context.uai.warning.withAlpha(46)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.08),
+                color: Colors.black.withAlpha(20),
                 blurRadius: 12,
                 offset: Offset(0, 4),
               ),
@@ -5763,10 +6075,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                   Container(
                     padding: EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                     decoration: BoxDecoration(
-                      color: context.uai.warning.withOpacity(0.10),
+                      color: context.uai.warning.withAlpha(26),
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
-                        color: context.uai.warning.withOpacity(0.16),
+                        color: context.uai.warning.withAlpha(41),
                       ),
                     ),
                     child: Column(
@@ -5782,7 +6094,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                         Text(
                           'média',
                           style: TextStyle(
-                            color: context.uai.warning.withOpacity(0.75),
+                            color: context.uai.warning.withAlpha(191),
                             fontSize: 9,
                             fontWeight: FontWeight.w800,
                           ),
@@ -5837,11 +6149,11 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                           style: OutlinedButton.styleFrom(
                             foregroundColor: context.uai.warning,
                             side: BorderSide(
-                              color: context.uai.warning.withOpacity(0.16),
+                              color: context.uai.warning.withAlpha(41),
                             ),
                             backgroundColor: context.uai.warning
-                                .withOpacity(0.10)
-                                .withOpacity(0.45),
+                                .withAlpha(26)
+                                .withAlpha(115),
                             padding: EdgeInsets.symmetric(
                               vertical: 11,
                               horizontal: 8,
@@ -5881,11 +6193,11 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                           style: OutlinedButton.styleFrom(
                             foregroundColor: context.uai.primary,
                             side: BorderSide(
-                              color: context.uai.error.withOpacity(0.16),
+                              color: context.uai.error.withAlpha(41),
                             ),
                             backgroundColor: context.uai.error
-                                .withOpacity(0.10)
-                                .withOpacity(0.45),
+                                .withAlpha(26)
+                                .withAlpha(115),
                             padding: EdgeInsets.symmetric(
                               vertical: 11,
                               horizontal: 8,
@@ -5922,11 +6234,11 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                           style: OutlinedButton.styleFrom(
                             foregroundColor: context.uai.associacao,
                             side: BorderSide(
-                              color: context.uai.associacao.withOpacity(0.16),
+                              color: context.uai.associacao.withAlpha(41),
                             ),
                             backgroundColor: context.uai.associacao
-                                .withOpacity(0.10)
-                                .withOpacity(0.45),
+                                .withAlpha(26)
+                                .withAlpha(115),
                             padding: EdgeInsets.symmetric(
                               vertical: 11,
                               horizontal: 6,
@@ -5992,9 +6304,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.075),
+        color: color.withAlpha(19),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withOpacity(0.12)),
+        border: Border.all(color: color.withAlpha(31)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -6036,9 +6348,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 8, vertical: 11),
       decoration: BoxDecoration(
-        color: context.uai.card.withOpacity(0.13),
+        color: context.uai.card.withAlpha(33),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: context.uai.card.withOpacity(0.12)),
+        border: Border.all(color: context.uai.card.withAlpha(31)),
       ),
       child: Column(
         children: [
@@ -6057,7 +6369,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
           Text(
             label,
             style: TextStyle(
-              color: context.uai.card.withOpacity(0.78),
+              color: context.uai.card.withAlpha(199),
               fontSize: 10,
             ),
           ),
@@ -6085,10 +6397,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       decoration: BoxDecoration(
         color: context.uai.card,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: cor.withOpacity(0.22)),
+        border: Border.all(color: cor.withAlpha(56)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
+            color: Colors.black.withAlpha(15),
             blurRadius: 8,
             offset: Offset(0, 3),
           ),
@@ -6103,7 +6415,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
               height: 34,
               decoration: BoxDecoration(
                 color: posicao <= 3
-                    ? context.uai.warning.withOpacity(0.16)
+                    ? context.uai.warning.withAlpha(41)
                     : context.uai.cardAlt,
                 shape: BoxShape.circle,
                 border: Border.all(
@@ -6179,9 +6491,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
               width: 54,
               padding: EdgeInsets.symmetric(vertical: 8),
               decoration: BoxDecoration(
-                color: cor.withOpacity(0.10),
+                color: cor.withAlpha(26),
                 borderRadius: BorderRadius.circular(15),
-                border: Border.all(color: cor.withOpacity(0.18)),
+                border: Border.all(color: cor.withAlpha(46)),
               ),
               child: Column(
                 children: [
@@ -6196,7 +6508,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                   Text(
                     'nota',
                     style: TextStyle(
-                      color: cor.withOpacity(0.82),
+                      color: cor.withAlpha(209),
                       fontSize: 9,
                       fontWeight: FontWeight.w700,
                     ),
@@ -6216,9 +6528,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.10),
+        color: accent.withAlpha(26),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: accent.withOpacity(0.20)),
+        border: Border.all(color: accent.withAlpha(51)),
       ),
       child: Text(
         '$label $value',
@@ -6291,11 +6603,16 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                   setState(() {
                     mesSelecionado = mKey;
                     _processarTodosDados();
+                    _registrarCacaBugFiltroFrequencia(
+                      filtro: filtroTemporalFrequencia,
+                      mes: mesSelecionado,
+                      ano: anoSelecionado,
+                    );
                   });
                 }
               },
               backgroundColor: context.uai.cardAlt,
-              selectedColor: context.uai.info.withOpacity(0.16),
+              selectedColor: context.uai.info.withAlpha(41),
               labelStyle: TextStyle(
                 color: ativo ? context.uai.info : context.uai.textSecondary,
                 fontWeight: ativo ? FontWeight.bold : FontWeight.normal,
@@ -6312,12 +6629,18 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     return Expanded(
       child: GestureDetector(
         onTap: () {
+          if (ativo) return;
           setState(() {
             filtroTemporalFrequencia = t;
             if (t == 'Mês' && mesSelecionado == null) {
               mesSelecionado = _mesAtualKey();
             }
             _atualizarComFiltro();
+            _registrarCacaBugFiltroFrequencia(
+              filtro: filtroTemporalFrequencia,
+              mes: mesSelecionado,
+              ano: anoSelecionado,
+            );
           });
         },
         child: AnimatedContainer(
@@ -6372,13 +6695,18 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
               selected: ativo,
               onSelected: (s) {
                 if (s)
-                  setState(() {
+                  { setState(() {
                     anoSelecionado = ano;
                     _atualizarComFiltro();
-                  });
+                    _registrarCacaBugFiltroFrequencia(
+                      filtro: filtroTemporalFrequencia,
+                      mes: mesSelecionado,
+                      ano: anoSelecionado,
+                    );
+                  }); }
               },
               backgroundColor: context.uai.cardAlt,
-              selectedColor: context.uai.info.withOpacity(0.16),
+              selectedColor: context.uai.info.withAlpha(41),
             ),
           );
         },
@@ -6389,7 +6717,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   // ============ GRÁFICOS ============
   Widget _buildGraficoFrequencia() {
     if (_alunosFrequentes.isEmpty)
-      return _emptyChart('Sem dados de frequência');
+      { return _emptyChart('Sem dados de frequência'); }
     final Map<String, int> dados = {};
     int maxV = 0;
     for (var a in _alunosFrequentes) {
@@ -6431,7 +6759,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                 Container(
                   padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: context.uai.info.withOpacity(0.10),
+                    color: context.uai.info.withAlpha(26),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
@@ -6476,14 +6804,14 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                         getTitlesWidget: (v, m) {
                           final idx = v.toInt();
                           if (idx >= 0 && idx < dados.keys.length)
-                            return Padding(
+                            { return Padding(
                               padding: EdgeInsets.only(top: 8),
                               child: Text(
                                 dados.keys.elementAt(idx),
                                 style: TextStyle(fontSize: 10),
                                 overflow: TextOverflow.ellipsis,
                               ),
-                            );
+                            ); }
                           return Text('');
                         },
                       ),
@@ -6527,8 +6855,8 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                           toY: e.value.toDouble(),
                           gradient: LinearGradient(
                             colors: [
-                              context.uai.info.withOpacity(0.78),
-                              context.uai.info.withOpacity(0.55),
+                              context.uai.info.withAlpha(199),
+                              context.uai.info.withAlpha(140),
                             ],
                             begin: Alignment.bottomCenter,
                             end: Alignment.topCenter,
@@ -6601,7 +6929,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: t.associacao.withOpacity(0.12),
+                      color: t.associacao.withAlpha(31),
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Icon(
@@ -6716,12 +7044,22 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     List<MapEntry<String, int>> ordenadas,
     int totalAlunos,
   ) {
-    final cards = ordenadas.map((e) {
+    final graduacoesValidas = ordenadas.where((e) {
+      final nome = e.key.trim();
+      if (nome.isEmpty) return false;
+      if (e.value <= 0) return false;
+      return true;
+    }).toList();
+
+    if (graduacoesValidas.isEmpty) return const SizedBox.shrink();
+
+    final cards = graduacoesValidas.map((e) {
+      final nome = e.key.trim();
       return _buildGraduacaoCard(
-        nomeGraduacao: e.key,
+        nomeGraduacao: nome,
         quantidade: e.value,
         totalAlunos: totalAlunos,
-        alunos: _alunosPorGraduacao[e.key] ?? [],
+        alunos: _alunosPorGraduacao[e.key] ?? _alunosPorGraduacao[nome] ?? [],
       );
     }).toList();
 
@@ -6746,7 +7084,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       decoration: BoxDecoration(
         color: t.cardAlt,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: color.withOpacity(0.18)),
+        border: Border.all(color: color.withAlpha(46)),
       ),
       child: Column(
         children: [
@@ -6793,7 +7131,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: cor.withOpacity(0.12),
+            color: cor.withAlpha(31),
             blurRadius: 12,
             offset: Offset(0, 5),
           ),
@@ -6804,7 +7142,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(18),
-          side: BorderSide(color: cor.withOpacity(0.16)),
+          side: BorderSide(color: cor.withAlpha(41)),
         ),
         child: Theme(
           data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
@@ -6812,21 +7150,28 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
             enabled: _podeVerDashboardDetalhesAluno,
             tilePadding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             childrenPadding: EdgeInsets.fromLTRB(12, 0, 12, 12),
-            leading: Container(
-              width: 50,
-              height: 66,
-              padding: EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: isSem ? context.uai.cardAlt : cor.withOpacity(0.08),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: cor.withOpacity(0.22)),
+            leading: SizedBox(
+              width: 44,
+              height: 52,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: isSem ? context.uai.cardAlt : cor.withAlpha(20),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: cor.withAlpha(56)),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: Center(
+                    child: isSem
+                        ? Icon(
+                            Icons.workspace_premium_outlined,
+                            color: context.uai.textMuted,
+                            size: 24,
+                          )
+                        : _buildCordaWidget(nomeGraduacao),
+                  ),
+                ),
               ),
-              child: isSem
-                  ? Icon(
-                      Icons.workspace_premium_outlined,
-                      color: context.uai.textMuted,
-                    )
-                  : _buildCordaWidget(nomeGraduacao),
             ),
             title: Text(
               nomeGraduacao,
@@ -6889,7 +7234,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                       fontSize: 9,
                       height: 1,
                       fontWeight: FontWeight.w700,
-                      color: _corTextoChipQuantidade(cor).withOpacity(0.78),
+                      color: _corTextoChipQuantidade(cor).withAlpha(199),
                     ),
                   ),
                 ],
@@ -6898,37 +7243,50 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
             children: alunos.map((a) {
               final nomeAluno = a['nome']?.toString() ?? 'Sem nome';
 
-              return Container(
-                margin: EdgeInsets.only(bottom: 6),
-                decoration: BoxDecoration(
+              return Padding(
+                padding: EdgeInsets.only(bottom: 6),
+                child: Material(
                   color: context.uai.background,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: context.uai.border),
-                ),
-                child: ListTile(
-                  contentPadding: EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 2,
-                  ),
-                  leading: _buildDashboardAlunoAvatar(a, size: 40),
-                  title: Text(
-                    nomeAluno,
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Text(
-                    _obterNomeGraduacaoAluno(a),
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: context.uai.textSecondary,
+                  clipBehavior: Clip.antiAlias,
+                  child: Ink(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: context.uai.border),
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  trailing: Icon(
-                    Icons.chevron_right_rounded,
-                    color: context.uai.textMuted,
+                    child: ListTile(
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 2,
+                      ),
+                      leading: SizedBox(
+                        width: 40,
+                        height: 40,
+                        child: _buildDashboardAlunoAvatar(a, size: 40),
+                      ),
+                      title: Text(
+                        nomeAluno,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Text(
+                        _obterNomeGraduacaoAluno(a),
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: context.uai.textSecondary,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: Icon(
+                        Icons.chevron_right_rounded,
+                        color: context.uai.textMuted,
+                      ),
+                    ),
                   ),
                 ),
               );
@@ -7035,7 +7393,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                 Container(
                   padding: EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: context.uai.success.withOpacity(0.10),
+                    color: context.uai.success.withAlpha(26),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
@@ -7122,7 +7480,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                     horizontalInterval: 2,
                     getDrawingHorizontalLine: (value) {
                       return FlLine(
-                        color: context.uai.border.withOpacity(0.65),
+                        color: context.uai.border.withAlpha(166),
                         strokeWidth: 1,
                       );
                     },
@@ -7136,8 +7494,8 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                           toY: e.value.toDouble(),
                           gradient: LinearGradient(
                             colors: [
-                              context.uai.success.withOpacity(0.82),
-                              context.uai.inscricoes.withOpacity(0.58),
+                              context.uai.success.withAlpha(209),
+                              context.uai.inscricoes.withAlpha(148),
                             ],
                             begin: Alignment.bottomCenter,
                             end: Alignment.topCenter,
@@ -7194,10 +7552,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       decoration: BoxDecoration(
         color: t.card,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: accent.withOpacity(0.16)),
+        border: Border.all(color: accent.withAlpha(41)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.045),
+            color: Colors.black.withAlpha(11),
             blurRadius: 8,
             offset: Offset(0, 3),
           ),
@@ -7224,11 +7582,11 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                     height: 42,
                     decoration: BoxDecoration(
                       color: Color.alphaBlend(
-                        accent.withOpacity(0.10),
+                        accent.withAlpha(26),
                         t.cardAlt,
                       ),
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: accent.withOpacity(0.16)),
+                      border: Border.all(color: accent.withAlpha(41)),
                     ),
                     child: Icon(
                       _iconesFaixa[faixa] ?? Icons.person,
@@ -7286,11 +7644,11 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                     padding: EdgeInsets.symmetric(horizontal: 9, vertical: 5),
                     decoration: BoxDecoration(
                       color: Color.alphaBlend(
-                        accent.withOpacity(0.10),
+                        accent.withAlpha(26),
                         t.cardAlt,
                       ),
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: accent.withOpacity(0.16)),
+                      border: Border.all(color: accent.withAlpha(41)),
                     ),
                     child: Text(
                       '$quantidade',
@@ -7402,9 +7760,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
               height: 28,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: accent.withOpacity(0.10),
+                color: accent.withAlpha(26),
                 shape: BoxShape.circle,
-                border: Border.all(color: accent.withOpacity(0.12)),
+                border: Border.all(color: accent.withAlpha(31)),
               ),
               child: Text(
                 '$posicao',
@@ -7450,9 +7808,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
             Container(
               padding: EdgeInsets.symmetric(horizontal: 8, vertical: 5),
               decoration: BoxDecoration(
-                color: accent.withOpacity(0.10),
+                color: accent.withAlpha(26),
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: accent.withOpacity(0.16)),
+                border: Border.all(color: accent.withAlpha(41)),
               ),
               child: Text(
                 '$idade a',
@@ -7590,7 +7948,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       duration: Duration(milliseconds: 200),
       padding: EdgeInsets.symmetric(vertical: 12, horizontal: 6),
       decoration: BoxDecoration(
-        color: ativo ? c.withOpacity(0.12) : context.uai.cardAlt,
+        color: ativo ? c.withAlpha(31) : context.uai.cardAlt,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: ativo ? c : context.uai.border,
@@ -7633,14 +7991,14 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     padding: EdgeInsets.all(16),
     decoration: BoxDecoration(
       gradient: LinearGradient(
-        colors: [c.withOpacity(0.74), c],
+        colors: [c.withAlpha(189), c],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
       borderRadius: BorderRadius.circular(18),
       boxShadow: [
         BoxShadow(
-          color: c.withOpacity(0.24),
+          color: c.withAlpha(61),
           blurRadius: 10,
           offset: Offset(0, 4),
         ),
@@ -7652,7 +8010,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
           width: 42,
           height: 42,
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.16),
+            color: Colors.white.withAlpha(41),
             borderRadius: BorderRadius.circular(14),
           ),
           child: Icon(i, color: _readableOn(c), size: 25),
@@ -7744,7 +8102,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                 Container(
                   padding: EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: cor.withOpacity(0.10),
+                    color: cor.withAlpha(26),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(icon, color: cor, size: 18),
@@ -7803,7 +8161,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         decoration: BoxDecoration(
           color: context.uai.cardAlt,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: cor.withOpacity(0.18)),
+          border: Border.all(color: cor.withAlpha(46)),
         ),
         child: Row(
           children: [
@@ -7842,7 +8200,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
               width: 32,
               height: 32,
               decoration: BoxDecoration(
-                color: cor.withOpacity(0.10),
+                color: cor.withAlpha(26),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
@@ -7874,7 +8232,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         : posicao == 2
         ? context.uai.textMuted
         : posicao == 3
-        ? context.uai.warning.withOpacity(0.70)
+        ? context.uai.warning.withAlpha(179)
         : corBase;
 
     return InkWell(
@@ -7885,14 +8243,14 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         decoration: BoxDecoration(
           color: destaque
               ? Color.alphaBlend(
-                  context.uai.warning.withOpacity(0.08),
+                  context.uai.warning.withAlpha(20),
                   context.uai.cardAlt,
                 )
               : context.uai.cardAlt,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: destaque
-                ? context.uai.warning.withOpacity(0.16)
+                ? context.uai.warning.withAlpha(41)
                 : context.uai.border,
           ),
         ),
@@ -7902,7 +8260,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
               width: 32,
               height: 32,
               decoration: BoxDecoration(
-                color: medalColor.withOpacity(0.12),
+                color: medalColor.withAlpha(31),
                 shape: BoxShape.circle,
               ),
               alignment: Alignment.center,
@@ -7945,9 +8303,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
             Container(
               padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: corBase.withOpacity(0.10),
+                color: corBase.withAlpha(26),
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: corBase.withOpacity(0.16)),
+                border: Border.all(color: corBase.withAlpha(41)),
               ),
               child: Text(
                 '$valor',
@@ -7971,7 +8329,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: context.uai.warning.withOpacity(0.08),
+            color: context.uai.warning.withAlpha(20),
             blurRadius: 14,
             offset: Offset(0, 6),
           ),
@@ -7995,7 +8353,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                   Container(
                     padding: EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: context.uai.warning.withOpacity(0.10),
+                      color: context.uai.warning.withAlpha(26),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Icon(
@@ -8022,7 +8380,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                 shrinkWrap: true,
                 physics: NeverScrollableScrollPhysics(),
                 itemCount: _alunosFrequentes.length,
-                separatorBuilder: (_, __) => SizedBox(height: 8),
+                separatorBuilder: (_, _) => SizedBox(height: 8),
                 itemBuilder: (ctx, i) {
                   final a = _alunosFrequentes[i];
                   final v = _getFrequenciaPorFiltro(a);
@@ -8065,7 +8423,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                 Container(
                   padding: EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: context.uai.info.withOpacity(0.10),
+                    color: context.uai.info.withAlpha(26),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
@@ -8100,7 +8458,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
               shrinkWrap: true,
               physics: NeverScrollableScrollPhysics(),
               itemCount: totalVisivel,
-              separatorBuilder: (_, __) => SizedBox(height: 8),
+              separatorBuilder: (_, _) => SizedBox(height: 8),
               itemBuilder: (ctx, i) {
                 final a = _alunosOrdenadosPorFrequencia[i];
                 final v = _getFrequenciaPorFiltro(a);
@@ -8124,7 +8482,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                     style: OutlinedButton.styleFrom(
                       foregroundColor: context.uai.info,
                       side: BorderSide(
-                        color: context.uai.info.withOpacity(0.16),
+                        color: context.uai.info.withAlpha(41),
                       ),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14),
@@ -8197,7 +8555,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     child: ListView.builder(
       padding: _dashboardPagePadding,
       itemCount: 6,
-      itemBuilder: (_, __) => Container(
+      itemBuilder: (_, _) => Container(
         margin: EdgeInsets.only(bottom: 12),
         height: 80,
         decoration: BoxDecoration(
@@ -8216,7 +8574,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
           Icon(
             Icons.error_outline,
             size: 64,
-            color: context.uai.error.withOpacity(0.55),
+            color: context.uai.error.withAlpha(140),
           ),
           SizedBox(height: 16),
           Text(_erro!, style: TextStyle(color: context.uai.textSecondary)),
@@ -8276,7 +8634,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     if (_ultimaAtualizacao == null) return 'Cache vazio';
     final agora = DateTime.now();
     final diferenca = agora.difference(_ultimaAtualizacao!);
-    final minutosRestantes = _CACHE_VALIDADE_MINUTOS - diferenca.inMinutes;
+    final minutosRestantes = _cacheValidadeMinutos - diferenca.inMinutes;
     if (minutosRestantes <= 0) return 'Expirado';
     if (minutosRestantes < 60) return '${minutosRestantes}min';
     final horas = minutosRestantes ~/ 60;
@@ -8286,7 +8644,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 }
 
 // ============================================
-// 🔥 DETALHE DE FREQUÊNCIA DO ALUNO NO DASHBOARD
+// DETALHE DE FREQUÊNCIA DO ALUNO NO DASHBOARD
 // Conta presenças pelos logs e ausências pelas chamadas também.
 // ============================================
 
@@ -8301,7 +8659,7 @@ class _DetalheFrequenciaAlunoDashboardDialog extends StatefulWidget {
   final bool podeVerFotos;
   final bool isAdmin;
 
-  _DetalheFrequenciaAlunoDashboardDialog({
+  const _DetalheFrequenciaAlunoDashboardDialog({
     required this.aluno,
     required this.alunoId,
     required this.alunoNome,
@@ -8780,7 +9138,7 @@ class _DetalheFrequenciaAlunoDashboardDialogState
           borderRadius: BorderRadius.circular(26),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.18),
+              color: Colors.black.withAlpha(46),
               blurRadius: 22,
               offset: Offset(0, 8),
             ),
@@ -8836,7 +9194,7 @@ class _DetalheFrequenciaAlunoDashboardDialogState
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: _onDialogHero().withOpacity(0.78),
+                      color: _onDialogHero().withAlpha(199),
                       fontSize: 12,
                     ),
                   ),
@@ -8885,7 +9243,7 @@ class _DetalheFrequenciaAlunoDashboardDialogState
               Icon(
                 Icons.error_outline_rounded,
                 size: 74,
-                color: context.uai.error.withOpacity(0.55),
+                color: context.uai.error.withAlpha(140),
               ),
               SizedBox(height: 12),
               Text(
@@ -8961,7 +9319,7 @@ class _DetalheFrequenciaAlunoDashboardDialogState
         border: Border.all(color: context.uai.cardAlt),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
+            color: Colors.black.withAlpha(20),
             blurRadius: 10,
             offset: Offset(0, 4),
           ),
@@ -9005,7 +9363,7 @@ class _DetalheFrequenciaAlunoDashboardDialogState
             child: LinearProgressIndicator(
               value: total > 0 ? _percentual / 100 : 0,
               minHeight: 9,
-              backgroundColor: context.uai.error.withOpacity(0.10),
+              backgroundColor: context.uai.error.withAlpha(26),
               valueColor: AlwaysStoppedAnimation<Color>(
                 _percentual >= 80
                     ? context.uai.success
@@ -9049,9 +9407,9 @@ class _DetalheFrequenciaAlunoDashboardDialogState
     return Container(
       padding: EdgeInsets.symmetric(vertical: 10, horizontal: 4),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), context.uai.cardAlt),
+        color: Color.alphaBlend(accent.withAlpha(20), context.uai.cardAlt),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: accent.withOpacity(0.16)),
+        border: Border.all(color: accent.withAlpha(41)),
       ),
       child: Column(
         children: [
@@ -9083,10 +9441,10 @@ class _DetalheFrequenciaAlunoDashboardDialogState
   Widget _buildFonteResumo() {
     final logs = _porFonte.entries
         .where((e) => e.key.contains('log_presenca_alunos'))
-        .fold<int>(0, (sum, e) => sum + e.value);
+        .fold<int>(0, (total, e) => total + e.value);
     final chamadas = _porFonte.entries
         .where((e) => e.key.contains('chamadas'))
-        .fold<int>(0, (sum, e) => sum + e.value);
+        .fold<int>(0, (total, e) => total + e.value);
 
     return Container(
       padding: EdgeInsets.all(10),
@@ -9099,7 +9457,7 @@ class _DetalheFrequenciaAlunoDashboardDialogState
         children: [
           Icon(
             Icons.info_outline_rounded,
-            color: _readableOn(context.uai.cardAlt).withOpacity(0.70),
+            color: _readableOn(context.uai.cardAlt).withAlpha(179),
             size: 18,
           ),
           SizedBox(width: 8),
@@ -9126,9 +9484,9 @@ class _DetalheFrequenciaAlunoDashboardDialogState
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.08),
+        color: accent.withAlpha(20),
         borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: accent.withOpacity(0.16)),
+        border: Border.all(color: accent.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -9180,14 +9538,14 @@ class _DetalheFrequenciaAlunoDashboardDialogState
                   decoration: BoxDecoration(
                     color: selected
                         ? Color.alphaBlend(
-                            color.withOpacity(0.14),
+                            color.withAlpha(36),
                             context.uai.cardAlt,
                           )
                         : context.uai.card,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
                       color: selected
-                          ? color.withOpacity(0.30)
+                          ? color.withAlpha(77)
                           : context.uai.border,
                     ),
                   ),
@@ -9241,7 +9599,7 @@ class _DetalheFrequenciaAlunoDashboardDialogState
           padding: EdgeInsets.all(13),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: color.withOpacity(0.16)),
+            border: Border.all(color: color.withAlpha(41)),
           ),
           child: Row(
             children: [
@@ -9252,7 +9610,7 @@ class _DetalheFrequenciaAlunoDashboardDialogState
                   color: color,
                   shape: BoxShape.circle,
                   boxShadow: [
-                    BoxShadow(color: color.withOpacity(0.24), blurRadius: 6),
+                    BoxShadow(color: color.withAlpha(61), blurRadius: 6),
                   ],
                 ),
               ),
@@ -9278,7 +9636,7 @@ class _DetalheFrequenciaAlunoDashboardDialogState
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: color.withOpacity(0.09),
+                            color: color.withAlpha(23),
                             borderRadius: BorderRadius.circular(30),
                           ),
                           child: Text(
@@ -9433,7 +9791,7 @@ Widget _sharedDashboardAlunoAvatar(
   final fotoUrl = _extrairFotoUrlAluno(aluno);
   final podeMostrarFoto = podeVerFotos || isAdmin;
 
-  final Color fallbackBg = isDestaque ? t.warning.withOpacity(0.16) : t.cardAlt;
+  final Color fallbackBg = isDestaque ? t.warning.withAlpha(41) : t.cardAlt;
   final Color fallbackText = isDestaque ? t.warning : t.textMuted;
   final Color borderColor = isDestaque
       ? t.warning.withValues(alpha: 0.3)
@@ -9460,25 +9818,28 @@ Widget _sharedDashboardAlunoAvatar(
 
   if (!podeMostrarFoto || fotoUrl.isEmpty) return fallback;
 
+  final alunoId = (aluno['id'] ?? aluno['aluno_id'] ?? aluno['alunoId'] ?? nome)
+      .toString();
+
   return Center(
-    child: SizedBox.square(
-      dimension: size,
-      child: CachedNetworkImage(
-        imageUrl: fotoUrl,
-        memCacheWidth: (size * 3).toInt(),
-        memCacheHeight: (size * 3).toInt(),
-        placeholder: (_, __) => fallback,
-        errorWidget: (_, __, ___) => fallback,
-        imageBuilder: (context, imageProvider) => Container(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: borderColor, width: 1.2),
-            image: DecorationImage(
-              image: imageProvider,
-              fit: BoxFit.cover,
-              alignment: Alignment.center,
-            ),
-          ),
+    child: Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: borderColor, width: 1.2),
+      ),
+      child: ClipOval(
+        child: UaiStudentPhoto(
+          studentId: alunoId,
+          imageUrl: fotoUrl,
+          profile: size <= 56
+              ? UaiStudentPhotoProfile.compact
+              : UaiStudentPhotoProfile.list,
+          fit: BoxFit.cover,
+          width: size,
+          height: size,
+          fallback: fallback,
         ),
       ),
     ),

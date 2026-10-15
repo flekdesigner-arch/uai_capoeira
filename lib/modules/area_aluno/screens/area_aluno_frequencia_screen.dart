@@ -945,15 +945,17 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
         .replaceAll('ú', 'u')
         .replaceAll('ç', 'c');
 
-    if (semPonto.startsWith('seg') || semPonto.contains('segunda'))
+    if (semPonto.startsWith('seg') || semPonto.contains('segunda')) {
       return 'seg';
+    }
     if (semPonto.startsWith('ter') || semPonto.contains('terca')) return 'ter';
     if (semPonto.startsWith('qua') || semPonto.contains('quarta')) return 'qua';
     if (semPonto.startsWith('qui') || semPonto.contains('quinta')) return 'qui';
     if (semPonto.startsWith('sex') || semPonto.contains('sexta')) return 'sex';
     if (semPonto.startsWith('sab') || semPonto.contains('sabado')) return 'sab';
-    if (semPonto.startsWith('dom') || semPonto.contains('domingo'))
+    if (semPonto.startsWith('dom') || semPonto.contains('domingo')) {
       return 'dom';
+    }
 
     return semPonto.length >= 3 ? semPonto.substring(0, 3) : semPonto;
   }
@@ -1066,7 +1068,7 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
-                color: _appBarFg().withOpacity(0.82),
+                color: _appBarFg().withAlpha(209),
               ),
             ),
           ],
@@ -1170,7 +1172,7 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
         padding: const EdgeInsets.all(26),
         child: Container(
           padding: const EdgeInsets.all(22),
-          decoration: _cardDecoration(borderColor: danger.withOpacity(0.18)),
+          decoration: _cardDecoration(borderColor: danger.withAlpha(46)),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -1240,11 +1242,11 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
                       height: 36,
                       decoration: BoxDecoration(
                         color: Color.alphaBlend(
-                          primary.withOpacity(0.08),
+                          primary.withAlpha(20),
                           t.cardAlt,
                         ),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: primary.withOpacity(0.12)),
+                        border: Border.all(color: primary.withAlpha(31)),
                       ),
                       child: Icon(Icons.tune_rounded, color: primary, size: 19),
                     ),
@@ -1313,9 +1315,9 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(visible.withOpacity(0.10), t.cardAlt),
+        color: Color.alphaBlend(visible.withAlpha(26), t.cardAlt),
         borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: visible.withOpacity(0.20)),
+        border: Border.all(color: visible.withAlpha(51)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1343,7 +1345,7 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
     final t = context.uai;
 
     return DropdownButtonFormField<String>(
-      value: _periodo,
+      initialValue: _periodo,
       isExpanded: true,
       borderRadius: BorderRadius.circular(t.inputRadius),
       dropdownColor: t.surface,
@@ -1462,7 +1464,7 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
     final t = context.uai;
 
     return DropdownButtonFormField<String?>(
-      value: _tipoAula,
+      initialValue: _tipoAula,
       isExpanded: true,
       borderRadius: BorderRadius.circular(t.inputRadius),
       dropdownColor: t.surface,
@@ -1635,9 +1637,9 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
             decoration: BoxDecoration(
-              color: onPrimary.withOpacity(0.15),
+              color: onPrimary.withAlpha(38),
               borderRadius: BorderRadius.circular(30),
-              border: Border.all(color: onPrimary.withOpacity(0.14)),
+              border: Border.all(color: onPrimary.withAlpha(36)),
             ),
             child: Text(
               _getTituloPeriodo(),
@@ -1654,7 +1656,7 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
             _getSubtituloPeriodo(),
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: onPrimary.withOpacity(0.76),
+              color: onPrimary.withAlpha(194),
               fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
@@ -1669,7 +1671,7 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
                     Text(
                       'Resumo fácil',
                       style: TextStyle(
-                        color: onPrimary.withOpacity(0.82),
+                        color: onPrimary.withAlpha(209),
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                       ),
@@ -1688,7 +1690,7 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
                     Text(
                       '${resumo.totalPresencas} presença(s) em ${resumo.totalAulas} aula(s)',
                       style: TextStyle(
-                        color: onPrimary.withOpacity(0.82),
+                        color: onPrimary.withAlpha(209),
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                       ),
@@ -1710,7 +1712,7 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
                             ? (resumo.percentualPresenca / 100).clamp(0.0, 1.0)
                             : 0,
                         strokeWidth: 9,
-                        backgroundColor: onPrimary.withOpacity(0.24),
+                        backgroundColor: onPrimary.withAlpha(61),
                         valueColor: AlwaysStoppedAnimation<Color>(
                           indicadorColor,
                         ),
@@ -1757,9 +1759,9 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: onPrimary.withOpacity(0.13),
+        color: onPrimary.withAlpha(33),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: onPrimary.withOpacity(0.16)),
+        border: Border.all(color: onPrimary.withAlpha(41)),
       ),
       child: Row(
         children: [
@@ -1769,7 +1771,7 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
             decoration: BoxDecoration(
               color: color,
               shape: BoxShape.circle,
-              border: Border.all(color: onPrimary.withOpacity(0.30)),
+              border: Border.all(color: onPrimary.withAlpha(77)),
             ),
           ),
           const SizedBox(width: 9),
@@ -1791,7 +1793,7 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
                   Text(
                     ultimaTexto,
                     style: TextStyle(
-                      color: onPrimary.withOpacity(0.78),
+                      color: onPrimary.withAlpha(199),
                       fontWeight: FontWeight.w600,
                       fontSize: 11,
                     ),
@@ -1810,7 +1812,7 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
 
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: _cardDecoration(borderColor: accent.withOpacity(0.14)),
+      decoration: _cardDecoration(borderColor: accent.withAlpha(36)),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1818,7 +1820,7 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: Color.alphaBlend(accent.withOpacity(0.10), t.cardAlt),
+              color: Color.alphaBlend(accent.withAlpha(26), t.cardAlt),
               borderRadius: BorderRadius.circular(15),
             ),
             child: Icon(Icons.psychology_alt_rounded, color: accent),
@@ -1900,7 +1902,7 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
     return Container(
       width: fullWidth ? double.infinity : null,
       padding: const EdgeInsets.all(13),
-      decoration: _cardDecoration(borderColor: color.withOpacity(0.14)),
+      decoration: _cardDecoration(borderColor: color.withAlpha(36)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1910,7 +1912,7 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
                 width: 34,
                 height: 34,
                 decoration: BoxDecoration(
-                  color: Color.alphaBlend(color.withOpacity(0.10), t.cardAlt),
+                  color: Color.alphaBlend(color.withAlpha(26), t.cardAlt),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(info.icone, color: color, size: 19),
@@ -2083,9 +2085,9 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 10),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), t.cardAlt),
+        color: Color.alphaBlend(accent.withAlpha(20), t.cardAlt),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: accent.withOpacity(0.12)),
+        border: Border.all(color: accent.withAlpha(31)),
       ),
       child: Column(
         children: [
@@ -2126,9 +2128,9 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), t.card),
+        color: Color.alphaBlend(accent.withAlpha(20), t.card),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: accent.withOpacity(0.14)),
+        border: Border.all(color: accent.withAlpha(36)),
         boxShadow: t.softShadow,
       ),
       child: Row(
@@ -2228,11 +2230,11 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
       padding: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
         color: Color.alphaBlend(
-          accent.withOpacity(ativo ? 0.10 : 0.05),
+          accent.withAlpha(ativo ? 26 : 13),
           t.cardAlt,
         ),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: ativo ? accent.withOpacity(0.22) : t.border),
+        border: Border.all(color: ativo ? accent.withAlpha(56) : t.border),
       ),
       child: Column(
         children: [
@@ -2398,7 +2400,7 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 9),
-      decoration: _cardDecoration(borderColor: accent.withOpacity(0.12)),
+      decoration: _cardDecoration(borderColor: accent.withAlpha(31)),
       child: Material(
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(t.cardRadius),
@@ -2412,9 +2414,9 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: Color.alphaBlend(accent.withOpacity(0.10), t.cardAlt),
+              color: Color.alphaBlend(accent.withAlpha(26), t.cardAlt),
               borderRadius: BorderRadius.circular(15),
-              border: Border.all(color: accent.withOpacity(0.14)),
+              border: Border.all(color: accent.withAlpha(36)),
             ),
             child: Icon(
               presente ? Icons.check_circle_rounded : Icons.cancel_rounded,
@@ -2540,7 +2542,7 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(13),
-      decoration: _cardDecoration(borderColor: accent.withOpacity(0.13)),
+      decoration: _cardDecoration(borderColor: accent.withAlpha(33)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

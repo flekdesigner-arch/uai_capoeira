@@ -1,10 +1,14 @@
+import 'dart:async';
+import 'package:uai_capoeira/core/session_log/session_log_service.dart';
 // lib/modules/chamadas/screens/chamada_especial_screen.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:intl/intl.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:uai_capoeira/modules/chamadas/services/aluno_foto_resolver.dart';
+import 'package:uai_capoeira/core/image_cache/uai_student_photo.dart';
 
 enum ViewMode { list, grid }
 
@@ -129,7 +133,7 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
 
   List<Map<String, dynamic>> _alunos = [];
   Map<String, bool> _presencas = {};
-  Map<String, String> _observacoes = {};
+  final Map<String, String> _observacoes = {};
 
   String _professorNome = 'Carregando...';
   String _professorId = '';
@@ -443,7 +447,7 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
         return {
           'id': doc.id,
           'nome': data['nome'] ?? 'Sem nome',
-          'foto': data['foto_perfil_aluno'] as String?,
+          'foto': AlunoFotoResolver.fotoDoMapa(data),
           'ultimo_dia_presente':
               data['ultimo_dia_presente'] ??
               data['ultimoDiaPresente'] ??
@@ -695,6 +699,10 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
         throw Exception('A Cloud Function não confirmou o salvamento.');
       }
 
+      unawaited(SessionLogService.instance.recordEntityOperation(
+        module: 'chamadas', entityType: 'turma',
+        entityId: widget.turmaId, operation: 'criou', result: 'sucesso',
+      ));
       final processados = _toInt(data['processados']);
       final presentesCloud = _toInt(data['presentes']);
       final ausentesCloud = _toInt(data['ausentes']);
@@ -724,6 +732,10 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
         });
       }
     } catch (e) {
+      unawaited(SessionLogService.instance.recordEntityOperation(
+        module: 'chamadas', entityType: 'turma',
+        entityId: widget.turmaId, operation: 'criou', result: 'falha',
+      ));
       debugPrint('❌ Erro ao processar chamada especial: $e');
       if (mounted) {
         setState(() {
@@ -781,14 +793,14 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
                 ).format(widget.dataSelecionada),
                 style: TextStyle(
                   fontSize: 16,
-                  color: onSuccess.withOpacity(0.78),
+                  color: onSuccess.withAlpha(199),
                 ),
               ),
               const SizedBox(height: 20),
               Container(
                 padding: const EdgeInsets.all(15),
                 decoration: BoxDecoration(
-                  color: onSuccess.withOpacity(0.18),
+                  color: onSuccess.withAlpha(46),
                   borderRadius: BorderRadius.circular(15),
                 ),
                 child: Row(
@@ -822,7 +834,7 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
                 'Tipo de aula: $_tipoAula',
                 style: TextStyle(
                   fontSize: 12,
-                  color: onSuccess.withOpacity(0.78),
+                  color: onSuccess.withAlpha(199),
                 ),
               ),
               const SizedBox(height: 22),
@@ -864,7 +876,7 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
         ),
         Text(
           label,
-          style: TextStyle(fontSize: 11, color: onSuccess.withOpacity(0.74)),
+          style: TextStyle(fontSize: 11, color: onSuccess.withAlpha(189)),
         ),
       ],
     );
@@ -899,7 +911,7 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
               _statusMensagem,
               style: TextStyle(
                 fontSize: 14,
-                color: _onPrimary().withOpacity(0.90),
+                color: _onPrimary().withAlpha(230),
               ),
               textAlign: TextAlign.center,
             ),
@@ -928,7 +940,7 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
         border: Border.all(color: context.uai.card, width: 2),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.18),
+            color: Colors.black.withAlpha(46),
             blurRadius: 4,
             offset: const Offset(0, 2),
           ),
@@ -937,136 +949,131 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
     );
   }
 
+  String _nomeAlunoCurto(String nome) {
+    final partes = nome
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((p) => p.isNotEmpty)
+        .toList();
+    if (partes.isEmpty) return 'Aluno';
+    if (partes.length == 1) return partes.first;
+    return '${partes.first} ${partes.last}';
+  }
+
   Widget _buildAlunoListTile(Map<String, dynamic> aluno) {
     final alunoId = aluno['id'] as String;
     final nomeAluno = aluno['nome'] as String;
+    final nomeExibicao = _nomeAlunoCurto(nomeAluno);
     final estaPresente = _presencas[alunoId] ?? false;
-    final observacao = _observacoes[alunoId];
+    final observacao = (_observacoes[alunoId] ?? '').trim();
     final fotoUrl = aluno['foto'] as String?;
     final indicadorColor = _corIndicadorAusencia(aluno);
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      elevation: 0,
-      color: estaPresente
-          ? Color.alphaBlend(
-              context.uai.success.withOpacity(0.08),
-              context.uai.card,
-            )
-          : context.uai.card,
-      surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: context.uai.card,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
           color: estaPresente
-              ? context.uai.success.withOpacity(0.45)
+              ? context.uai.success.withAlpha(140)
               : context.uai.border,
+          width: estaPresente ? 1.6 : 1,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(11),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: ListTile(
-        dense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+        onTap: () => _togglePresenca(alunoId),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         leading: Stack(
           clipBehavior: Clip.none,
           children: [
-            CircleAvatar(
-              radius: 19,
-              backgroundColor: estaPresente
-                  ? context.uai.success.withOpacity(0.10)
-                  : context.uai.border,
-              backgroundImage: fotoUrl != null && fotoUrl.isNotEmpty
-                  ? NetworkImage(fotoUrl)
-                  : null,
-              child: fotoUrl == null || fotoUrl.isEmpty
-                  ? Icon(Icons.person, size: 18, color: context.uai.textMuted)
-                  : null,
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: estaPresente ? context.uai.success : context.uai.border,
+                  width: 2,
+                ),
+              ),
+              child: ClipOval(
+                child: fotoUrl != null && fotoUrl.trim().isNotEmpty
+                    ? UaiStudentPhoto(
+                        studentId: alunoId,
+                        imageUrl: fotoUrl,
+                        profile: UaiStudentPhotoProfile.compact,
+                        fit: BoxFit.cover,
+                        fallback: _placeholderIcon(size: 24),
+                      )
+                    : _placeholderIcon(size: 24),
+              ),
             ),
-            Positioned(
-              right: -1,
-              bottom: -1,
-              child: _buildIndicadorBolinha(aluno, size: 12),
-            ),
+            if (_indicadoresAusenciaAtivo)
+              Positioned(
+                right: -1,
+                bottom: -1,
+                child: _buildIndicadorBolinha(aluno, size: 12),
+              ),
           ],
         ),
         title: Text(
-          nomeAluno,
+          nomeExibicao,
           style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-            color: estaPresente
-                ? context.uai.textPrimary
-                : context.uai.textSecondary,
+            fontWeight: FontWeight.bold,
+            color: estaPresente ? context.uai.success : context.uai.textPrimary,
           ),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (_indicadoresAusenciaAtivo &&
-                _mostrarTextoUltimaPresencaIndicador)
-              Text(
-                _textoUltimaPresenca(aluno),
-                style: TextStyle(
-                  fontSize: 10.5,
-                  color: indicadorColor,
-                  fontWeight: FontWeight.w800,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            if (observacao != null && observacao.trim().isNotEmpty)
-              Text(
-                observacao,
-                style: TextStyle(
-                  fontSize: 10,
-                  color: context.uai.warning,
-                  fontStyle: FontStyle.italic,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-          ],
-        ),
-        trailing: SizedBox(
-          width: 72,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              SizedBox(
-                width: 24,
-                height: 24,
-                child: IconButton(
-                  icon: Icon(
-                    Icons.note_add,
-                    size: 14,
-                    color: observacao != null
-                        ? context.uai.warning
-                        : context.uai.info,
-                  ),
-                  padding: EdgeInsets.zero,
-                  visualDensity: VisualDensity.compact,
-                  onPressed: () => _adicionarObservacao(alunoId, nomeAluno),
-                  splashRadius: 14,
-                ),
-              ),
-              const SizedBox(width: 2),
-              Transform.scale(
-                scale: 0.55,
-                child: Switch(
-                  value: estaPresente,
-                  activeColor: context.uai.success,
-                  inactiveTrackColor: context.uai.textMuted,
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  onChanged: (_) => _togglePresenca(alunoId),
-                ),
-              ),
-            ],
+        subtitle: Text(
+          observacao.isNotEmpty
+              ? observacao
+              : (_mostrarTextoUltimaPresencaIndicador
+                  ? _textoUltimaPresenca(aluno)
+                  : (estaPresente
+                      ? 'Presente na chamada'
+                      : 'Ausente na chamada')),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 12,
+            color: observacao.isNotEmpty
+                ? context.uai.warning
+                : indicadorColor,
+            fontWeight: observacao.isNotEmpty
+                ? FontWeight.w700
+                : FontWeight.w600,
           ),
         ),
-        onTap: () => _togglePresenca(alunoId),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (observacao.isNotEmpty)
+              Icon(
+                Icons.sticky_note_2_rounded,
+                color: context.uai.warning,
+                size: 20,
+              ),
+            IconButton(
+              tooltip: 'Observação',
+              onPressed: () => _adicionarObservacao(alunoId, nomeAluno),
+              icon: Icon(Icons.note_add_outlined, color: context.uai.info),
+            ),
+            Switch(
+              value: estaPresente,
+              activeThumbColor: context.uai.success,
+              onChanged: (_) => _togglePresenca(alunoId),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1074,155 +1081,291 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
   Widget _buildAlunoGridItem(Map<String, dynamic> aluno) {
     final alunoId = aluno['id'] as String;
     final nomeAluno = aluno['nome'] as String;
+    final nomeAlunoExibicao = _nomeAlunoCurto(nomeAluno);
     final estaPresente = _presencas[alunoId] ?? false;
+    final temObservacao = (_observacoes[alunoId] ?? '').trim().isNotEmpty;
     final fotoUrl = aluno['foto'] as String?;
     final indicadorColor = _corIndicadorAusencia(aluno);
 
-    return Card(
-      elevation: 0,
-      color: context.uai.card,
-      surfaceTintColor: Colors.transparent,
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: estaPresente ? context.uai.success : context.uai.border,
-          width: estaPresente ? 2 : 1,
+    return RepaintBoundary(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(22),
+          boxShadow: [
+            BoxShadow(
+              color: estaPresente
+                  ? context.uai.success.withAlpha(46)
+                  : context.uai.error.withAlpha(36),
+              blurRadius: estaPresente ? 13 : 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
-      ),
-      child: InkWell(
-        onTap: () => _togglePresenca(alunoId),
-        child: Container(
-          decoration: BoxDecoration(
-            color: estaPresente
-                ? context.uai.success.withOpacity(0.18)
-                : context.uai.card,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () => _togglePresenca(alunoId),
+            onLongPress: () => _adicionarObservacao(alunoId, nomeAluno),
+            borderRadius: BorderRadius.circular(22),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              decoration: BoxDecoration(
+                color: context.uai.card,
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(
+                  color: estaPresente
+                      ? context.uai.success
+                      : context.uai.error.withAlpha(179),
+                  width: estaPresente ? 2.2 : 1.8,
+                ),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
                 child: Stack(
                   children: [
                     Positioned.fill(
-                      child: Container(
-                        color: context.uai.cardAlt,
-                        child: fotoUrl != null && fotoUrl.isNotEmpty
-                            ? CachedNetworkImage(
-                                imageUrl: fotoUrl,
-                                fit: BoxFit.cover,
-                                width: double.infinity,
-                                height: double.infinity,
-                                memCacheWidth: 600,
-                                fadeInDuration: const Duration(
-                                  milliseconds: 120,
+                      child: Column(
+                        children: [
+                          Expanded(
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                fotoUrl != null && fotoUrl.trim().isNotEmpty
+                                    ? UaiStudentPhoto(
+                                        studentId: alunoId,
+                                        imageUrl: fotoUrl,
+                                        profile: UaiStudentPhotoProfile.grid,
+                                        fit: BoxFit.cover,
+                                        placeholder: Container(
+                                          color: context.uai.cardAlt,
+                                          child: Center(
+                                            child: SizedBox(
+                                              width: 18,
+                                              height: 18,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: context.uai.primary,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        fallback: Container(
+                                          color: context.uai.cardAlt,
+                                          child: _placeholderIcon(size: 68),
+                                        ),
+                                      )
+                                    : Container(
+                                        color: context.uai.cardAlt,
+                                        child: _placeholderIcon(size: 68),
+                                      ),
+                                Positioned.fill(
+                                  child: DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        begin: Alignment.bottomCenter,
+                                        end: Alignment.center,
+                                        colors: [
+                                          Colors.black.withAlpha(148),
+                                          Colors.transparent,
+                                        ],
+                                      ),
+                                    ),
+                                  ),
                                 ),
-                                errorWidget: (c, u, e) =>
-                                    _placeholderIcon(size: 80),
-                              )
-                            : _placeholderIcon(size: 80),
+                                Positioned(
+                                  left: 10,
+                                  right: 10,
+                                  bottom: 10,
+                                  child: Center(
+                                    child: Container(
+                                      constraints:
+                                          const BoxConstraints(maxWidth: 132),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withAlpha(87),
+                                        borderRadius:
+                                            BorderRadius.circular(999),
+                                        border: Border.all(
+                                          color: Colors.white.withAlpha(26),
+                                        ),
+                                      ),
+                                      child: FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        child: Text(
+                                          nomeAlunoExibicao,
+                                          textAlign: TextAlign.center,
+                                          softWrap: false,
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.bold,
+                                            height: 1.08,
+                                            shadows: [
+                                              Shadow(
+                                                color: Colors.black.withAlpha((255.0 * (
+                                                  0.55)).round()),
+                                                blurRadius: 8,
+                                                offset: const Offset(0, 1),
+                                              ),
+                                            ],
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+                            decoration: BoxDecoration(
+                              color: estaPresente
+                                  ? context.uai.success.withAlpha(26)
+                                  : context.uai.error.withAlpha(26),
+                            ),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (_indicadoresAusenciaAtivo &&
+                                    _mostrarTextoUltimaPresencaIndicador)
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 6),
+                                    child: Text(
+                                      _textoUltimaPresenca(aluno),
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: indicadorColor,
+                                        fontSize: 9.8,
+                                        fontWeight: FontWeight.w900,
+                                        height: 1,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                Center(
+                                  child: SizedBox(
+                                    width: 108,
+                                    height: 31,
+                                    child: ElevatedButton.icon(
+                                      onPressed: () =>
+                                          _togglePresenca(alunoId),
+                                      style: ElevatedButton.styleFrom(
+                                        elevation: 0,
+                                        backgroundColor: estaPresente
+                                            ? context.uai.success
+                                            : context.uai.primary,
+                                        foregroundColor: _readableOn(
+                                          estaPresente
+                                              ? context.uai.success
+                                              : context.uai.primary,
+                                        ),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(17),
+                                        ),
+                                      ),
+                                      icon: Icon(
+                                        estaPresente
+                                            ? Icons.check_circle_rounded
+                                            : Icons
+                                                .radio_button_unchecked_rounded,
+                                        size: 15,
+                                      ),
+                                      label: Text(
+                                        estaPresente ? 'Presente' : 'Marcar',
+                                        style: const TextStyle(
+                                          fontSize: 10.8,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: GestureDetector(
+                        onTap: () => _adicionarObservacao(alunoId, nomeAluno),
+                        child: Container(
+                          padding: const EdgeInsets.all(7),
+                          decoration: BoxDecoration(
+                            color: temObservacao
+                                ? context.uai.warning
+                                : Colors.white.withAlpha(240),
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withAlpha(41),
+                                blurRadius: 7,
+                              ),
+                            ],
+                          ),
+                          child: Icon(
+                            temObservacao
+                                ? Icons.sticky_note_2_rounded
+                                : Icons.note_add_outlined,
+                            size: 17,
+                            color: temObservacao
+                                ? _readableOn(context.uai.warning)
+                                : _ensureVisible(
+                                    context.uai.info,
+                                    Colors.white,
+                                  ),
+                          ),
+                        ),
                       ),
                     ),
                     Positioned(
                       top: 8,
                       left: 8,
-                      child: _buildIndicadorBolinha(aluno, size: 14),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: estaPresente
+                              ? context.uai.success
+                              : context.uai.error,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: context.uai.card, width: 2),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withAlpha(46),
+                              blurRadius: 5,
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                    if (estaPresente)
+                    if (_indicadoresAusenciaAtivo)
                       Positioned(
                         top: 8,
-                        right: 8,
-                        child: Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: context.uai.success,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            Icons.check,
-                            size: 14,
-                            color: _readableOn(context.uai.success),
-                          ),
-                        ),
+                        left: 27,
+                        child: _buildIndicadorBolinha(aluno, size: 12),
                       ),
-                    Positioned(
-                      bottom: 8,
-                      right: 8,
-                      child: GestureDetector(
-                        onTap: () => _adicionarObservacao(alunoId, nomeAluno),
-                        child: Container(
-                          padding: const EdgeInsets.all(5),
-                          decoration: BoxDecoration(
-                            color: context.uai.surface.withOpacity(0.92),
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.16),
-                                blurRadius: 4,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: Icon(
-                            Icons.note_add,
-                            size: 16,
-                            color: context.uai.info,
-                          ),
-                        ),
-                      ),
-                    ),
                   ],
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.all(8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      nomeAluno.toUpperCase(),
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                        height: 1.2,
-                        color: estaPresente
-                            ? context.uai.success
-                            : context.uai.textPrimary,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 3),
-                    if (_indicadoresAusenciaAtivo &&
-                        _mostrarTextoUltimaPresencaIndicador) ...[
-                      Text(
-                        _textoUltimaPresenca(aluno),
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          color: indicadorColor,
-                          fontWeight: FontWeight.w800,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 4),
-                    ],
-                    Align(
-                      alignment: Alignment.center,
-                      child: Transform.scale(
-                        scale: 0.8,
-                        child: Switch(
-                          value: estaPresente,
-                          activeColor: context.uai.success,
-                          inactiveTrackColor: context.uai.textMuted,
-                          onChanged: (_) => _togglePresenca(alunoId),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -1272,124 +1415,207 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
     );
   }
 
+  bool _isChamadaDesktop(double width) => width >= 700;
+
+  double _maxChamadaContentWidth(double width) {
+    if (width >= 1600) return 1640;
+    if (width >= 1200) return 1480;
+    if (width >= 900) return 1180;
+    return width;
+  }
+
+  EdgeInsets _gridPaddingForWidth(double width) {
+    if (width >= 1200) return const EdgeInsets.fromLTRB(18, 10, 18, 18);
+    if (width >= 700) return const EdgeInsets.fromLTRB(14, 8, 14, 16);
+    return const EdgeInsets.fromLTRB(14, 8, 14, 14);
+  }
+
+  SliverGridDelegate _gridDelegateForChamada(double width) {
+    if (!_isChamadaDesktop(width)) {
+      return const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+        childAspectRatio: 0.76,
+      );
+    }
+
+    return const SliverGridDelegateWithMaxCrossAxisExtent(
+      maxCrossAxisExtent: 245,
+      crossAxisSpacing: 14,
+      mainAxisSpacing: 14,
+      childAspectRatio: 0.76,
+    );
+  }
+
+  Widget _buildHeaderTinyStat(String label, int value, Color color) {
+    final onPrimary = _onPrimary();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+      decoration: BoxDecoration(
+        color: onPrimary.withAlpha(33),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: onPrimary.withAlpha(41)),
+      ),
+      child: RichText(
+        text: TextSpan(
+          children: [
+            TextSpan(
+              text: '$label ',
+              style: TextStyle(
+                color: onPrimary.withAlpha(179),
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            TextSpan(
+              text: '$value',
+              style: TextStyle(
+                color: _ensureVisible(color, context.uai.primary),
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildHeaderResumo() {
     final presentes = _presencas.values.where((v) => v).length;
     final total = _alunos.length;
+    final ausentes = total - presentes;
     final porcentagem = total > 0 ? (presentes / total * 100).round() : 0;
+    final onPrimary = _onPrimary();
+    final progressColor = presentes == 0
+        ? context.uai.error
+        : presentes == total
+        ? context.uai.success
+        : context.uai.warning;
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.fromLTRB(10, 6, 10, 4),
+      padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
       decoration: BoxDecoration(
-        color: context.uai.surface,
-        border: Border(bottom: BorderSide(color: context.uai.border)),
+        gradient: context.uai.primaryGradient,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: context.uai.primary.withAlpha(31),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Row(
             children: [
+              Icon(Icons.fact_check_rounded, color: onPrimary, size: 19),
+              const SizedBox(width: 8),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _diaSemana,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: context.uai.textPrimary,
-                      ),
-                    ),
-                    Container(
-                      margin: const EdgeInsets.only(top: 4),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: context.uai.primary,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        'TIPO: $_tipoAula',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: _readableOn(context.uai.primary),
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  widget.turmaNome,
+                  style: TextStyle(
+                    color: onPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    height: 1.0,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
+              Text(
+                '${DateFormat('dd/MM').format(widget.dataSelecionada)} • $_tipoAula',
+                style: TextStyle(
+                  color: onPrimary.withAlpha(199),
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
                 ),
-                decoration: BoxDecoration(
-                  color: context.uai.cardAlt,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.person,
-                      size: 12,
-                      color: context.uai.textSecondary,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      _professorNome.split(' ').first,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: context.uai.textSecondary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _buildStatItem(
-                value: '$presentes',
-                label: 'Presentes',
-                color: context.uai.success,
-                icon: Icons.check_circle,
-              ),
-              _buildStatItem(
-                value: '${total - presentes}',
-                label: 'Ausentes',
-                color: context.uai.error,
-                icon: Icons.cancel,
-              ),
-              _buildStatItem(
-                value: '$porcentagem%',
-                label: 'Frequência',
-                color: context.uai.info,
-                icon: Icons.trending_up,
               ),
             ],
           ),
           const SizedBox(height: 8),
-          LinearProgressIndicator(
-            value: total > 0 ? presentes / total : 0,
-            backgroundColor: context.uai.border,
-            valueColor: AlwaysStoppedAnimation<Color>(
-              presentes == 0
-                  ? context.uai.error
-                  : presentes == total
-                  ? context.uai.success
-                  : context.uai.warning,
+          Row(
+            children: [
+              _buildHeaderTinyStat('P', presentes, context.uai.success),
+              const SizedBox(width: 6),
+              _buildHeaderTinyStat('A', ausentes, context.uai.error),
+              const SizedBox(width: 6),
+              _buildHeaderTinyStat('T', total, onPrimary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: LinearProgressIndicator(
+                    value: total > 0 ? presentes / total : 0,
+                    minHeight: 6,
+                    backgroundColor: onPrimary.withAlpha(51),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      _ensureVisible(progressColor, context.uai.primary),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '$porcentagem%',
+                style: TextStyle(
+                  color: onPrimary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            decoration: BoxDecoration(
+              color: onPrimary.withAlpha(26),
+              borderRadius: BorderRadius.circular(13),
+              border: Border.all(color: onPrimary.withAlpha(36)),
             ),
-            minHeight: 6,
-            borderRadius: BorderRadius.circular(3),
+            child: Row(
+              children: [
+                Icon(Icons.auto_awesome_rounded, size: 14, color: onPrimary),
+                const SizedBox(width: 6),
+                Text(
+                  'CHAMADA ESPECIAL',
+                  style: TextStyle(
+                    color: onPrimary,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  width: 4,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: onPrimary.withAlpha(153),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Prof. ${_professorNome.split(' ').first} • $_diaSemana',
+                    style: TextStyle(
+                      color: onPrimary.withAlpha(199),
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -1410,9 +1636,9 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('CHAMADA ESPECIAL', style: TextStyle(fontSize: 14)),
+            const Text('CHAMADA', style: TextStyle(fontSize: 16)),
             Text(
-              '${widget.turmaNome} - ${DateFormat('dd/MM/yyyy').format(widget.dataSelecionada)}',
+              widget.turmaNome,
               style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.normal,
@@ -1421,86 +1647,199 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
           ],
         ),
         actions: [
-          if (!_isSaving)
-            ViewModeSelector(
-              currentMode: _viewMode,
-              onChanged: (mode) => setState(() => _viewMode = mode),
+          Container(
+            margin: const EdgeInsets.only(right: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: _appBarFg().withAlpha(41),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: _appBarFg().withAlpha(41)),
             ),
-          const SizedBox(width: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.auto_awesome_rounded, size: 15, color: _appBarFg()),
+                const SizedBox(width: 5),
+                Text(
+                  'ESPECIAL',
+                  style: TextStyle(
+                    color: _appBarFg(),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
       body: _isLoading
           ? Center(child: CircularProgressIndicator(color: context.uai.primary))
           : _isSaving && _mostrarProgresso
           ? _buildTelaProgresso()
-          : Column(
-              children: [
-                _buildHeaderResumo(),
-                Expanded(
-                  child: _viewMode == ViewMode.list
-                      ? ListView.builder(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: _alunos.length,
-                          itemBuilder: (context, index) =>
-                              _buildAlunoListTile(_alunos[index]),
-                        )
-                      : GridView.builder(
-                          padding: const EdgeInsets.all(16),
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 2,
-                                crossAxisSpacing: 16,
-                                mainAxisSpacing: 16,
-                                childAspectRatio: 0.75,
-                              ),
-                          itemCount: _alunos.length,
-                          itemBuilder: (context, index) =>
-                              _buildAlunoGridItem(_alunos[index]),
-                        ),
-                ),
-                SafeArea(
-                  top: false,
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: context.uai.surface,
-                      border: Border(
-                        top: BorderSide(color: context.uai.border),
+          : LayoutBuilder(
+              builder: (context, constraints) {
+                final larguraTela = constraints.maxWidth;
+                final maxWidth = _maxChamadaContentWidth(larguraTela);
+                final isDesktop = _isChamadaDesktop(larguraTela);
+
+                return Column(
+                  children: [
+                    Align(
+                      alignment: Alignment.topCenter,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(maxWidth: maxWidth),
+                        child: _buildHeaderResumo(),
                       ),
                     ),
-                    child: ElevatedButton.icon(
-                      onPressed: _isSaving ? null : _salvarChamada,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _appBarBg(),
-                        foregroundColor: _appBarFg(),
-                        minimumSize: const Size(double.infinity, 55),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                    Align(
+                      alignment: Alignment.topCenter,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(maxWidth: maxWidth),
+                        child: Container(
+                          color: context.uai.surface,
+                          padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  '$presentes presentes • $ausentes ausentes • $total alunos',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: context.uai.textSecondary,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              ViewModeSelector(
+                                currentMode: _viewMode,
+                                onChanged: (mode) =>
+                                    setState(() => _viewMode = mode),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                      icon: _isSaving
-                          ? SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: _appBarFg(),
+                    ),
+                    Expanded(
+                      child: Align(
+                        alignment: Alignment.topCenter,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(maxWidth: maxWidth),
+                          child: _viewMode == ViewMode.list
+                              ? isDesktop
+                                  ? GridView.builder(
+                                      scrollCacheExtent: const ScrollCacheExtent.pixels(700),
+                                      padding: _gridPaddingForWidth(larguraTela),
+                                      gridDelegate:
+                                          const SliverGridDelegateWithMaxCrossAxisExtent(
+                                            maxCrossAxisExtent: 560,
+                                            mainAxisExtent: 82,
+                                            crossAxisSpacing: 12,
+                                            mainAxisSpacing: 12,
+                                          ),
+                                      itemCount: _alunos.length,
+                                      itemBuilder: (context, index) =>
+                                          _buildAlunoListTile(_alunos[index]),
+                                    )
+                                  : ListView.builder(
+                                      scrollCacheExtent: const ScrollCacheExtent.pixels(500),
+                                      padding: const EdgeInsets.fromLTRB(
+                                        14,
+                                        6,
+                                        14,
+                                        14,
+                                      ),
+                                      itemCount: _alunos.length,
+                                      itemBuilder: (context, index) =>
+                                          _buildAlunoListTile(_alunos[index]),
+                                    )
+                              : GridView.builder(
+                                  scrollCacheExtent: const ScrollCacheExtent.pixels(800),
+                                  padding: _gridPaddingForWidth(larguraTela),
+                                  gridDelegate:
+                                      _gridDelegateForChamada(larguraTela),
+                                  itemCount: _alunos.length,
+                                  itemBuilder: (context, index) =>
+                                      _buildAlunoGridItem(_alunos[index]),
+                                ),
+                        ),
+                      ),
+                    ),
+                    SafeArea(
+                      top: false,
+                      child: Container(
+                        width: double.infinity,
+                        padding: EdgeInsets.fromLTRB(
+                          larguraTela >= 700 ? 18 : 14,
+                          10,
+                          larguraTela >= 700 ? 18 : 14,
+                          12,
+                        ),
+                        decoration: BoxDecoration(
+                          color: context.uai.cardAlt,
+                          border: Border(
+                            top: BorderSide(color: context.uai.border),
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withAlpha(20),
+                              blurRadius: 14,
+                              offset: const Offset(0, -4),
+                            ),
+                          ],
+                        ),
+                        child: Align(
+                          alignment: Alignment.center,
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(maxWidth: maxWidth),
+                            child: ElevatedButton.icon(
+                              onPressed: _isSaving ? null : _salvarChamada,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _appBarBg(),
+                                foregroundColor: _appBarFg(),
+                                disabledBackgroundColor: context.uai.border,
+                                disabledForegroundColor:
+                                    context.uai.textSecondary,
+                                minimumSize: const Size(double.infinity, 50),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
                               ),
-                            )
-                          : const Icon(Icons.save, size: 24),
-                      label: _isSaving
-                          ? const Text('SALVANDO...')
-                          : Text(
-                              '✅ SALVAR • $presentes P / $ausentes A',
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
+                              icon: _isSaving
+                                  ? SizedBox(
+                                      width: 19,
+                                      height: 19,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: _appBarFg(),
+                                      ),
+                                    )
+                                  : const Icon(
+                                      Icons.save_rounded,
+                                      size: 21,
+                                    ),
+                              label: Text(
+                                _isSaving
+                                    ? 'SALVANDO...'
+                                    : 'SALVAR CHAMADA • $presentes P / $ausentes A',
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-              ],
+                  ],
+                );
+              },
             ),
     );
   }

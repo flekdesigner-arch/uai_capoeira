@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:uai_capoeira/core/session_log/session_log_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
@@ -6,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'dart:io';
 
 import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'widgets/premium_user_selector_dialog.dart';
 
 class EditarTurmaScreen extends StatefulWidget {
   final String academiaId;
@@ -245,6 +248,7 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
       'tipo': (data['tipo'] ?? 'usuário').toString(),
       'peso': _toInt(data['peso_permissao']),
       'status': (data['status_conta'] ?? '').toString(),
+      'foto_url': data['foto_url']?.toString(),
       'selecionadoForaFiltro': selecionadoForaFiltro,
     };
   }
@@ -588,6 +592,7 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
 
       final data = {
         'academia_id': widget.academiaId,
+        'academia_nome': widget.academiaNome,
         'nucleo': widget.academiaNome,
         'nome': _nomeController.text.trim(),
         'nivel': _nivelController.text.trim().toUpperCase(),
@@ -624,17 +629,26 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
         data['logo_url'] = _logoUrlAtual;
       }
 
+      String? savedTurmaId;
       if (_isEditing) {
         await _firestore.collection('turmas').doc(widget.turmaId).update(data);
+        savedTurmaId = widget.turmaId;
       } else {
         data['criado_em'] = FieldValue.serverTimestamp();
         data['alunos_count'] = 0;
         data['alunos_ativos'] = 0;
         data['alunos_inativos'] = 0;
 
-        await _firestore.collection('turmas').add(data);
+        final created = await _firestore.collection('turmas').add(data);
+        savedTurmaId = created.id;
       }
 
+      if (savedTurmaId != null) {
+        unawaited(SessionLogService.instance.recordEntityOperation(
+          module: 'turmas', entityType: 'turma', entityId: savedTurmaId,
+          operation: _isEditing ? 'atualizou' : 'criou', result: 'sucesso',
+        ));
+      }
       await _atualizarContadorTurmas();
 
       if (mounted) {
@@ -647,6 +661,12 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
         Navigator.pop(context);
       }
     } catch (e) {
+      if (_isEditing && widget.turmaId != null) {
+        unawaited(SessionLogService.instance.recordEntityOperation(
+          module: 'turmas', entityType: 'turma', entityId: widget.turmaId!,
+          operation: 'atualizou', result: 'falha',
+        ));
+      }
       if (mounted) {
         _showSnack('Erro ao salvar: $e', type: _SnackType.error);
       }
@@ -714,7 +734,7 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
                                 width: 48,
                                 height: 48,
                                 decoration: BoxDecoration(
-                                  color: error.withOpacity(0.12),
+                                  color: error.withAlpha(31),
                                   borderRadius: BorderRadius.circular(
                                     t.buttonRadius,
                                   ),
@@ -767,14 +787,14 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
                               color: Color.alphaBlend(
-                                error.withOpacity(0.10),
+                                error.withAlpha(26),
                                 t.cardAlt,
                               ),
                               borderRadius: BorderRadius.circular(
                                 t.inputRadius,
                               ),
                               border: Border.all(
-                                color: error.withOpacity(0.18),
+                                color: error.withAlpha(46),
                               ),
                             ),
                             child: Text(
@@ -906,6 +926,12 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
 
     try {
       await _firestore.collection('turmas').doc(widget.turmaId).delete();
+      if (widget.turmaId != null) {
+        unawaited(SessionLogService.instance.recordEntityOperation(
+          module: 'turmas', entityType: 'turma', entityId: widget.turmaId!,
+          operation: 'excluiu', result: 'sucesso',
+        ));
+      }
       await _atualizarContadorTurmas();
 
       if (mounted) {
@@ -913,6 +939,12 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
         Navigator.pop(context);
       }
     } catch (e) {
+      if (widget.turmaId != null) {
+        unawaited(SessionLogService.instance.recordEntityOperation(
+          module: 'turmas', entityType: 'turma', entityId: widget.turmaId!,
+          operation: 'excluiu', result: 'falha',
+        ));
+      }
       if (mounted) {
         _showSnack('Erro ao excluir: $e', type: _SnackType.error);
       }
@@ -1052,10 +1084,10 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
   }) {
     final t = context.uai;
 
-    final normalizedItems = <String>[
+    final normalizedItems = <String>{
       ...items,
       if (value.trim().isNotEmpty && !items.contains(value)) value,
-    ].toSet().toList();
+    }.toList();
 
     final safeValue = normalizedItems.contains(value)
         ? value
@@ -1064,7 +1096,7 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: DropdownButtonFormField<String>(
-        value: safeValue,
+        initialValue: safeValue,
         isExpanded: true,
         dropdownColor: t.surface,
         style: TextStyle(color: t.textPrimary),
@@ -1133,7 +1165,7 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
               padding: const EdgeInsets.only(bottom: 8),
               child: Material(
                 color: selecionado
-                    ? Color.alphaBlend(primary.withOpacity(0.10), t.cardAlt)
+                    ? Color.alphaBlend(primary.withAlpha(26), t.cardAlt)
                     : t.cardAlt,
                 borderRadius: BorderRadius.circular(t.inputRadius),
                 clipBehavior: Clip.antiAlias,
@@ -1141,7 +1173,7 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(t.inputRadius),
                     border: Border.all(
-                      color: selecionado ? primary.withOpacity(0.22) : t.border,
+                      color: selecionado ? primary.withAlpha(56) : t.border,
                     ),
                   ),
                   child: Column(
@@ -1227,7 +1259,7 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
                 ),
               ),
             );
-          }).toList(),
+          }),
           if (selecionados == 0)
             Padding(
               padding: const EdgeInsets.only(top: 4),
@@ -1305,7 +1337,7 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
     final accent = _ensureVisible(_tipoAulaColor(value), t.cardAlt);
 
     return DropdownButtonFormField<String>(
-      value: value,
+      initialValue: value,
       isExpanded: true,
       dropdownColor: t.surface,
       style: TextStyle(color: t.textPrimary),
@@ -1396,30 +1428,24 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
 
   Widget _buildSelecaoProfessores() {
     final t = context.uai;
-    final professoresOrdenados = [..._professoresDisponiveis];
+    final info = _ensureVisible(t.info, t.card);
 
-    professoresOrdenados.sort((a, b) {
-      final aSelecionado = _professoresSelecionados.contains(a['id']);
-      final bSelecionado = _professoresSelecionados.contains(b['id']);
-
-      if (aSelecionado != bSelecionado) return aSelecionado ? -1 : 1;
-
-      final pesoA = _toInt(a['peso']);
-      final pesoB = _toInt(b['peso']);
-      if (pesoA != pesoB) return pesoB.compareTo(pesoA);
-
-      return (a['nome'] ?? '').toString().compareTo(
-        (b['nome'] ?? '').toString(),
+    Future<void> abrirSeletor() async {
+      final selecionados = await showPremiumMultiUserSelectorDialog(
+        context: context,
+        title: 'Gerenciar Professores',
+        subtitle: 'Selecione os professores e responsáveis desta turma.',
+        users: _professoresDisponiveis,
+        selectedIds: _professoresSelecionados,
+        icon: Icons.people_rounded,
       );
-    });
 
-    final selecionadosVisiveis = professoresOrdenados
-        .where(
-          (professor) => _professoresSelecionados.contains(professor['id']),
-        )
-        .length;
-
-    final selectedAccent = _ensureVisible(t.primary, t.cardAlt);
+      if (!mounted || selecionados == null) return;
+      setState(() {
+        _professoresSelecionados = List<String>.from(selecionados);
+        _ordenarProfessoresDisponiveis();
+      });
+    }
 
     return _buildCard(
       Column(
@@ -1447,159 +1473,92 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
           ),
           const SizedBox(height: 6),
           Text(
-            'Aparecem aqui usuários com peso de permissão 50 ou maior, além de tipos compatíveis como professor, instrutor, mestre e administrador.',
-            style: TextStyle(
-              color: t.textSecondary,
-              fontSize: 12,
-              height: 1.25,
-            ),
+            'Use o mesmo seletor premium da academia para localizar e vincular professores com rapidez.',
+            style: TextStyle(color: t.textSecondary, fontSize: 12, height: 1.25),
           ),
-          if (_professoresSelecionados.isNotEmpty &&
-              selecionadosVisiveis != _professoresSelecionados.length) ...[
-            const SizedBox(height: 10),
-            _infoBox(
-              icon: Icons.warning_amber_rounded,
-              color: t.warning,
-              text:
-                  'Atenção: ${_professoresSelecionados.length - selecionadosVisiveis} professor(es) selecionado(s) não foram encontrados na lista normal e serão buscados pelo ID salvo na turma.',
-            ),
-          ],
           const SizedBox(height: 12),
-          if (professoresOrdenados.isEmpty)
-            _emptyBox(
-              icon: Icons.person_search_rounded,
-              title: 'Nenhum usuário com permissão de professor encontrado',
-              subtitle:
-                  'Verifique se o usuário está ativo e com peso_permissao 50 ou maior.',
-            )
-          else
-            Column(
-              children: professoresOrdenados.map((professor) {
-                final id = professor['id'].toString();
-                final isSelecionado = _professoresSelecionados.contains(id);
-                final foraFiltro = professor['selecionadoForaFiltro'] == true;
-                final peso = _toInt(professor['peso']);
-                final tipo = (professor['tipo'] ?? 'usuário').toString();
-                final status = (professor['status'] ?? '').toString();
-
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 9),
-                  child: Material(
-                    color: isSelecionado
-                        ? Color.alphaBlend(
-                            selectedAccent.withOpacity(0.10),
-                            t.cardAlt,
-                          )
-                        : t.cardAlt,
-                    borderRadius: BorderRadius.circular(t.inputRadius),
-                    clipBehavior: Clip.antiAlias,
-                    child: Container(
+          Material(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(t.buttonRadius),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: abrirSeletor,
+              child: Ink(
+                width: double.infinity,
+                padding: const EdgeInsets.all(15),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      _ensureVisible(t.info, t.card),
+                      _ensureVisible(t.primary, t.card),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(t.buttonRadius),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 48,
+                      height: 48,
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(t.inputRadius),
-                        border: Border.all(
-                          color: isSelecionado
-                              ? selectedAccent.withOpacity(0.26)
-                              : t.border,
-                          width: isSelecionado ? 1.4 : 1,
-                        ),
+                        color: _readableOn(info).withAlpha(41),
+                        borderRadius: BorderRadius.circular(t.buttonRadius),
+                        border: Border.all(color: _readableOn(info).withAlpha(46)),
                       ),
-                      child: CheckboxListTile(
-                        dense: true,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 5,
-                        ),
-                        title: Text(
-                          professor['nome'].toString(),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w900,
-                            color: isSelecionado
-                                ? selectedAccent
-                                : t.textPrimary,
-                          ),
-                        ),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              professor['email'].toString(),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: t.textSecondary,
-                              ),
+                      child: Icon(Icons.people_rounded, color: _readableOn(info), size: 27),
+                    ),
+                    const SizedBox(width: 13),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'GERENCIAR PROFESSORES',
+                            style: TextStyle(
+                              color: _readableOn(info),
+                              fontSize: 15,
+                              fontWeight: FontWeight.w900,
                             ),
-                            const SizedBox(height: 5),
-                            Wrap(
-                              spacing: 6,
-                              runSpacing: 5,
-                              children: [
-                                _buildProfessorBadge(
-                                  label: tipo.toUpperCase(),
-                                  color: t.info,
-                                  icon: Icons.badge_rounded,
-                                ),
-                                _buildProfessorBadge(
-                                  label: 'PESO $peso',
-                                  color: peso >= 50 ? t.success : t.warning,
-                                  icon: Icons.security_rounded,
-                                ),
-                                if (status.trim().isNotEmpty)
-                                  _buildProfessorBadge(
-                                    label: status.toUpperCase(),
-                                    color: status.toLowerCase() == 'ativa'
-                                        ? t.success
-                                        : t.warning,
-                                    icon: Icons.circle,
-                                  ),
-                                if (foraFiltro)
-                                  _buildProfessorBadge(
-                                    label: 'SALVO NA TURMA',
-                                    color: t.warning,
-                                    icon: Icons.warning_amber_rounded,
-                                  ),
-                              ],
-                            ),
-                          ],
-                        ),
-                        value: isSelecionado,
-                        onChanged: (value) {
-                          setState(() {
-                            if (value == true) {
-                              if (!_professoresSelecionados.contains(id)) {
-                                _professoresSelecionados.add(id);
-                              }
-                            } else {
-                              _professoresSelecionados.remove(id);
-                            }
-                            _ordenarProfessoresDisponiveis();
-                          });
-                        },
-                        secondary: CircleAvatar(
-                          backgroundColor: isSelecionado
-                              ? selectedAccent
-                              : t.border,
-                          child: Icon(
-                            isSelecionado
-                                ? Icons.check_rounded
-                                : Icons.person_rounded,
-                            color: isSelecionado
-                                ? _readableOn(selectedAccent)
-                                : t.textSecondary,
-                            size: 20,
                           ),
-                        ),
-                        controlAffinity: ListTileControlAffinity.trailing,
-                        activeColor: selectedAccent,
+                          const SizedBox(height: 4),
+                          Text(
+                            _professoresSelecionados.isEmpty
+                                ? 'Nenhum professor selecionado'
+                                : '${_professoresSelecionados.length} professor(es) selecionado(s)',
+                            style: TextStyle(
+                              color: _readableOn(info).withAlpha(219),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
+                    Icon(Icons.arrow_forward_rounded, color: _readableOn(info)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          if (_professoresSelecionados.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _professoresSelecionados.map((id) {
+                final professor = _professoresDisponiveis.firstWhere(
+                  (p) => p['id'] == id,
+                  orElse: () => {'nome': 'Professor'},
+                );
+                return _buildProfessorBadge(
+                  label: professor['nome']?.toString() ?? 'Professor',
+                  color: t.info,
+                  icon: Icons.person_rounded,
                 );
               }).toList(),
             ),
+          ],
         ],
       ),
     );
@@ -1616,9 +1575,9 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.09), t.cardAlt),
+        color: Color.alphaBlend(accent.withAlpha(23), t.cardAlt),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: accent.withOpacity(0.16)),
+        border: Border.all(color: accent.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1696,7 +1655,7 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
                                       _logoUrlAtual!,
                                       fit: BoxFit.cover,
                                       cacheWidth: 180,
-                                      errorBuilder: (_, __, ___) => Icon(
+                                      errorBuilder: (_, _, _) => Icon(
                                         Icons.image_not_supported_rounded,
                                         color: t.textMuted,
                                       ),
@@ -1823,9 +1782,9 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.10), t.cardAlt),
+        color: Color.alphaBlend(accent.withAlpha(26), t.cardAlt),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: accent.withOpacity(0.16)),
+        border: Border.all(color: accent.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1857,9 +1816,9 @@ class _EditarTurmaScreenState extends State<EditarTurmaScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.09), t.cardAlt),
+        color: Color.alphaBlend(accent.withAlpha(23), t.cardAlt),
         borderRadius: BorderRadius.circular(t.inputRadius),
-        border: Border.all(color: accent.withOpacity(0.16)),
+        border: Border.all(color: accent.withAlpha(41)),
       ),
       child: Row(
         children: [

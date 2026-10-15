@@ -1,9 +1,16 @@
+import 'dart:developer' as developer;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:uai_capoeira/core/services/uai_callable_client.dart';
 import 'package:flutter/material.dart';
+import 'package:uai_capoeira/modules/usuarios/widgets/usuario_action_overlay.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:flutter/services.dart';
 import 'usuario_admin_access.dart';
+import 'usuario_role_catalog.dart';
+import '../services/usuario_status_service.dart';
+import '../services/usuario_auditoria_service.dart';
 
 class EditarUsuarioScreen extends StatefulWidget {
   final String? userId;
@@ -21,19 +28,7 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
         : const Color(0xFFFFFFFF);
   }
 
-  Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance())
-        .abs();
-    if (diff >= 0.26) return color;
 
-    final bgIsDark = background.computeLuminance() < 0.45;
-    final hsl = HSLColor.fromColor(color);
-
-    return hsl
-        .withLightness(bgIsDark ? 0.72 : 0.32)
-        .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
-        .toColor();
-  }
 
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
@@ -41,42 +36,20 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
   final _passwordController = TextEditingController();
   final _contatoController = TextEditingController();
 
-  // Tipos de usuário com nome completo
-  final List<Map<String, dynamic>> _tiposUsuarios = [
-    {
-      'tipo': 'aluno',
-      'nomeCompleto': 'Aluno',
-      'peso': 10,
-      'descricao': 'Acesso básico ao conteúdo',
-      'icone': Icons.person,
-    },
-    {
-      'tipo': 'monitor',
-      'nomeCompleto': 'Monitor',
-      'peso': 30,
-      'descricao': 'Pode auxiliar alunos',
-      'icone': Icons.supervised_user_circle,
-    },
-    {
-      'tipo': 'professor',
-      'nomeCompleto': 'Professor',
-      'peso': 50,
-      'descricao': 'Cadastra alunos e agenda aulas',
-      'icone': Icons.school,
-    },
-    {
-      'tipo': 'administrador',
-      'nomeCompleto': 'Administrador',
-      'peso': 100,
-      'descricao': 'Acesso total ao sistema',
-      'icone': Icons.admin_panel_settings,
-    },
-  ];
+  // Papéis administrativos centralizados. "Aluno" não é mais um papel da
+  // gestão: a Área do Aluno é um acesso independente e pode coexistir com
+  // monitor/professor/administrador.
+  final List<Map<String, dynamic>> _tiposUsuarios = UsuarioRoleCatalog
+      .administrativos
+      .map((role) => role.toLegacyMap())
+      .toList(growable: false);
 
-  String _selectedTipo = 'aluno';
+  String _selectedTipo = 'monitor';
   String _selectedStatus = 'pendente';
-  int _pesoPermissao = 10;
+  String _statusOriginal = 'pendente';
+  int _pesoPermissao = UsuarioRoleCatalog.monitor.peso;
   bool _carregando = false;
+  bool _excluindoIdentidade = false;
   bool _aprovado = false;
   String? _aprovadoPorNome;
   DateTime? _aprovadoEm;
@@ -117,7 +90,7 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
           });
         }
       } catch (e) {
-        print('Erro ao carregar dados do usuário atual: $e');
+        developer.log('Erro ao carregar dados do usuário atual: $e');
       }
     }
   }
@@ -139,9 +112,16 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
           _nameController.text = data['nome_completo'] ?? '';
           _emailController.text = data['email'] ?? '';
           _contatoController.text = data['contato'] ?? '';
-          _selectedTipo = data['tipo'] ?? 'aluno';
-          _pesoPermissao = data['peso_permissao'] ?? 10;
-          _selectedStatus = data['status_conta'] ?? 'pendente';
+          final tipoCarregado = data['tipo']?.toString();
+          final role = UsuarioRoleCatalog.byId(tipoCarregado);
+          _selectedTipo = role?.administrativo == true
+              ? role!.id
+              : UsuarioRoleCatalog.monitor.id;
+          _pesoPermissao = role?.administrativo == true
+              ? role!.peso
+              : UsuarioRoleCatalog.monitor.peso;
+          _selectedStatus = UsuarioStatusService.normalizar(data['status_conta']);
+          _statusOriginal = _selectedStatus;
           _alvoAdminMaster = _usuarioEhAdminMaster(data);
           _aprovado = data['aprovado_em'] != null;
           _aprovadoPorNome = data['aprovado_por_nome'];
@@ -229,7 +209,27 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
 
       dadosUpdate['tipo'] = _selectedTipo;
       dadosUpdate['peso_permissao'] = _pesoPermissao;
-      dadosUpdate['status_conta'] = _selectedStatus;
+
+      if (_selectedStatus != _statusOriginal && widget.userId != null) {
+        if (widget.userId == FirebaseAuth.instance.currentUser?.uid &&
+            _selectedStatus != 'ativa') {
+          _mostrarErro(
+            'Você não pode bloquear, inativar ou colocar a própria conta como pendente.',
+          );
+          return;
+        }
+
+        dadosUpdate.addAll(
+          UsuarioStatusService.camposParaStatus(
+            novoStatus: _selectedStatus,
+            statusAnterior: _statusOriginal,
+            atorUid: FirebaseAuth.instance.currentUser?.uid,
+            atorNome: (_currentUserData['nome_completo'] ?? 'Administrador').toString(),
+          ),
+        );
+      } else {
+        dadosUpdate['status_conta'] = _selectedStatus;
+      }
 
       if (widget.userId != FirebaseAuth.instance.currentUser?.uid) {
         dadosUpdate['email'] = _emailController.text.trim();
@@ -242,6 +242,9 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
             _currentUserData['nome_completo'] ?? 'Administrador';
         dadosUpdate['aprovado_em'] = agora;
         dadosUpdate['status_conta'] = 'ativa';
+        dadosUpdate['acesso_gestao'] = true;
+        dadosUpdate['exibir_na_gestao'] = true;
+        dadosUpdate['solicitacao_acesso_gestao'] = false;
       }
     } else {
       // Usuário comum só pode editar seu próprio nome e contato
@@ -249,6 +252,16 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
     }
 
     setState(() => _carregando = true);
+    UsuarioActionOverlay.show(
+      context,
+      title: aprovar
+          ? 'Aprovando usuário...'
+          : (widget.userId == null ? 'Criando usuário...' : 'Salvando alterações...'),
+      subtitle: aprovar
+          ? 'Liberando o acesso administrativo com segurança.'
+          : 'Atualizando os dados da conta. Aguarde a confirmação.',
+      icon: aprovar ? Icons.verified_user_rounded : Icons.manage_accounts_rounded,
+    );
 
     try {
       final docRef = FirebaseFirestore.instance.collection('usuarios');
@@ -264,14 +277,62 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
         final newUserId = newUser.user!.uid;
         dadosUpdate['data_cadastro'] = agora;
         dadosUpdate['status_conta'] = 'pendente';
-        dadosUpdate['tipo'] = 'aluno';
-        dadosUpdate['peso_permissao'] = 10;
+        dadosUpdate['tipo'] = UsuarioRoleCatalog.monitor.id;
+        dadosUpdate['peso_permissao'] = UsuarioRoleCatalog.monitor.peso;
+        dadosUpdate['acesso_gestao'] = false;
+        dadosUpdate['exibir_na_gestao'] = true;
 
         await docRef.doc(newUserId).set(dadosUpdate);
+        await UsuarioAuditoriaService.registrar(
+          userId: newUserId,
+          tipo: 'criacao',
+          titulo: 'Usuário administrativo criado',
+          descricao: 'Conta criada manualmente pela gestão e deixada pendente para aprovação.',
+          atorUid: FirebaseAuth.instance.currentUser?.uid,
+          atorNome: (_currentUserData['nome_completo'] ?? 'Administrador').toString(),
+          depois: {
+            'status_conta': 'pendente',
+            'tipo': UsuarioRoleCatalog.monitor.id,
+          },
+        );
         _mostrarSucesso('Novo usuário criado com sucesso!');
       } else {
         // Atualizar usuário existente
         await docRef.doc(widget.userId).update(dadosUpdate);
+
+        final alteracoes = <String, dynamic>{};
+        if ((_currentUserData['tipo'] ?? '').toString() != _selectedTipo) {
+          alteracoes['tipo'] = {'de': _currentUserData['tipo'], 'para': _selectedTipo};
+        }
+        if ((_currentUserData['peso_permissao'] ?? 0).toString() != _pesoPermissao.toString()) {
+          alteracoes['peso_permissao'] = {
+            'de': _currentUserData['peso_permissao'],
+            'para': _pesoPermissao,
+          };
+        }
+        if (_selectedStatus != _statusOriginal) {
+          alteracoes['status_conta'] = {'de': _statusOriginal, 'para': _selectedStatus};
+        }
+        if ((_currentUserData['nome_completo'] ?? '').toString() != _nameController.text.trim()) {
+          alteracoes['nome_completo'] = {
+            'de': _currentUserData['nome_completo'],
+            'para': _nameController.text.trim(),
+          };
+        }
+
+        if (alteracoes.isNotEmpty || aprovar) {
+          await UsuarioAuditoriaService.registrar(
+            userId: widget.userId!,
+            tipo: aprovar ? 'aprovacao' : 'perfil',
+            titulo: aprovar ? 'Usuário aprovado' : 'Cadastro administrativo atualizado',
+            descricao: aprovar
+                ? 'Acesso administrativo aprovado pela tela de edição.'
+                : '${alteracoes.length} campo(s) administrativo(s) alterado(s).',
+            atorUid: FirebaseAuth.instance.currentUser?.uid,
+            atorNome: (_currentUserData['nome_completo'] ?? 'Administrador').toString(),
+            detalhes: alteracoes,
+          );
+        }
 
         if (aprovar) {
           _mostrarSucesso('Usuário aprovado com sucesso!');
@@ -280,19 +341,45 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
             _selectedStatus = 'ativa';
           });
         } else {
+          setState(() => _statusOriginal = _selectedStatus);
           _mostrarSucesso('Usuário atualizado com sucesso!');
         }
 
-        // Atualiza email no Auth se necessário
+        // Atualiza o e-mail da própria conta no Firebase Auth.
+        //
+        // firebase_auth 6.x removeu User.updateEmail(). A API atual exige
+        // verificação prévia do novo endereço antes de efetivar a troca.
         if (widget.userId == FirebaseAuth.instance.currentUser?.uid &&
             _emailController.text.isNotEmpty) {
           try {
             final user = FirebaseAuth.instance.currentUser;
-            if (user != null) {
-              await user.updateEmail(_emailController.text.trim());
+            final novoEmail = _emailController.text.trim();
+
+            if (user != null &&
+                novoEmail.isNotEmpty &&
+                novoEmail != user.email) {
+              await user.verifyBeforeUpdateEmail(novoEmail);
+              _mostrarSucesso(
+                'Enviamos uma confirmação para $novoEmail. '
+                'O e-mail de acesso será alterado após a verificação.',
+              );
             }
+          } on FirebaseAuthException catch (e) {
+            final mensagem = switch (e.code) {
+              'requires-recent-login' =>
+                'Por segurança, entre novamente na sua conta antes de alterar o e-mail.',
+              'email-already-in-use' =>
+                'Este e-mail já está sendo usado por outra conta.',
+              'invalid-email' =>
+                'Informe um endereço de e-mail válido.',
+              _ =>
+                'Não foi possível iniciar a alteração do e-mail de acesso agora.',
+            };
+            _mostrarErro(mensagem);
           } catch (e) {
-            print('Erro ao atualizar email no Auth: $e');
+            _mostrarErro(
+              'Não foi possível iniciar a alteração do e-mail de acesso agora.',
+            );
           }
         }
       }
@@ -303,7 +390,8 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
     } catch (e) {
       _mostrarErro('Erro ao salvar: $e');
     } finally {
-      setState(() => _carregando = false);
+      UsuarioActionOverlay.hide();
+      if (mounted) setState(() => _carregando = false);
     }
   }
 
@@ -339,9 +427,15 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
       ),
     );
 
-    if (result != true) return;
+    if (result != true || !mounted) return;
 
     setState(() => _carregando = true);
+    UsuarioActionOverlay.show(
+      context,
+      title: 'Enviando redefinição...',
+      subtitle: 'Solicitando ao Firebase o e-mail de redefinição de senha.',
+      icon: Icons.lock_reset_rounded,
+    );
 
     try {
       // Envio real de email de redefinição de senha
@@ -382,7 +476,8 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
 
       _mostrarErro(mensagemErro);
     } finally {
-      setState(() => _carregando = false);
+      UsuarioActionOverlay.hide();
+      if (mounted) setState(() => _carregando = false);
     }
   }
 
@@ -470,6 +565,104 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
     );
   }
 
+  Future<void> _confirmarExclusaoDefinitiva() async {
+    final uid = widget.userId;
+    if (uid == null || !_isAdmin || _carregando || _excluindoIdentidade ||
+        uid == FirebaseAuth.instance.currentUser?.uid || _alvoAdminMaster) { return; }
+
+    final nome = _nameController.text.trim().isNotEmpty
+        ? _nameController.text.trim() : _emailController.text.trim();
+    final confirmado = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Excluir usuário definitivamente?'),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 440),
+          child: Text('A identidade de $nome será removida do Firebase Auth '
+              'e da coleção usuarios. As fichas dos alunos serão preservadas, '
+              'mas os vínculos de acesso serão desfeitos.\n\n'
+              'Esta ação não pode ser desfeita.'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancelar')),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(backgroundColor: context.uai.error,
+              foregroundColor: _readableOn(context.uai.error)),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            icon: const Icon(Icons.delete_forever_rounded),
+            label: const Text('Excluir definitivamente'),
+          ),
+        ],
+      ),
+    );
+    if (confirmado != true || !mounted) return;
+    setState(() => _excluindoIdentidade = true);
+    UsuarioActionOverlay.show(context,
+      title: 'Excluindo usuário...',
+      subtitle: 'Removendo a conta do Auth e o registro de usuários.',
+      icon: Icons.delete_forever_rounded);
+    try {
+      await UaiCallableClient.instance.call('excluirIdentidadeFirebase', {'uid': uid});
+      if (!mounted) return;
+      UsuarioActionOverlay.hide();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: const Text('Usuário excluído definitivamente. As fichas dos alunos foram preservadas.'),
+        backgroundColor: context.uai.success,
+      ));
+      Navigator.pop(context, true);
+    } on FirebaseFunctionsException catch (error) {
+      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(error.message ?? 'Não foi possível excluir o usuário.'),
+        backgroundColor: context.uai.error,
+      )); }
+    } catch (_) {
+      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: const Text('Não foi possível concluir a exclusão. Tente novamente.'),
+        backgroundColor: context.uai.error,
+      )); }
+    } finally {
+      UsuarioActionOverlay.hide();
+      if (mounted) setState(() => _excluindoIdentidade = false);
+    }
+  }
+
+  Widget _buildDangerZone() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: context.uai.card,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: context.uai.error.withAlpha(128)),
+      ),
+      child: LayoutBuilder(builder: (context, constraints) {
+        final narrow = constraints.maxWidth < 520;
+        final title = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Zona de perigo', style: TextStyle(fontSize: 16,
+              fontWeight: FontWeight.w900, color: context.uai.error)),
+            const SizedBox(height: 5),
+            Text('Remove o acesso do Auth e o cadastro de usuários. '
+                'As fichas dos alunos permanecem preservadas.',
+              style: TextStyle(color: context.uai.textSecondary)),
+          ],
+        );
+        final action = OutlinedButton.icon(
+          onPressed: (_carregando || _excluindoIdentidade) ? null : _confirmarExclusaoDefinitiva,
+          icon: const Icon(Icons.delete_forever_rounded),
+          label: Text(_excluindoIdentidade ? 'Excluindo...' : 'Excluir definitivamente'),
+          style: OutlinedButton.styleFrom(foregroundColor: context.uai.error,
+            side: BorderSide(color: context.uai.error),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15)),
+        );
+        if (narrow) { return Column(crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [title, const SizedBox(height: 14), action]); }
+        return Row(children: [Expanded(child: title), const SizedBox(width: 18), action]);
+      }),
+    );
+  }
+
   Widget _buildConteudoAutorizado(
     BuildContext context,
     UsuarioAdminAccess access,
@@ -515,14 +708,9 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
         ),
         centerTitle: true,
         backgroundColor:
-            Theme.of(context).appBarTheme.backgroundColor ??
             context.uai.primary,
         foregroundColor:
-            Theme.of(context).appBarTheme.foregroundColor ??
-            _readableOn(
-              Theme.of(context).appBarTheme.backgroundColor ??
-                  context.uai.primary,
-            ),
+            _readableOn(context.uai.primary),
         elevation: 0,
         actions: [
           if (!_aprovado && _isAdmin && widget.userId != null)
@@ -533,7 +721,7 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
             ),
           IconButton(
             icon: const Icon(Icons.save_rounded),
-            onPressed: () => _salvarUsuario(),
+            onPressed: _excluindoIdentidade ? null : () => _salvarUsuario(),
             tooltip: 'Salvar alterações',
           ),
         ],
@@ -541,8 +729,8 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
       bottomNavigationBar: _buildBottomActions(),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final compact = constraints.maxWidth < 560;
-          final wide = constraints.maxWidth >= 980;
+          final compact = constraints.maxWidth < 720;
+          final wide = constraints.maxWidth >= 900;
 
           return SingleChildScrollView(
             padding: EdgeInsets.fromLTRB(
@@ -553,7 +741,7 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
             ),
             child: Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1100),
+                constraints: const BoxConstraints(maxWidth: 1200),
                 child: Form(
                   key: _formKey,
                   child: Column(
@@ -596,6 +784,12 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
                           _buildStatusContaCard(),
                         ],
                       ],
+                      if (_isAdmin && widget.userId != null &&
+                          widget.userId != FirebaseAuth.instance.currentUser?.uid &&
+                          !_alvoAdminMaster) ...[
+                        const SizedBox(height: 20),
+                        _buildDangerZone(),
+                      ],
                     ],
                   ),
                 ),
@@ -617,7 +811,7 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
         borderRadius: BorderRadius.circular(compact ? 26 : 32),
         boxShadow: [
           BoxShadow(
-            color: context.uai.primary.withOpacity(0.14),
+            color: context.uai.primary.withAlpha(36),
             blurRadius: 12,
             offset: const Offset(0, 5),
           ),
@@ -631,15 +825,15 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
             width: compact ? 58 : 70,
             height: compact ? 58 : 70,
             decoration: BoxDecoration(
-              color: context.uai.card.withOpacity(0.14),
+              color: context.uai.card.withAlpha(36),
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: context.uai.card.withOpacity(0.16)),
+              border: Border.all(color: context.uai.card.withAlpha(41)),
             ),
             child: Icon(
               isNovo
                   ? Icons.person_add_alt_1_rounded
                   : Icons.manage_accounts_rounded,
-              color: context.uai.textPrimary,
+              color: _readableOn(context.uai.primary),
               size: 36,
             ),
           );
@@ -666,7 +860,7 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
                     : 'Atualize dados, tipo de acesso, status e informações do usuário.',
                 textAlign: narrow ? TextAlign.center : TextAlign.left,
                 style: TextStyle(
-                  color: context.uai.card.withOpacity(0.84),
+                  color: _readableOn(context.uai.primary).withAlpha(224),
                   fontSize: compact ? 12.8 : 15,
                   height: 1.35,
                   fontWeight: FontWeight.w600,
@@ -678,8 +872,11 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  _heroChip(Icons.badge_rounded, _selectedTipo.toUpperCase()),
-                  _heroChip(Icons.security_rounded, 'PESO $_pesoPermissao'),
+                  _heroChip(
+                    Icons.badge_rounded,
+                    UsuarioRoleCatalog.label(_selectedTipo).toUpperCase(),
+                  ),
+                  _heroChip(Icons.tune_rounded, 'PERMISSÕES CONFIGURÁVEIS'),
                   _heroChip(Icons.circle, _selectedStatus.toUpperCase()),
                 ],
               ),
@@ -699,13 +896,13 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
                 width: 54,
                 height: 54,
                 decoration: BoxDecoration(
-                  color: cor.withOpacity(0.20),
+                  color: cor.withAlpha(51),
                   borderRadius: BorderRadius.circular(19),
-                  border: Border.all(color: context.uai.card.withOpacity(0.14)),
+                  border: Border.all(color: context.uai.card.withAlpha(36)),
                 ),
                 child: Icon(
                   Icons.admin_panel_settings_rounded,
-                  color: context.uai.card,
+                  color: _readableOn(context.uai.primary),
                 ),
               ),
             ],
@@ -719,19 +916,19 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: context.uai.card.withOpacity(0.14),
+        color: context.uai.card.withAlpha(36),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: context.uai.card.withOpacity(0.16)),
+        border: Border.all(color: context.uai.card.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: context.uai.textPrimary, size: 14),
+          Icon(icon, color: _readableOn(context.uai.primary), size: 14),
           SizedBox(width: 5),
           Text(
             label,
             style: TextStyle(
-              color: context.uai.textPrimary,
+              color: _readableOn(context.uai.primary),
               fontSize: 10.5,
               fontWeight: FontWeight.w900,
             ),
@@ -745,9 +942,9 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: context.uai.success.withOpacity(0.10),
+        color: context.uai.success.withAlpha(26),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: context.uai.success.withOpacity(0.16)),
+        border: Border.all(color: context.uai.success.withAlpha(41)),
       ),
       child: Row(
         children: [
@@ -872,18 +1069,57 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
       title: 'Status da conta',
       icon: Icons.account_circle_rounded,
       color: context.uai.warning,
-      child: Wrap(
-        spacing: 9,
-        runSpacing: 9,
-        alignment: WrapAlignment.center,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildStatusChip('ativa', 'Ativa', context.uai.success),
-          _buildStatusChip('pendente', 'Pendente', context.uai.warning),
-          _buildStatusChip('bloqueada', 'Bloqueada', context.uai.error),
-          _buildStatusChip('inativa', 'Inativa', context.uai.textMuted),
+          Text(
+            _statusDescricao(_selectedStatus),
+            style: TextStyle(
+              color: context.uai.textSecondary,
+              fontSize: 12.5,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 9,
+            runSpacing: 9,
+            children: [
+              _buildStatusChip('ativa', 'Ativa', context.uai.success),
+              _buildStatusChip('pendente', 'Pendente', context.uai.warning),
+              _buildStatusChip('bloqueada', 'Bloqueada', context.uai.error),
+              _buildStatusChip('inativa', 'Inativa', context.uai.textMuted),
+            ],
+          ),
+          if (widget.userId == FirebaseAuth.instance.currentUser?.uid) ...[
+            const SizedBox(height: 10),
+            Text(
+              'Sua própria conta só pode permanecer ativa.',
+              style: TextStyle(
+                color: context.uai.warning,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  String _statusDescricao(String status) {
+    switch (UsuarioStatusService.normalizar(status)) {
+      case 'ativa':
+        return 'Acesso administrativo liberado. O vínculo com a Área do Aluno, quando existir, é preservado.';
+      case 'pendente':
+        return 'Aguardando aprovação administrativa. A Área do Aluno continua independente.';
+      case 'bloqueada':
+        return 'Acesso à gestão suspenso temporariamente, sem excluir a conta ou seus vínculos.';
+      case 'inativa':
+        return 'Conta administrativa arquivada. Pode ser reativada depois sem perder histórico.';
+      default:
+        return 'Status administrativo da conta.';
+    }
   }
 
   Widget _buildTextField({
@@ -940,10 +1176,10 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
       decoration: BoxDecoration(
         color: context.uai.card,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: color.withOpacity(0.18).withOpacity(0.75)),
+        border: Border.all(color: color.withAlpha(46).withAlpha(191)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.032),
+            color: Colors.black.withAlpha(8),
             blurRadius: 8,
             offset: const Offset(0, 3),
           ),
@@ -958,9 +1194,9 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
                 width: 38,
                 height: 38,
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.10),
+                  color: color.withAlpha(26),
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: color.withOpacity(0.18)),
+                  border: Border.all(color: color.withAlpha(46)),
                 ),
                 child: Icon(icon, color: color, size: 21),
               ),
@@ -994,7 +1230,7 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
           border: Border(top: BorderSide(color: context.uai.cardAlt)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.045),
+              color: Colors.black.withAlpha(11),
               blurRadius: 8,
               offset: const Offset(0, -2),
             ),
@@ -1020,7 +1256,7 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
             );
 
             final save = ElevatedButton.icon(
-              onPressed: _carregando ? null : () => _salvarUsuario(),
+              onPressed: (_carregando || _excluindoIdentidade) ? null : () => _salvarUsuario(),
               icon: _carregando
                   ? SizedBox(
                       width: 16,
@@ -1033,15 +1269,8 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
                   : Icon(Icons.save_rounded),
               label: Text(_carregando ? 'SALVANDO...' : 'SALVAR'),
               style: ElevatedButton.styleFrom(
-                backgroundColor:
-                    Theme.of(context).appBarTheme.backgroundColor ??
-                    context.uai.primary,
-                foregroundColor:
-                    Theme.of(context).appBarTheme.foregroundColor ??
-                    _readableOn(
-                      Theme.of(context).appBarTheme.backgroundColor ??
-                          context.uai.primary,
-                    ),
+                backgroundColor: context.uai.primary,
+                foregroundColor: _readableOn(context.uai.primary),
                 padding: const EdgeInsets.symmetric(vertical: 13),
                 textStyle: const TextStyle(fontWeight: FontWeight.w900),
                 shape: RoundedRectangleBorder(
@@ -1083,7 +1312,7 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
     final bool isSelected = _selectedTipo == tipoNome;
 
     return Material(
-      color: isSelected ? cor.withOpacity(0.09) : context.uai.background,
+      color: isSelected ? cor.withAlpha(23) : context.uai.background,
       borderRadius: BorderRadius.circular(18),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -1093,7 +1322,7 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: isSelected ? cor.withOpacity(0.55) : context.uai.cardAlt,
+              color: isSelected ? cor.withAlpha(140) : context.uai.cardAlt,
               width: isSelected ? 1.7 : 1,
             ),
           ),
@@ -1103,7 +1332,7 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
                 width: 39,
                 height: 39,
                 decoration: BoxDecoration(
-                  color: cor.withOpacity(0.10),
+                  color: cor.withAlpha(26),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Icon(icone, color: cor, size: 21),
@@ -1160,9 +1389,9 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
     return Container(
       padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
-        color: cor.withOpacity(0.08),
+        color: cor.withAlpha(20),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: cor.withOpacity(0.18)),
+        border: Border.all(color: cor.withAlpha(46)),
       ),
       child: Row(
         children: [
@@ -1170,7 +1399,7 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
           SizedBox(width: 10),
           Expanded(
             child: Text(
-              '${tipoAtual['nomeCompleto']} • Peso $_pesoPermissao',
+              '${tipoAtual['nomeCompleto']} • ${tipoAtual['descricao']}',
               style: TextStyle(
                 fontWeight: FontWeight.w900,
                 color: cor,
@@ -1194,10 +1423,10 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
               if (selected) setState(() => _selectedStatus = status);
             }
           : null,
-      selectedColor: color.withOpacity(0.16),
+      selectedColor: color.withAlpha(41),
       backgroundColor: context.uai.border,
       side: BorderSide(
-        color: isSelected ? color.withOpacity(0.42) : context.uai.cardAlt,
+        color: isSelected ? color.withAlpha(107) : context.uai.cardAlt,
       ),
       labelStyle: TextStyle(
         color: isSelected ? color : context.uai.textSecondary,

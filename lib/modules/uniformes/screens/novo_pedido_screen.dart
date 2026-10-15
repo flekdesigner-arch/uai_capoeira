@@ -30,7 +30,7 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
   String? _alunoSelecionadoNome;
   String? _fotoAlunoUrl;
 
-  List<Map<String, dynamic>> _itensPedido = [];
+  final List<Map<String, dynamic>> _itensPedido = [];
   double _valorTotal = 0;
 
   final TextEditingController _observacoesController = TextEditingController();
@@ -49,19 +49,7 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
         : const Color(0xFFFFFFFF);
   }
 
-  Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance())
-        .abs();
-    if (diff >= 0.26) return color;
 
-    final bgIsDark = background.computeLuminance() < 0.45;
-    final hsl = HSLColor.fromColor(color);
-
-    return hsl
-        .withLightness(bgIsDark ? 0.72 : 0.32)
-        .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
-        .toColor();
-  }
 
   @override
   void dispose() {
@@ -209,6 +197,8 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
         'id_pedido': idPedido,
         'aluno_id': _alunoSelecionadoId ?? '',
         'aluno_nome': _alunoSelecionadoNome ?? 'Item para Estoque',
+        'foto_aluno_url': _fotoAlunoUrl ?? '',
+        'foto_perfil_aluno': _fotoAlunoUrl ?? '',
         'itens': _itensPedido,
         'valor_total': _valorTotal,
         'valor_pago': 0,
@@ -313,14 +303,14 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
                       color: _remessaId == null
-                          ? error.withOpacity(0.05)
+                          ? error.withAlpha(13)
                           : cardBg,
                       borderRadius: BorderRadius.circular(
                         context.uai.cardRadius,
                       ),
                       border: Border.all(
                         color: _remessaId == null
-                            ? error.withOpacity(0.3)
+                            ? error.withAlpha(77)
                             : border,
                       ),
                       boxShadow: context.uai.softShadow,
@@ -463,7 +453,7 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
                             decoration: BoxDecoration(
                               border: Border.all(color: border),
                               borderRadius: BorderRadius.circular(8),
-                              color: semAluno ? warning.withOpacity(0.1) : null,
+                              color: semAluno ? warning.withAlpha(26) : null,
                             ),
                             child: Row(
                               children: [
@@ -471,7 +461,7 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
                                   Container(
                                     padding: const EdgeInsets.all(8),
                                     decoration: BoxDecoration(
-                                      color: warning.withOpacity(0.2),
+                                      color: warning.withAlpha(51),
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                     child: Icon(
@@ -489,7 +479,7 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
                                           backgroundImage: imageProvider,
                                           radius: 16,
                                         ),
-                                    placeholder: (_, __) => CircleAvatar(
+                                    placeholder: (_, _) => CircleAvatar(
                                       radius: 16,
                                       backgroundColor: cardAlt,
                                       child: Icon(
@@ -498,7 +488,7 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
                                         color: textMuted,
                                       ),
                                     ),
-                                    errorWidget: (_, __, ___) => CircleAvatar(
+                                    errorWidget: (_, _, _) => CircleAvatar(
                                       radius: 16,
                                       backgroundColor: cardAlt,
                                       child: Icon(
@@ -604,7 +594,7 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
                             shrinkWrap: true,
                             physics: const NeverScrollableScrollPhysics(),
                             itemCount: _itensPedido.length,
-                            separatorBuilder: (_, __) => Divider(color: border),
+                            separatorBuilder: (_, _) => Divider(color: border),
                             itemBuilder: (context, index) {
                               final item = _itensPedido[index];
                               final tamanho = item['tamanho'] as String?;
@@ -621,7 +611,7 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
                                   width: 40,
                                   height: 40,
                                   decoration: BoxDecoration(
-                                    color: primary.withOpacity(0.1),
+                                    color: primary.withAlpha(26),
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: Icon(
@@ -794,7 +784,7 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
                         Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: primary.withOpacity(0.1),
+                            color: primary.withAlpha(26),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Row(
@@ -934,9 +924,9 @@ class _SelecionarRemessaDialogState extends State<_SelecionarRemessaDialog> {
                     .snapshots(),
                 builder: (context, snapshot) {
                   if (!snapshot.hasData)
-                    return Center(
+                    { return Center(
                       child: CircularProgressIndicator(color: primary),
-                    );
+                    ); }
                   var docs = snapshot.data!.docs;
                   if (_search.isNotEmpty) {
                     docs = docs.where((d) {
@@ -1166,7 +1156,7 @@ class _SelecionarItemPedidoDialogState
                     final cor = variacao['cor']?.toString() ?? '';
                     return ListTile(
                       leading: CircleAvatar(
-                        backgroundColor: context.uai.primary.withOpacity(0.1),
+                        backgroundColor: context.uai.primary.withAlpha(26),
                         child: Text(
                           tamanho.toString().toUpperCase(),
                           style: TextStyle(
@@ -1236,7 +1226,7 @@ class _SelecionarItemPedidoDialogState
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(context.uai.cardRadius),
       ),
-      child: Container(
+      child: SizedBox(
         width: double.maxFinite,
         height: MediaQuery.of(context).size.height * 0.7,
         child: Column(
@@ -1322,9 +1312,9 @@ class _SelecionarItemPedidoDialogState
                     .snapshots(),
                 builder: (context, snapshot) {
                   if (!snapshot.hasData)
-                    return Center(
+                    { return Center(
                       child: CircularProgressIndicator(color: primary),
-                    );
+                    ); }
 
                   var docs = snapshot.data!.docs.where((doc) {
                     final data = doc.data() as Map<String, dynamic>;
@@ -1385,7 +1375,7 @@ class _SelecionarItemPedidoDialogState
                           width: 40,
                           height: 40,
                           decoration: BoxDecoration(
-                            color: primary.withOpacity(0.1),
+                            color: primary.withAlpha(26),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: fotoUrl != null && fotoUrl.isNotEmpty
@@ -1394,11 +1384,11 @@ class _SelecionarItemPedidoDialogState
                                   child: CachedNetworkImage(
                                     imageUrl: fotoUrl,
                                     fit: BoxFit.cover,
-                                    placeholder: (_, __) => Icon(
+                                    placeholder: (_, _) => Icon(
                                       Icons.shopping_bag,
                                       color: primary,
                                     ),
-                                    errorWidget: (_, __, ___) => Icon(
+                                    errorWidget: (_, _, _) => Icon(
                                       Icons.shopping_bag,
                                       color: primary,
                                     ),

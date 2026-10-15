@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:uai_capoeira/core/session_log/session_log_service.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
 import 'package:uai_capoeira/modules/estudos_fundamentos/models/pergunta_avaliacao_estudo_model.dart';
@@ -63,6 +65,10 @@ class AvaliacaoEstudosService {
       {'alunoId': alunoId, 'estudoId': estudoId},
     );
     final data = Map<String, dynamic>.from(result.data as Map);
+    unawaited(SessionLogService.instance.recordEntityAccess(
+      module: 'estudos_avaliacao', entityType: 'estudo',
+      entityId: estudoId, action: 'visualizou',
+    ));
     return PerguntasEstudoAvaliacaoResult.fromMap(data);
   }
 
@@ -81,6 +87,10 @@ class AvaliacaoEstudosService {
           'respostas': respostas,
         });
     final data = Map<String, dynamic>.from(result.data as Map);
+    unawaited(SessionLogService.instance.recordAction(
+      action: 'finalizou_avaliacao', module: 'estudos_avaliacao',
+      status: 'sucesso',
+    ));
     return ResultadoTentativaEstudoModel.fromMap(data);
   }
 }

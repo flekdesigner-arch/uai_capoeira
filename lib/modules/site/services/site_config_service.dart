@@ -1,3 +1,4 @@
+import 'dart:developer' as developer;
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class SiteConfigService {
@@ -18,7 +19,7 @@ class SiteConfigService {
       // Se não existir, retorna configurações padrão
       return {};
     } catch (e) {
-      print('Erro ao carregar configurações: $e');
+      developer.log('Erro ao carregar configurações: $e');
       return {};
     }
   }
@@ -72,7 +73,7 @@ class SiteConfigService {
         return doc.data()!['senha_acesso'];
       }
     } catch (e) {
-      print('Erro ao buscar senha: $e');
+      developer.log('Erro ao buscar senha: $e');
     }
 
     return 'uai2026app'; // Senha padrão
@@ -171,7 +172,7 @@ class SiteConfigService {
 
       return {...padrao, ...data};
     } catch (e) {
-      print('Erro ao carregar configurações da Área do Aluno: $e');
+      developer.log('Erro ao carregar configurações da Área do Aluno: $e');
       return configuracaoPadraoAreaAluno();
     }
   }
@@ -183,7 +184,7 @@ class SiteConfigService {
     await _firestore.collection('configuracoes_site').doc('area_aluno').set({
       ...configuracoes,
       'ultima_atualizacao': FieldValue.serverTimestamp(),
-      if (atualizadoPor != null) 'atualizado_por': atualizadoPor,
+      'atualizado_por': ?atualizadoPor,
     }, SetOptions(merge: true));
   }
 

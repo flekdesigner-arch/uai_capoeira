@@ -246,27 +246,40 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
   }
 
   IconData _getIconFromName(dynamic iconName) {
-    if (iconName is IconData) return iconName;
-
     switch (iconName?.toString()) {
-      case 'gavel':
-        return Icons.gavel;
-      case 'person_add':
-        return Icons.person_add;
-      case 'school':
-        return Icons.school;
-      case 'workspace_premium':
-        return Icons.workspace_premium;
-      case 'groups':
-        return Icons.groups_rounded;
-      case 'shield':
-        return Icons.shield_rounded;
-      case 'warning':
-        return Icons.warning_rounded;
-      case 'info':
-        return Icons.info_rounded;
-      default:
-        return Icons.description_rounded;
+      case 'gavel': return Icons.gavel_rounded;
+      case 'rule': return Icons.rule_rounded;
+      case 'security': return Icons.security_rounded;
+      case 'groups': case 'group': return Icons.groups_rounded;
+      case 'person_add': return Icons.person_add_alt_1_rounded;
+      case 'military_tech': return Icons.military_tech_rounded;
+      case 'school': return Icons.school_rounded;
+      case 'workspace_premium': return Icons.workspace_premium_rounded;
+      case 'verified_user': return Icons.verified_user_rounded;
+      case 'handshake': return Icons.handshake_rounded;
+      case 'favorite': return Icons.favorite_rounded;
+      case 'fact_check': return Icons.fact_check_rounded;
+      case 'schedule': return Icons.schedule_rounded;
+      case 'checkroom': return Icons.checkroom_rounded;
+      case 'event': return Icons.event_rounded;
+      case 'emoji_events': return Icons.emoji_events_rounded;
+      case 'music_note': return Icons.music_note_rounded;
+      case 'album': return Icons.album_rounded;
+      case 'history_edu': return Icons.history_edu_rounded;
+      case 'menu_book': return Icons.menu_book_rounded;
+      case 'location_on': return Icons.location_on_rounded;
+      case 'travel_explore': return Icons.travel_explore_rounded;
+      case 'diversity_3': return Icons.diversity_3_rounded;
+      case 'family_restroom': return Icons.family_restroom_rounded;
+      case 'campaign': return Icons.campaign_rounded;
+      case 'block': return Icons.block_rounded;
+      case 'task_alt': return Icons.task_alt_rounded;
+      case 'warning': return Icons.warning_amber_rounded;
+      case 'badge': return Icons.badge_rounded;
+      case 'volunteer_activism': return Icons.volunteer_activism_rounded;
+      case 'track_changes': return Icons.track_changes_rounded;
+      case 'star': return Icons.star_rounded;
+      default: return Icons.description_rounded;
     }
   }
 
@@ -546,14 +559,12 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
       children: [
         Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1080),
+            constraints: const BoxConstraints(maxWidth: 1180),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _buildHero(isMobile),
-                const SizedBox(height: 14),
-                _buildResumoCards(isMobile),
-                const SizedBox(height: 16),
+                const SizedBox(height: 18),
                 _buildSectionIntro(isMobile),
                 const SizedBox(height: 10),
                 _buildSecoesLayout(isMobile),
@@ -584,9 +595,9 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
             width: 68,
             height: 68,
             decoration: BoxDecoration(
-              color: onPrimary.withOpacity(0.14),
+              color: onPrimary.withAlpha(36),
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: onPrimary.withOpacity(0.16)),
+              border: Border.all(color: onPrimary.withAlpha(41)),
             ),
             child: Icon(Icons.gavel_rounded, color: onPrimary, size: 38),
           );
@@ -608,10 +619,10 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Normas, orientações e valores que fortalecem a organização do Grupo UAI Capoeira.',
+                'Normas e orientações que preservam a identidade, a disciplina e a convivência do Grupo UAI Capoeira.',
                 textAlign: narrow ? TextAlign.center : TextAlign.left,
                 style: TextStyle(
-                  color: onPrimary.withOpacity(0.82),
+                  color: onPrimary.withAlpha(209),
                   fontSize: narrow ? 13.5 : 15,
                   height: 1.38,
                   fontWeight: FontWeight.w500,
@@ -660,9 +671,9 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: onPrimary.withOpacity(0.14),
+        color: onPrimary.withAlpha(36),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: onPrimary.withOpacity(0.16)),
+        border: Border.all(color: onPrimary.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -732,7 +743,7 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
     return Container(
       constraints: BoxConstraints(minHeight: compact ? 94 : 104),
       padding: EdgeInsets.all(compact ? 10 : 13),
-      decoration: _cardDecoration(borderColor: accent.withOpacity(0.13)),
+      decoration: _cardDecoration(borderColor: accent.withAlpha(33)),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -775,9 +786,9 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
           width: 42,
           height: 42,
           decoration: BoxDecoration(
-            color: Color.alphaBlend(primary.withOpacity(0.09), t.cardAlt),
+            color: Color.alphaBlend(primary.withAlpha(23), t.cardAlt),
             borderRadius: BorderRadius.circular(15),
-            border: Border.all(color: primary.withOpacity(0.14)),
+            border: Border.all(color: primary.withAlpha(36)),
           ),
           child: Icon(Icons.menu_book_rounded, color: primary),
         ),
@@ -822,28 +833,49 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
                 secao: _secoesRegimento[index],
                 index: index,
                 isMobile: isMobile,
+                featured: index == 0,
               );
             }),
           );
         }
 
-        const spacing = 14.0;
-        final itemWidth = (constraints.maxWidth - spacing) / 2;
+        const spacing = 16.0;
+        final children = <Widget>[];
+        if (_secoesRegimento.isNotEmpty) {
+          children.add(
+            _buildSecaoLeitura(
+              secao: _secoesRegimento.first,
+              index: 0,
+              isMobile: false,
+              featured: true,
+            ),
+          );
+          if (_secoesRegimento.length > 1) {
+            children.add(const SizedBox(height: spacing));
+          }
+        }
 
-        return Wrap(
-          spacing: spacing,
-          runSpacing: spacing,
-          children: List.generate(_secoesRegimento.length, (index) {
-            return SizedBox(
-              width: itemWidth,
-              child: _buildSecaoLeitura(
-                secao: _secoesRegimento[index],
-                index: index,
-                isMobile: false,
-              ),
-            );
-          }),
-        );
+        if (_secoesRegimento.length > 1) {
+          final itemWidth = (constraints.maxWidth - spacing) / 2;
+          children.add(
+            Wrap(
+              spacing: spacing,
+              runSpacing: spacing,
+              children: List.generate(_secoesRegimento.length - 1, (offset) {
+                final index = offset + 1;
+                return SizedBox(
+                  width: itemWidth,
+                  child: _buildSecaoLeitura(
+                    secao: _secoesRegimento[index],
+                    index: index,
+                    isMobile: false,
+                  ),
+                );
+              }),
+            ),
+          );
+        }
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children);
       },
     );
   }
@@ -852,6 +884,7 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
     required Map<String, dynamic> secao,
     required int index,
     required bool isMobile,
+    bool featured = false,
   }) {
     final t = context.uai;
 
@@ -867,45 +900,45 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
 
     return Container(
       margin: EdgeInsets.only(bottom: isMobile ? 14 : 0),
-      decoration: _cardDecoration(borderColor: cor.withOpacity(0.13)),
+      decoration: _cardDecoration(borderColor: cor.withAlpha(33)),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(t.cardRadius),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Container(
-              padding: EdgeInsets.all(isMobile ? 15 : 17),
+              padding: EdgeInsets.all(featured ? (isMobile ? 16 : 20) : (isMobile ? 15 : 17)),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    Color.alphaBlend(cor.withOpacity(0.11), t.cardAlt),
+                    Color.alphaBlend(cor.withAlpha(28), t.cardAlt),
                     t.card,
                   ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
                 border: Border(
-                  bottom: BorderSide(color: cor.withOpacity(0.10)),
+                  bottom: BorderSide(color: cor.withAlpha(26)),
                 ),
               ),
               child: Row(
                 children: [
                   Container(
-                    width: 48,
-                    height: 48,
+                    width: featured ? 54 : 48,
+                    height: featured ? 54 : 48,
                     decoration: BoxDecoration(
-                      color: cor.withOpacity(0.10),
+                      color: cor.withAlpha(26),
                       borderRadius: BorderRadius.circular(17),
-                      border: Border.all(color: cor.withOpacity(0.13)),
+                      border: Border.all(color: cor.withAlpha(33)),
                     ),
-                    child: Icon(icone, color: cor, size: 25),
+                    child: Icon(icone, color: cor, size: featured ? 28 : 25),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
                       titulo,
                       style: TextStyle(
-                        fontSize: isMobile ? 16 : 18,
+                        fontSize: featured ? (isMobile ? 18 : 21) : (isMobile ? 16 : 18),
                         height: 1.08,
                         fontWeight: FontWeight.w900,
                         color: t.textPrimary,
@@ -920,7 +953,7 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
                     decoration: BoxDecoration(
                       color: t.cardAlt,
                       borderRadius: BorderRadius.circular(99),
-                      border: Border.all(color: cor.withOpacity(0.14)),
+                      border: Border.all(color: cor.withAlpha(36)),
                     ),
                     child: Text(
                       '${index + 1}',
@@ -966,6 +999,7 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
     required String linha,
     required Color cor,
     required bool isMobile,
+    bool featured = false,
   }) {
     final t = context.uai;
 
@@ -974,9 +1008,9 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
         margin: const EdgeInsets.only(top: 8, bottom: 8),
         padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
         decoration: BoxDecoration(
-          color: Color.alphaBlend(cor.withOpacity(0.09), t.cardAlt),
+          color: Color.alphaBlend(cor.withAlpha(23), t.cardAlt),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: cor.withOpacity(0.14)),
+          border: Border.all(color: cor.withAlpha(36)),
         ),
         child: Text(
           _limparTitulo(linha),
@@ -991,36 +1025,32 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
     }
 
     if (_isBullet(linha)) {
-      return Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(11),
-        decoration: BoxDecoration(
-          color: t.cardAlt,
-          borderRadius: BorderRadius.circular(17),
-          border: Border.all(color: t.border),
-        ),
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              width: 27,
-              height: 27,
+              width: 29,
+              height: 29,
               decoration: BoxDecoration(
-                color: Color.alphaBlend(cor.withOpacity(0.10), t.card),
+                color: Color.alphaBlend(cor.withAlpha(26), t.cardAlt),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: cor.withOpacity(0.12)),
               ),
               child: Icon(_bulletIcon(linha), color: cor, size: 16),
             ),
-            const SizedBox(width: 9),
+            const SizedBox(width: 10),
             Expanded(
-              child: Text(
-                _removeBulletEmoji(linha),
-                style: TextStyle(
-                  color: t.textPrimary,
-                  fontSize: isMobile ? 12.8 : 13.5,
-                  height: 1.34,
-                  fontWeight: FontWeight.w600,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  _removeBulletEmoji(linha),
+                  style: TextStyle(
+                    color: t.textPrimary,
+                    fontSize: isMobile ? 13 : 13.7,
+                    height: 1.42,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ),

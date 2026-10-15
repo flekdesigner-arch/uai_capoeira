@@ -43,7 +43,7 @@ class _RegistrarPagamentoModalState extends State<RegistrarPagamentoModal> {
   }
 
   Color _onCard() => _readableOn(context.uai.card);
-  Color _onCardMuted() => _onCard().withOpacity(0.68);
+  Color _onCardMuted() => _onCard().withAlpha(173);
   Color _appBarBg() =>
       Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
   Color _appBarFg() =>
@@ -161,10 +161,10 @@ class _RegistrarPagamentoModalState extends State<RegistrarPagamentoModal> {
                 Container(
                   padding: EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: context.uai.info.withOpacity(0.08),
+                    color: context.uai.info.withAlpha(20),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: context.uai.info.withOpacity(0.24),
+                      color: context.uai.info.withAlpha(61),
                     ),
                   ),
                   child: Row(
@@ -248,7 +248,7 @@ class _RegistrarPagamentoModalState extends State<RegistrarPagamentoModal> {
                           });
                         },
                         backgroundColor: context.uai.cardAlt,
-                        selectedColor: context.uai.success.withOpacity(0.14),
+                        selectedColor: context.uai.success.withAlpha(36),
                         checkmarkColor: context.uai.success,
                         labelStyle: TextStyle(
                           fontSize: 12,
@@ -305,7 +305,7 @@ class _RegistrarPagamentoModalState extends State<RegistrarPagamentoModal> {
                 SizedBox(height: 16),
 
                 DropdownButtonFormField<String>(
-                  value: _formaPagamento,
+                  initialValue: _formaPagamento,
                   decoration: InputDecoration(
                     labelText: 'Forma de pagamento',
                     border: OutlineInputBorder(
@@ -349,7 +349,7 @@ class _RegistrarPagamentoModalState extends State<RegistrarPagamentoModal> {
                   Container(
                     margin: EdgeInsets.only(bottom: 16),
                     child: DropdownButtonFormField<int>(
-                      value: _parcelas,
+                      initialValue: _parcelas,
                       decoration: InputDecoration(
                         labelText: 'Número de parcelas',
                         border: OutlineInputBorder(

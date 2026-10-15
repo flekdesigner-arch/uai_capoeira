@@ -1,17 +1,21 @@
 {
-  "name": "UAI CAPOEIRA",
-  "short_name": "UAI",
+  "name": "UAI Capoeira",
+  "short_name": "UAI Capoeira",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#FFFFFF",
+  "background_color": "#B71C1C",
   "theme_color": "#B71C1C",
-  "description": "UAI CAPOEIRA - União, Amizade e Inteligência",
+  "description": "UAI Capoeira em Bocaiúva, MG — aulas de capoeira, aula experimental, projetos, eventos e comunidade.",
   "orientation": "portrait-primary",
   "prefer_related_applications": false,
   "scope": "/",
   "id": "/",
   "lang": "pt-BR",
-  "categories": ["education", "sports", "lifestyle"],
+  "categories": [
+    "sports",
+    "education",
+    "lifestyle"
+  ],
   "icons": [
     {
       "src": "icons/Icon-192.png",
@@ -37,5 +41,6 @@
       "type": "image/png",
       "purpose": "maskable"
     }
-  ]
+  ],
+  "dir": "ltr"
 }

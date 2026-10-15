@@ -1,7 +1,6 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:math';
@@ -15,7 +14,7 @@ class SignatureService {
   // 🔥 VERIFICAR SE O STORAGE ESTÁ ACESSÍVEL
   Future<bool> _verificarStorage() async {
     try {
-      final testRef = _storage.ref().child('test.txt');
+      _storage.ref().child('test.txt');
       return true;
     } catch (e) {
       debugPrint('❌ Erro ao acessar Storage: $e');

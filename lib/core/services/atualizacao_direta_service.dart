@@ -24,18 +24,21 @@
 
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:crypto/crypto.dart' as crypto;
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:open_filex/open_filex.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'package:uai_capoeira/core/services/update_storage_service.dart';
+import 'package:uai_capoeira/core/services/update_telemetry_service.dart';
 import 'package:uai_capoeira/modules/sistema/atualizacoes/models/app_version_model.dart';
 
 class AtualizacaoDiretaService {
@@ -114,50 +117,113 @@ class AtualizacaoDiretaService {
     }
   }
 
+  Future<String> _detectarAbiAndroid() async {
+    if (!Platform.isAndroid) return 'arm64-v8a';
+    try {
+      final info = await _deviceInfo.androidInfo;
+      final abis = info.supportedAbis.map((e) => e.toLowerCase()).toList();
+      debugPrint('📱 ABIs suportadas pelo aparelho: $abis');
+      if (abis.contains('arm64-v8a')) return 'arm64-v8a';
+      if (abis.contains('armeabi-v7a')) return 'armeabi-v7a';
+      if (abis.contains('x86_64')) return 'x86_64';
+    } catch (e) {
+      debugPrint('⚠️ Não foi possível detectar ABI: $e');
+    }
+    return 'arm64-v8a';
+  }
+
+  AppReleaseArtifact? _escolherArtifact(
+    Map<String, AppReleaseArtifact> artifacts,
+    String abi,
+  ) {
+    if (artifacts.isEmpty) return null;
+    return artifacts[abi] ??
+        artifacts['arm64-v8a'] ??
+        artifacts['armeabi-v7a'] ??
+        artifacts['x86_64'] ??
+        artifacts.values.first;
+  }
+
+  Map<String, AppReleaseArtifact> _artifactsFromConfig(dynamic raw) {
+    if (raw is! Map) return const {};
+    final result = <String, AppReleaseArtifact>{};
+    for (final entry in raw.entries) {
+      if (entry.value is Map) {
+        result[entry.key.toString()] = AppReleaseArtifact.fromMap(
+          Map<String, dynamic>.from(entry.value as Map),
+        );
+      }
+    }
+    return result;
+  }
+
   Future<_ApkInfo> _resolverApkInfo(String versao) async {
     final versaoLimpa = versao.trim();
-
     if (!AppVersionModel.versaoValida(versaoLimpa)) {
       throw Exception('Versão inválida: $versaoLimpa');
     }
 
+    final abi = await _detectarAbiAndroid();
     final historico = await _buscarVersaoNoHistorico(versaoLimpa);
-
-    if (historico != null && historico.storagePath.trim().isNotEmpty) {
-      return _ApkInfo(
-        versao: versaoLimpa,
-        nomeArquivo: historico.nomeArquivo.trim().isNotEmpty
-            ? historico.nomeArquivo
-            : AppVersionModel.gerarNomeArquivo(versaoLimpa),
-        storagePath: historico.storagePath,
-        downloadUrl: historico.downloadUrl,
-        tamanhoBytes: historico.tamanhoBytes,
-      );
+    if (historico != null) {
+      final artifact = _escolherArtifact(historico.androidArtifacts, abi);
+      if (artifact != null && artifact.storagePath.trim().isNotEmpty) {
+        debugPrint('🎯 APK selecionado automaticamente: $abi -> ${artifact.nomeArquivo}');
+        return _ApkInfo(
+          versao: versaoLimpa,
+          nomeArquivo: artifact.nomeArquivo,
+          storagePath: artifact.storagePath,
+          downloadUrl: artifact.downloadUrl,
+          tamanhoBytes: artifact.tamanhoBytes,
+          sha256: artifact.sha256,
+        );
+      }
+      // Compatibilidade com releases antigas de APK único.
+      if (historico.storagePath.trim().isNotEmpty) {
+        return _ApkInfo(
+          versao: versaoLimpa,
+          nomeArquivo: historico.nomeArquivo.trim().isNotEmpty
+              ? historico.nomeArquivo
+              : AppVersionModel.gerarNomeArquivo(versaoLimpa),
+          storagePath: historico.storagePath,
+          downloadUrl: historico.downloadUrl,
+          tamanhoBytes: historico.tamanhoBytes,
+        );
+      }
     }
 
     final config = await _buscarConfigApp();
     final configVersao = (config['versao_atual'] ?? '').toString().trim();
-    final configPath = (config['apk_path'] ?? '').toString().trim();
-    final configNome = (config['apk_nome_arquivo'] ?? '').toString().trim();
-    final configUrl = (config['apk_url'] ?? '').toString().trim();
-    final configTamanho = _asInt(config['apk_tamanho_bytes']);
+    if (configVersao == versaoLimpa) {
+      final artifact = _escolherArtifact(_artifactsFromConfig(config['android_artifacts']), abi);
+      if (artifact != null && artifact.storagePath.isNotEmpty) {
+        return _ApkInfo(
+          versao: versaoLimpa,
+          nomeArquivo: artifact.nomeArquivo,
+          storagePath: artifact.storagePath,
+          downloadUrl: artifact.downloadUrl,
+          tamanhoBytes: artifact.tamanhoBytes,
+          sha256: artifact.sha256,
+        );
+      }
 
-    if (configVersao == versaoLimpa && configPath.isNotEmpty) {
-      return _ApkInfo(
-        versao: versaoLimpa,
-        nomeArquivo: configNome.isNotEmpty
-            ? configNome
-            : AppVersionModel.gerarNomeArquivo(versaoLimpa),
-        storagePath: configPath,
-        downloadUrl: configUrl,
-        tamanhoBytes: configTamanho,
-      );
+      final configPath = (config['apk_path'] ?? '').toString().trim();
+      if (configPath.isNotEmpty) {
+        return _ApkInfo(
+          versao: versaoLimpa,
+          nomeArquivo: (config['apk_nome_arquivo'] ?? AppVersionModel.gerarNomeArquivo(versaoLimpa)).toString(),
+          storagePath: configPath,
+          downloadUrl: (config['apk_url'] ?? '').toString(),
+          tamanhoBytes: _asInt(config['apk_tamanho_bytes']),
+        );
+      }
     }
 
+    // Último fallback para uma release nova sem manifesto completo.
     return _ApkInfo(
       versao: versaoLimpa,
-      nomeArquivo: AppVersionModel.gerarNomeArquivo(versaoLimpa),
-      storagePath: AppVersionModel.gerarStoragePath(versaoLimpa),
+      nomeArquivo: AppVersionModel.gerarNomeArquivoPorAbi(versaoLimpa, abi),
+      storagePath: AppVersionModel.gerarStoragePathPorAbi(versaoLimpa, abi),
       downloadUrl: '',
       tamanhoBytes: 0,
     );
@@ -205,40 +271,9 @@ class AtualizacaoDiretaService {
         }
       }
 
-      if (sdkInt < 30) {
-        debugPrint('📱 Android < 11 - Verificando permissão de storage');
-
-        var status = await Permission.storage.status;
-
-        if (status.isGranted) {
-          debugPrint('✅ Permissão de storage já concedida');
-        } else {
-          debugPrint('📱 Solicitando permissão de storage...');
-          status = await Permission.storage.request();
-
-          if (!status.isGranted && context.mounted) {
-            debugPrint('❌ Permissão de storage negada');
-
-            final shouldOpenSettings = await _confirmarAbrirConfiguracoes(
-              context: context,
-              titulo: 'Permissão necessária',
-              mensagem:
-                  'Para baixar o APK, precisamos de permissão para acessar o armazenamento.\n\n'
-                  'Deseja abrir as configurações e conceder a permissão manualmente?',
-            );
-
-            if (shouldOpenSettings == true) {
-              await openAppSettings();
-            }
-
-            return false;
-          }
-        }
-      } else {
-        debugPrint(
-          '📱 Android 11+ - Usando scoped storage, não precisa de permissão storage',
-        );
-      }
+      debugPrint(
+        '📁 APK será baixado no cache privado do app; permissão de armazenamento não é necessária.',
+      );
 
       return true;
     } catch (e) {
@@ -308,52 +343,10 @@ class AtualizacaoDiretaService {
   }
 
   // =====================================================
-  // 📁 OBTER DIRETÓRIO APROPRIADO POR VERSÃO DO ANDROID
+  // 📁 DIRETÓRIO TEMPORÁRIO EXCLUSIVO DA ATUALIZAÇÃO
   // =====================================================
-  Future<Directory?> _getDownloadDirectory() async {
-    try {
-      final androidInfo = await _deviceInfo.androidInfo;
-      final sdkInt = androidInfo.version.sdkInt;
-
-      if (sdkInt >= 30) {
-        debugPrint('📱 Android 11+ - Usando diretório do app');
-
-        final dir = await getApplicationDocumentsDirectory();
-        final downloadDir = Directory('${dir.path}/downloads');
-
-        if (!await downloadDir.exists()) {
-          await downloadDir.create(recursive: true);
-        }
-
-        return downloadDir;
-      } else {
-        debugPrint('📱 Android < 11 - Tentando diretório Downloads');
-
-        final downloadsDir = Directory('/storage/emulated/0/Download');
-
-        if (await downloadsDir.exists()) {
-          return downloadsDir;
-        }
-
-        final externalDir = await getExternalStorageDirectory();
-
-        if (externalDir != null) {
-          final downloadDir = Directory('${externalDir.path}/Download');
-
-          if (!await downloadDir.exists()) {
-            await downloadDir.create(recursive: true);
-          }
-
-          return downloadDir;
-        }
-      }
-
-      debugPrint('📱 Usando diretório temporário como fallback');
-      return await getTemporaryDirectory();
-    } catch (e) {
-      debugPrint('❌ Erro ao obter diretório: $e');
-      return await getTemporaryDirectory();
-    }
+  Future<Directory> _getDownloadDirectory() {
+    return UpdateStorageService.instance.getUpdateDirectory();
   }
 
   // =====================================================
@@ -395,6 +388,13 @@ class AtualizacaoDiretaService {
   // 📋 LISTAR APKS DISPONÍVEIS
   // =====================================================
   Future<List<String>> listarApksDisponiveis() async {
+    if (!Platform.isAndroid) {
+      // Firebase Storage listAll não é suportado pelo SDK C++ no Windows.
+      // A atualização direta por APK é exclusiva do Android, então não há
+      // motivo para consultar/listar APKs em desktop.
+      debugPrint('ℹ️ Listagem de APKs ignorada nesta plataforma.');
+      return const <String>[];
+    }
     try {
       final ref = _storage.ref().child('apks');
 
@@ -448,6 +448,9 @@ class AtualizacaoDiretaService {
 
       onStatus('🔍 Verificando permissões...');
 
+      if (!context.mounted) {
+        throw StateError('A tela de atualização foi fechada antes da solicitação de permissões.');
+      }
       if (!await _solicitarPermissoes(context)) {
         throw Exception(
           'Permissões necessárias negadas. Conceda as permissões nas configurações.',
@@ -457,6 +460,15 @@ class AtualizacaoDiretaService {
       onStatus('🔍 Verificando disponibilidade...');
 
       final info = await _resolverApkInfo(versao);
+      final downloadSessionId = UpdateTelemetryService.instance.newDownloadSessionId();
+      await UpdateTelemetryService.instance.recordEvent(
+        tipo: 'download_iniciado',
+        version: info.versao,
+        abi: _abiFromStoragePath(info.storagePath),
+        artifactPath: info.storagePath,
+        fileName: info.nomeArquivo,
+        sessionId: downloadSessionId,
+      );
 
       if (!await apkExiste(info.versao)) {
         throw Exception('APK versão ${info.versao} não encontrado no servidor');
@@ -464,20 +476,25 @@ class AtualizacaoDiretaService {
 
       onStatus('📥 Preparando download...');
 
-      final downloadDir = await _getDownloadDirectory();
-
-      if (downloadDir == null) {
-        throw Exception('Não foi possível acessar o diretório de download');
+      final cleanup = await UpdateStorageService.instance.cleanupBeforeDownload();
+      if (cleanup.bytesFreed > 0) {
+        final mb = cleanup.bytesFreed / 1024 / 1024;
+        debugPrint('🧹 Limpeza pré-download liberou ${mb.toStringAsFixed(2)} MB');
       }
 
+      final downloadDir = await _getDownloadDirectory();
       final filePath = '${downloadDir.path}/${info.nomeArquivo}';
+      final partialPath = '$filePath.part';
       final file = File(filePath);
+      final partialFile = File(partialPath);
 
-      debugPrint('📁 Arquivo será salvo em: $filePath');
+      debugPrint('📁 APK temporário será salvo em: $filePath');
 
+      if (await partialFile.exists()) {
+        await partialFile.delete();
+      }
       if (await file.exists()) {
         await file.delete();
-        debugPrint('🗑️ Arquivo antigo removido');
       }
 
       onStatus('📥 Baixando APK...');
@@ -498,7 +515,7 @@ class AtualizacaoDiretaService {
           }
         });
 
-        final task = ref.writeToFile(file);
+        final task = ref.writeToFile(partialFile);
 
         task.snapshotEvents.listen(
           (event) {
@@ -528,16 +545,21 @@ class AtualizacaoDiretaService {
         timeoutTimer.cancel();
       } catch (_) {
         timeoutTimer?.cancel();
+        if (await partialFile.exists()) {
+          try {
+            await partialFile.delete();
+          } catch (_) {}
+        }
         rethrow;
       }
 
       onStatus('✅ Download concluído!');
 
-      if (!await file.exists()) {
+      if (!await partialFile.exists()) {
         throw Exception('Falha ao baixar o arquivo');
       }
 
-      final fileSize = await file.length();
+      final fileSize = await partialFile.length();
 
       if (fileSize == 0) {
         throw Exception('Arquivo baixado está vazio');
@@ -549,8 +571,47 @@ class AtualizacaoDiretaService {
         );
       }
 
+      if (info.tamanhoBytes > 0 && fileSize != info.tamanhoBytes) {
+        try {
+          await partialFile.delete();
+        } catch (_) {}
+        throw Exception(
+          'Download incompleto. Esperado ${info.tamanhoBytes} bytes, recebido $fileSize bytes.',
+        );
+      }
+
+      if (info.sha256.trim().isNotEmpty) {
+        onStatus('🔐 Validando integridade SHA-256...');
+        final digest = crypto.sha256.convert(await partialFile.readAsBytes()).toString();
+        if (digest.toLowerCase() != info.sha256.trim().toLowerCase()) {
+          await UpdateTelemetryService.instance.recordEvent(
+            tipo: 'hash_invalido',
+            version: info.versao,
+            abi: _abiFromStoragePath(info.storagePath),
+            artifactPath: info.storagePath,
+            fileName: info.nomeArquivo,
+            sessionId: downloadSessionId,
+          );
+          try { await partialFile.delete(); } catch (_) {}
+          throw Exception('Falha de integridade: SHA-256 do APK não confere com a release publicada.');
+        }
+      }
+
+      if (await file.exists()) {
+        await file.delete();
+      }
+      await partialFile.rename(filePath);
+
       debugPrint(
         '📦 Tamanho do arquivo: ${(fileSize / 1024 / 1024).toStringAsFixed(2)} MB',
+      );
+
+      await UpdateTelemetryService.instance.recordDownload(
+        version: info.versao,
+        abi: _abiFromStoragePath(info.storagePath),
+        artifactPath: info.storagePath,
+        fileName: info.nomeArquivo,
+        sessionId: downloadSessionId,
       );
 
       onStatus('📦 Preparando para instalar...');
@@ -559,7 +620,13 @@ class AtualizacaoDiretaService {
 
       onStatus('📱 Solicitando instalação...');
 
+      await UpdateStorageService.instance.registerPendingInstallation(
+        targetVersion: info.versao,
+        apkPath: filePath,
+      );
+
       final result = await OpenFilex.open(filePath);
+      await UpdateTelemetryService.instance.recordEvent(tipo: 'instalador_aberto', version: info.versao, abi: _abiFromStoragePath(info.storagePath), artifactPath: info.storagePath, fileName: info.nomeArquivo, sessionId: downloadSessionId);
 
       if (result.type == ResultType.done) {
         onStatus('✅ Instalação iniciada!');
@@ -587,8 +654,26 @@ class AtualizacaoDiretaService {
     } catch (e) {
       onStatus('❌ Erro: ${e.toString()}');
       debugPrint('❌ Erro detalhado: $e');
+      try {
+        final info = await _resolverApkInfo(versao);
+        await UpdateTelemetryService.instance.recordEvent(
+          tipo: 'download_falhou',
+          version: info.versao,
+          abi: _abiFromStoragePath(info.storagePath),
+          artifactPath: info.storagePath,
+          fileName: info.nomeArquivo,
+        );
+      } catch (_) {}
       rethrow;
     }
+  }
+
+  String _abiFromStoragePath(String path) {
+    final lower = path.toLowerCase();
+    if (lower.contains('arm64-v8a')) return 'arm64-v8a';
+    if (lower.contains('armeabi-v7a')) return 'armeabi-v7a';
+    if (lower.contains('x86_64')) return 'x86_64';
+    return 'desconhecida';
   }
 
   String _mapFirebaseStorageError(FirebaseException e) {
@@ -777,6 +862,7 @@ class _ApkInfo {
   final String storagePath;
   final String downloadUrl;
   final int tamanhoBytes;
+  final String sha256;
 
   const _ApkInfo({
     required this.versao,
@@ -784,12 +870,16 @@ class _ApkInfo {
     required this.storagePath,
     required this.downloadUrl,
     required this.tamanhoBytes,
+    this.sha256 = '',
   });
 }
 
 // =====================================================
-// 🎨 DIALOG DE PROGRESSO DO DOWNLOAD
+// 🚀 UAI UPDATE EXPERIENCE — TELA PREMIUM DE ATUALIZAÇÃO
 // =====================================================
+// Ocupa toda a área útil do app, mas NÃO ativa modo imersivo/tela cheia.
+// Status bar/navigation bar do sistema continuam sob controle normal do app.
+// A navegação é bloqueada durante a etapa crítica para evitar saída acidental.
 class _DownloadProgressDialog extends StatefulWidget {
   final String versao;
   final AtualizacaoDiretaService service;
@@ -801,17 +891,42 @@ class _DownloadProgressDialog extends StatefulWidget {
       _DownloadProgressDialogState();
 }
 
-class _DownloadProgressDialogState extends State<_DownloadProgressDialog> {
+class _DownloadProgressDialogState extends State<_DownloadProgressDialog>
+    with TickerProviderStateMixin {
   double _progress = 0.0;
-  String _status = 'Iniciando...';
+  String _status = 'Preparando o motor de atualização...';
   bool _concluido = false;
   bool _erro = false;
   String? _erroMensagem;
 
+  late final AnimationController _pulseController;
+  late final AnimationController _orbitController;
+  late final AnimationController _scanController;
+
   @override
   void initState() {
     super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..repeat(reverse: true);
+    _orbitController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 7),
+    )..repeat();
+    _scanController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2300),
+    )..repeat();
     _iniciarDownload();
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    _orbitController.dispose();
+    _scanController.dispose();
+    super.dispose();
   }
 
   Future<void> _iniciarDownload() async {
@@ -820,169 +935,140 @@ class _DownloadProgressDialogState extends State<_DownloadProgressDialog> {
         context: context,
         versao: widget.versao,
         onProgress: (progress) {
-          if (mounted) {
-            setState(() => _progress = progress);
-          }
+          if (mounted) setState(() => _progress = progress.clamp(0.0, 1.0));
         },
         onStatus: (status) {
-          if (mounted) {
-            setState(() => _status = status);
-          }
+          if (mounted) setState(() => _status = status);
         },
       );
 
-      if (mounted) {
-        setState(() {
-          _concluido = true;
-          _status = '✅ Download concluído!';
-        });
+      if (!mounted) return;
+      setState(() {
+        _concluido = true;
+        _progress = 1;
+        _status = 'Instalador do Android iniciado. Finalizando...';
+      });
 
-        await Future.delayed(const Duration(seconds: 2));
-
-        if (mounted) {
-          Navigator.pop(context);
-        }
-      }
+      await Future.delayed(const Duration(milliseconds: 1500));
+      if (mounted) Navigator.of(context).pop();
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _erro = true;
-          _erroMensagem = e.toString().replaceAll('Exception: ', '');
-        });
-      }
+      if (!mounted) return;
+      setState(() {
+        _erro = true;
+        _erroMensagem = e.toString().replaceAll('Exception: ', '');
+        _status = 'Não foi possível concluir a atualização.';
+      });
     }
   }
 
-  Color _readableOn(Color background) {
-    return background.computeLuminance() > 0.48
-        ? const Color(0xFF111827)
-        : const Color(0xFFFFFFFF);
+  int get _stageIndex {
+    final s = _status.toLowerCase();
+    if (_concluido || s.contains('instalação iniciada')) return 4;
+    if (s.contains('solicitando instalação') ||
+        s.contains('método alternativo') ||
+        s.contains('instalar')) {
+      return 3;
+    }
+    if (s.contains('download concluído') ||
+        s.contains('preparando para instalar') ||
+        s.contains('valid')) {
+      return 2;
+    }
+    if (s.contains('baixando apk') || _progress > 0) return 1;
+    return 0;
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance())
-        .abs();
-
-    if (diff >= 0.26) return color;
-
-    final bgIsDark = background.computeLuminance() < 0.45;
+    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    if (diff >= 0.24) return color;
     final hsl = HSLColor.fromColor(color);
-
     return hsl
-        .withLightness(bgIsDark ? 0.72 : 0.32)
-        .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
+        .withLightness(background.computeLuminance() < 0.45 ? 0.70 : 0.34)
+        .withSaturation((hsl.saturation + .08).clamp(0.0, 1.0))
         .toColor();
   }
 
   @override
   Widget build(BuildContext context) {
     final t = context.uai;
-    final primary = _ensureVisible(t.primary, t.card);
-    final success = _ensureVisible(t.success, t.card);
-    final error = _ensureVisible(t.error, t.card);
-    final currentColor = _erro
-        ? error
-        : _concluido
-        ? success
-        : primary;
+    final primary = _ensureVisible(t.primary, t.surface);
+    final success = _ensureVisible(t.success, t.surface);
+    final error = _ensureVisible(t.error, t.surface);
+    final accent = _erro ? error : (_concluido ? success : primary);
+    final percent = (_progress * 100).round().clamp(0, 100);
 
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.all(18),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 360),
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: t.surface,
-            borderRadius: BorderRadius.circular(t.cardRadius + 4),
-            border: Border.all(color: t.border),
-            boxShadow: t.cardShadow,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+    return PopScope(
+      // Durante download/validação/abertura do instalador não deixa o usuário
+      // sair acidentalmente pelo botão voltar. Em erro, libera o fechamento.
+      canPop: _erro,
+      child: Dialog.fullscreen(
+        backgroundColor: t.surface,
+        child: SafeArea(
+          child: Stack(
             children: [
-              _buildIcon(currentColor),
-              const SizedBox(height: 16),
-              Text(
-                _erro
-                    ? 'Erro na atualização'
-                    : _concluido
-                    ? 'Download concluído'
-                    : 'Atualizando UAI Capoeira',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: t.textPrimary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
+              Positioned.fill(
+                child: _UpdateBackdrop(
+                  color: accent,
+                  surface: t.surface,
+                  card: t.card,
+                  animation: _orbitController,
+                  scan: _scanController,
                 ),
               ),
-              const SizedBox(height: 8),
-              Text(
-                'Versão ${widget.versao}',
-                style: TextStyle(
-                  color: t.textSecondary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 18),
-              if (!_concluido && !_erro) ...[
-                LinearProgressIndicator(
-                  value: _progress <= 0 ? null : _progress,
-                  color: currentColor,
-                  backgroundColor: t.border,
-                  minHeight: 8,
-                  borderRadius: BorderRadius.circular(99),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  '${(_progress * 100).toStringAsFixed(0)}%',
-                  style: TextStyle(
-                    color: currentColor,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 16,
-                  ),
-                ),
-              ] else if (_erro) ...[
-                Text(
-                  _erroMensagem ?? 'Erro desconhecido',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: error,
-                    height: 1.35,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                ElevatedButton.icon(
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close_rounded),
-                  label: const Text('Fechar'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: error,
-                    foregroundColor: _readableOn(error),
-                  ),
-                ),
-              ] else ...[
-                Text(
-                  'O instalador será aberto em instantes.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: t.textSecondary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-              const SizedBox(height: 12),
-              Text(
-                _status,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: _erro ? error : t.textSecondary,
-                  fontSize: 12,
-                  height: 1.3,
-                  fontWeight: FontWeight.w700,
-                ),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final compact = constraints.maxWidth < 620;
+                  final maxWidth = compact ? constraints.maxWidth : 920.0;
+                  return Align(
+                    alignment: Alignment.center,
+                    child: SingleChildScrollView(
+                      physics: const ClampingScrollPhysics(),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: compact ? 18 : 34,
+                        vertical: compact ? 20 : 28,
+                      ),
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(maxWidth: maxWidth),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _buildHeader(t, accent, compact),
+                            SizedBox(height: compact ? 26 : 34),
+                            _buildCore(t, accent, percent, compact),
+                            SizedBox(height: compact ? 24 : 32),
+                            _buildStatusPanel(t, accent, compact),
+                            const SizedBox(height: 18),
+                            _buildStages(t, accent, compact),
+                            const SizedBox(height: 20),
+                            if (_erro) _buildErrorActions(t, error),
+                            if (!_erro && !_concluido)
+                              Text(
+                                'Mantenha o UAI Capoeira aberto. O instalador será chamado automaticamente assim que o pacote estiver pronto.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: t.textMuted,
+                                  fontSize: compact ? 11.5 : 12.5,
+                                  height: 1.4,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            if (_concluido)
+                              Text(
+                                'Pacote validado. Transferindo o controle para o instalador do Android…',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: success,
+                                  fontSize: compact ? 12 : 13,
+                                  height: 1.4,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
               ),
             ],
           ),
@@ -991,31 +1077,499 @@ class _DownloadProgressDialogState extends State<_DownloadProgressDialog> {
     );
   }
 
-  Widget _buildIcon(Color color) {
-    if (!_concluido && !_erro) {
-      return SizedBox(
-        width: 58,
-        height: 58,
-        child: CircularProgressIndicator(
-          valueColor: AlwaysStoppedAnimation<Color>(color),
-          strokeWidth: 5,
+  Widget _buildHeader(dynamic t, Color accent, bool compact) {
+    return Row(
+      children: [
+        Container(
+          width: compact ? 42 : 48,
+          height: compact ? 42 : 48,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(15),
+            color: accent.withAlpha(26),
+            border: Border.all(color: accent.withAlpha(56)),
+          ),
+          child: Icon(Icons.sports_martial_arts_rounded, color: accent, size: compact ? 23 : 27),
         ),
+        const SizedBox(width: 13),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'UAI CAPOEIRA • UPDATE ENGINE',
+                style: TextStyle(
+                  color: t.textPrimary,
+                  fontSize: compact ? 14 : 16,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: .45,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                'Atualização segura • versão ${widget.versao}',
+                style: TextStyle(
+                  color: t.textSecondary,
+                  fontSize: compact ? 11.5 : 12.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+        _LiveChip(color: accent, done: _concluido, error: _erro),
+      ],
+    );
+  }
+
+  Widget _buildCore(dynamic t, Color accent, int percent, bool compact) {
+    final size = compact ? 210.0 : 250.0;
+    return AnimatedBuilder(
+      animation: Listenable.merge([_pulseController, _orbitController]),
+      builder: (context, _) {
+        final pulse = .94 + (_pulseController.value * .06);
+        return Transform.scale(
+          scale: pulse,
+          child: SizedBox(
+            width: size,
+            height: size,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Transform.rotate(
+                  angle: _orbitController.value * 6.283185307179586,
+                  child: CustomPaint(
+                    size: Size.square(size),
+                    painter: _UpdateOrbitPainter(color: accent),
+                  ),
+                ),
+                Container(
+                  width: size * .72,
+                  height: size * .72,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Color.alphaBlend(accent.withAlpha(14), t.card),
+                    border: Border.all(color: accent.withAlpha(41)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: accent.withAlpha((255.0 * (.13 + (_pulseController.value * .09))).round()),
+                        blurRadius: 42,
+                        spreadRadius: 4,
+                      ),
+                    ],
+                  ),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      SizedBox(
+                        width: size * .58,
+                        height: size * .58,
+                        child: CircularProgressIndicator(
+                          value: _erro ? null : (_concluido ? 1 : (_progress <= 0 ? null : _progress)),
+                          strokeWidth: compact ? 7 : 8,
+                          strokeCap: StrokeCap.round,
+                          color: accent,
+                          backgroundColor: t.border.withAlpha((255.0 * (.42)).round()),
+                        ),
+                      ),
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _erro
+                                ? Icons.error_outline_rounded
+                                : _concluido
+                                    ? Icons.verified_rounded
+                                    : Icons.system_update_alt_rounded,
+                            color: accent,
+                            size: compact ? 31 : 37,
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            _erro ? '!' : '$percent%',
+                            style: TextStyle(
+                              color: t.textPrimary,
+                              fontSize: compact ? 34 : 42,
+                              height: 1,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -1.6,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            _erro ? 'ATENÇÃO' : (_concluido ? 'PRONTO' : 'PROCESSANDO'),
+                            style: TextStyle(
+                              color: accent,
+                              fontSize: compact ? 9.5 : 10.5,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1.1,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildStatusPanel(dynamic t, Color accent, bool compact) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 260),
+      width: double.infinity,
+      padding: EdgeInsets.all(compact ? 16 : 19),
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(accent.withAlpha(11), t.card),
+        borderRadius: BorderRadius.circular(t.cardRadius + 5),
+        border: Border.all(color: accent.withAlpha(41)),
+        boxShadow: t.cardShadow,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: accent.withAlpha(26),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(
+              _erro ? Icons.warning_amber_rounded : Icons.bolt_rounded,
+              color: accent,
+            ),
+          ),
+          const SizedBox(width: 13),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _erro ? 'Atualização interrompida' : 'Etapa atual',
+                  style: TextStyle(
+                    color: t.textMuted,
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: .5,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  _erro ? (_erroMensagem ?? _status) : _status,
+                  style: TextStyle(
+                    color: _erro ? accent : t.textPrimary,
+                    fontSize: compact ? 13 : 14,
+                    height: 1.35,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStages(dynamic t, Color accent, bool compact) {
+    const items = <(IconData, String)>[
+      (Icons.tune_rounded, 'Preparar'),
+      (Icons.cloud_download_rounded, 'Baixar'),
+      (Icons.verified_user_rounded, 'Validar'),
+      (Icons.install_mobile_rounded, 'Instalar'),
+    ];
+    final current = _stageIndex;
+
+    if (compact) {
+      return Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        alignment: WrapAlignment.center,
+        children: [
+          for (var i = 0; i < items.length; i++)
+            _UpdateStageChip(
+              icon: items[i].$1,
+              label: items[i].$2,
+              color: accent,
+              active: current == i,
+              done: current > i || _concluido,
+              muted: t.textMuted,
+              card: t.card,
+              border: t.border,
+            ),
+        ],
       );
     }
 
+    return Row(
+      children: [
+        for (var i = 0; i < items.length; i++) ...[
+          Expanded(
+            child: _UpdateStageChip(
+              icon: items[i].$1,
+              label: items[i].$2,
+              color: accent,
+              active: current == i,
+              done: current > i || _concluido,
+              muted: t.textMuted,
+              card: t.card,
+              border: t.border,
+            ),
+          ),
+          if (i != items.length - 1) const SizedBox(width: 8),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildErrorActions(dynamic t, Color error) {
+    return Row(
+      children: [
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: () => Navigator.of(context).pop(),
+            icon: const Icon(Icons.close_rounded),
+            label: const Text('Fechar'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: error,
+              side: BorderSide(color: error.withAlpha(115)),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: ElevatedButton.icon(
+            onPressed: () {
+              setState(() {
+                _erro = false;
+                _erroMensagem = null;
+                _progress = 0;
+                _status = 'Reiniciando atualização...';
+              });
+              _iniciarDownload();
+            },
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('Tentar novamente'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: error,
+              foregroundColor: error.computeLuminance() > .48 ? Colors.black : Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _LiveChip extends StatelessWidget {
+  final Color color;
+  final bool done;
+  final bool error;
+
+  const _LiveChip({required this.color, required this.done, required this.error});
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      width: 62,
-      height: 62,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
-        shape: BoxShape.circle,
-        border: Border.all(color: color.withOpacity(0.18)),
+        color: color.withAlpha(23),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withAlpha(46)),
       ),
-      child: Icon(
-        _erro ? Icons.error_outline_rounded : Icons.check_circle_rounded,
-        color: color,
-        size: 38,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 7,
+            height: 7,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            error ? 'ERRO' : (done ? 'CONCLUÍDO' : 'AO VIVO'),
+            style: TextStyle(
+              color: color,
+              fontSize: 9.5,
+              fontWeight: FontWeight.w900,
+              letterSpacing: .45,
+            ),
+          ),
+        ],
       ),
     );
   }
 }
+
+class _UpdateStageChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final bool active;
+  final bool done;
+  final Color muted;
+  final Color card;
+  final Color border;
+
+  const _UpdateStageChip({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.active,
+    required this.done,
+    required this.muted,
+    required this.card,
+    required this.border,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final visibleColor = done || active ? color : muted;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 260),
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
+      decoration: BoxDecoration(
+        color: active ? Color.alphaBlend(color.withAlpha(19), card) : card.withAlpha(209),
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(color: active || done ? color.withAlpha(64) : border.withAlpha(184)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(done ? Icons.check_circle_rounded : icon, color: visibleColor, size: 18),
+          const SizedBox(width: 7),
+          Text(
+            label,
+            style: TextStyle(color: visibleColor, fontSize: 11, fontWeight: FontWeight.w900),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _UpdateBackdrop extends StatelessWidget {
+  final Color color;
+  final Color surface;
+  final Color card;
+  final Animation<double> animation;
+  final Animation<double> scan;
+
+  const _UpdateBackdrop({
+    required this.color,
+    required this.surface,
+    required this.card,
+    required this.animation,
+    required this.scan,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: Listenable.merge([animation, scan]),
+      builder: (context, _) {
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    center: Alignment(0, -.15 + (animation.value * .08)),
+                    radius: 1.05,
+                    colors: [
+                      Color.alphaBlend(color.withAlpha(19), card),
+                      surface,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Positioned.fill(
+              child: CustomPaint(
+                painter: _UpdateGridPainter(color: color.withAlpha(14)),
+              ),
+            ),
+            Positioned(
+              left: 0,
+              right: 0,
+              top: (MediaQuery.sizeOf(context).height - 90) * scan.value,
+              child: Container(
+                height: 90,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.transparent,
+                      color.withAlpha(5),
+                      color.withAlpha(17),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _UpdateGridPainter extends CustomPainter {
+  final Color color;
+  const _UpdateGridPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = .7;
+    const step = 42.0;
+    for (double x = 0; x <= size.width; x += step) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+    }
+    for (double y = 0; y <= size.height; y += step) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _UpdateGridPainter oldDelegate) => oldDelegate.color != color;
+}
+
+class _UpdateOrbitPainter extends CustomPainter {
+  final Color color;
+  const _UpdateOrbitPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = Offset(size.width / 2, size.height / 2);
+    final r = size.width * .45;
+    final faint = Paint()
+      ..color = color.withAlpha(31)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.3;
+    canvas.drawCircle(c, r, faint);
+    canvas.drawCircle(c, r * .82, faint..color = color.withAlpha(18));
+
+    final dot = Paint()..color = color;
+    for (final angle in <double>[0, 1.57, 3.14, 4.71]) {
+      canvas.drawCircle(
+        Offset(c.dx + (r * .98 * math.cos(angle)), c.dy + (r * .98 * math.sin(angle))),
+        3.2,
+        dot,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _UpdateOrbitPainter oldDelegate) => oldDelegate.color != color;
+}
+

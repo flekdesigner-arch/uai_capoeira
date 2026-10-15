@@ -31,19 +31,7 @@ class _FornecedoresListScreenState extends State<FornecedoresListScreen> {
         : const Color(0xFFFFFFFF);
   }
 
-  Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance())
-        .abs();
-    if (diff >= 0.26) return color;
 
-    final bgIsDark = background.computeLuminance() < 0.45;
-    final hsl = HSLColor.fromColor(color);
-
-    return hsl
-        .withLightness(bgIsDark ? 0.72 : 0.32)
-        .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
-        .toColor();
-  }
 
   // ---------------------------------------------------------------------------
   // Ações

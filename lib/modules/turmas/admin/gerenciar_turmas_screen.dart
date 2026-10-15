@@ -1,9 +1,11 @@
+import 'package:uai_capoeira/core/session_log/session_log_service.dart';
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 
 import 'editar_turma_screen.dart';
-import 'gerenciar_alunos_turma_screen.dart';
+import 'package:uai_capoeira/modules/turmas/screens/alunos_turma_screen.dart';
 
 class GerenciarTurmasScreen extends StatefulWidget {
   final String academiaId;
@@ -157,6 +159,7 @@ class _GerenciarTurmasScreenState extends State<GerenciarTurmasScreen> {
     await Navigator.push(
       context,
       MaterialPageRoute(
+        settings: const RouteSettings(name: '/turmas/edicao'),
         builder: (context) => EditarTurmaScreen(
           academiaId: widget.academiaId,
           academiaNome: widget.academiaNome,
@@ -170,12 +173,17 @@ class _GerenciarTurmasScreenState extends State<GerenciarTurmasScreen> {
     required String turmaId,
     required String turmaNome,
   }) async {
+    unawaited(SessionLogService.instance.recordEntityAccess(
+      module: 'turmas.alunos', entityType: 'turma', entityId: turmaId,
+      parentType: 'academia', parentId: widget.academiaId));
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => GerenciarAlunosTurmaScreen(
+        settings: const RouteSettings(name: '/turmas/alunos'),
+        builder: (context) => AlunosTurmaScreen(
           turmaId: turmaId,
           turmaNome: turmaNome,
+          academiaId: widget.academiaId,
           academiaNome: widget.academiaNome,
         ),
       ),
@@ -236,7 +244,7 @@ class _GerenciarTurmasScreenState extends State<GerenciarTurmasScreen> {
                                 width: 48,
                                 height: 48,
                                 decoration: BoxDecoration(
-                                  color: error.withOpacity(0.12),
+                                  color: error.withAlpha(31),
                                   borderRadius: BorderRadius.circular(
                                     t.buttonRadius,
                                   ),
@@ -291,14 +299,14 @@ class _GerenciarTurmasScreenState extends State<GerenciarTurmasScreen> {
                             padding: const EdgeInsets.all(13),
                             decoration: BoxDecoration(
                               color: Color.alphaBlend(
-                                error.withOpacity(0.10),
+                                error.withAlpha(26),
                                 t.cardAlt,
                               ),
                               borderRadius: BorderRadius.circular(
                                 t.inputRadius,
                               ),
                               border: Border.all(
-                                color: error.withOpacity(0.16),
+                                color: error.withAlpha(41),
                               ),
                             ),
                             child: Text(
@@ -470,6 +478,10 @@ class _GerenciarTurmasScreenState extends State<GerenciarTurmasScreen> {
       }
 
       await _firestore.collection('turmas').doc(turmaId).delete();
+      unawaited(SessionLogService.instance.recordEntityOperation(
+        module: 'turmas', entityType: 'turma', entityId: turmaId,
+        operation: 'excluiu', result: 'sucesso',
+      ));
 
       await _atualizarContadorTurmas();
 
@@ -480,6 +492,10 @@ class _GerenciarTurmasScreenState extends State<GerenciarTurmasScreen> {
         );
       }
     } catch (e) {
+      unawaited(SessionLogService.instance.recordEntityOperation(
+        module: 'turmas', entityType: 'turma', entityId: turmaId,
+        operation: 'excluiu', result: 'falha',
+      ));
       if (mounted) {
         _showSnack('Erro ao excluir: $e', type: _SnackType.error);
       }
@@ -614,12 +630,12 @@ class _GerenciarTurmasScreenState extends State<GerenciarTurmasScreen> {
                             width: 44,
                             height: 44,
                             decoration: BoxDecoration(
-                              color: primary.withOpacity(0.12),
+                              color: primary.withAlpha(31),
                               borderRadius: BorderRadius.circular(
                                 t.buttonRadius,
                               ),
                               border: Border.all(
-                                color: primary.withOpacity(0.16),
+                                color: primary.withAlpha(41),
                               ),
                             ),
                             child: Icon(icon, color: primary),
@@ -659,7 +675,7 @@ class _GerenciarTurmasScreenState extends State<GerenciarTurmasScreen> {
                             child: Material(
                               color: selected
                                   ? Color.alphaBlend(
-                                      primary.withOpacity(0.11),
+                                      primary.withAlpha(28),
                                       t.cardAlt,
                                     )
                                   : t.cardAlt,
@@ -683,7 +699,7 @@ class _GerenciarTurmasScreenState extends State<GerenciarTurmasScreen> {
                                     ),
                                     border: Border.all(
                                       color: selected
-                                          ? primary.withOpacity(0.34)
+                                          ? primary.withAlpha(87)
                                           : t.border,
                                     ),
                                   ),
@@ -779,10 +795,9 @@ class _GerenciarTurmasScreenState extends State<GerenciarTurmasScreen> {
             ),
             Text(
               widget.academiaNome,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: t.textSecondary,
+                fontWeight: FontWeight.w800,
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -905,9 +920,9 @@ class _GerenciarTurmasScreenState extends State<GerenciarTurmasScreen> {
             width: 62,
             height: 62,
             decoration: BoxDecoration(
-              color: onPrimary.withOpacity(0.14),
+              color: onPrimary.withAlpha(36),
               borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: onPrimary.withOpacity(0.16)),
+              border: Border.all(color: onPrimary.withAlpha(41)),
             ),
             child: Icon(Icons.groups_rounded, color: onPrimary, size: 34),
           );
@@ -934,7 +949,7 @@ class _GerenciarTurmasScreenState extends State<GerenciarTurmasScreen> {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: onPrimary.withOpacity(0.82),
+                  color: onPrimary.withAlpha(209),
                   fontSize: 13,
                   height: 1.35,
                 ),
@@ -978,9 +993,9 @@ class _GerenciarTurmasScreenState extends State<GerenciarTurmasScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: onPrimary.withOpacity(0.14),
+        color: onPrimary.withAlpha(36),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: onPrimary.withOpacity(0.16)),
+        border: Border.all(color: onPrimary.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1122,12 +1137,12 @@ class _GerenciarTurmasScreenState extends State<GerenciarTurmasScreen> {
       borderRadius: BorderRadius.circular(t.cardRadius),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => _abrirTurma(turmaId: turma.id),
+        onTap: () => _abrirAlunosTurma(turmaId: turma.id, turmaNome: nome),
         child: Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(t.cardRadius),
-            border: Border.all(color: turmaColor.withOpacity(0.14)),
+            border: Border.all(color: turmaColor.withAlpha(36)),
             boxShadow: t.softShadow,
           ),
           child: Row(
@@ -1178,7 +1193,6 @@ class _GerenciarTurmasScreenState extends State<GerenciarTurmasScreen> {
               _buildPopupMenu(
                 turmaId: turma.id,
                 turmaNome: nome,
-                alunosCount: alunosCount,
               ),
             ],
           ),
@@ -1227,7 +1241,7 @@ class _GerenciarTurmasScreenState extends State<GerenciarTurmasScreen> {
     final t = context.uai;
 
     return Container(
-      color: Color.alphaBlend(color.withOpacity(0.10), t.cardAlt),
+      color: Color.alphaBlend(color.withAlpha(26), t.cardAlt),
       child: Center(
         child: Text(
           _faixaEtariaIcon(faixaEtaria),
@@ -1263,9 +1277,9 @@ class _GerenciarTurmasScreenState extends State<GerenciarTurmasScreen> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
           decoration: BoxDecoration(
-            color: Color.alphaBlend(statusAccent.withOpacity(0.10), t.cardAlt),
+            color: Color.alphaBlend(statusAccent.withAlpha(26), t.cardAlt),
             borderRadius: BorderRadius.circular(99),
-            border: Border.all(color: statusAccent.withOpacity(0.18)),
+            border: Border.all(color: statusAccent.withAlpha(46)),
           ),
           child: Text(
             status,
@@ -1356,7 +1370,6 @@ class _GerenciarTurmasScreenState extends State<GerenciarTurmasScreen> {
   Widget _buildPopupMenu({
     required String turmaId,
     required String turmaNome,
-    required int alunosCount,
   }) {
     final t = context.uai;
 
@@ -1369,8 +1382,6 @@ class _GerenciarTurmasScreenState extends State<GerenciarTurmasScreen> {
       onSelected: (value) {
         if (value == 'editar') {
           _abrirTurma(turmaId: turmaId);
-        } else if (value == 'alunos') {
-          _abrirAlunosTurma(turmaId: turmaId, turmaNome: turmaNome);
         } else if (value == 'excluir') {
           _showDeleteConfirmation(turmaId, turmaNome);
         }
@@ -1381,51 +1392,6 @@ class _GerenciarTurmasScreenState extends State<GerenciarTurmasScreen> {
           icon: Icons.edit_rounded,
           label: 'Editar Turma',
           color: t.info,
-        ),
-        PopupMenuItem<String>(
-          value: 'alunos',
-          child: Row(
-            children: [
-              Icon(
-                Icons.group_add_rounded,
-                color: _ensureVisible(t.success, t.surface),
-                size: 20,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Gerenciar Alunos',
-                  style: TextStyle(
-                    color: t.textPrimary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              if (alunosCount > 0)
-                Container(
-                  margin: const EdgeInsets.only(left: 8),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Color.alphaBlend(
-                      t.success.withOpacity(0.10),
-                      t.cardAlt,
-                    ),
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                  child: Text(
-                    alunosCount.toString(),
-                    style: TextStyle(
-                      color: _ensureVisible(t.success, t.cardAlt),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-            ],
-          ),
         ),
         _popupItem(
           value: 'excluir',
@@ -1488,7 +1454,7 @@ class _GerenciarTurmasScreenState extends State<GerenciarTurmasScreen> {
             padding: EdgeInsets.all(compact ? 18 : 24),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(t.cardRadius),
-              border: Border.all(color: accent.withOpacity(0.16)),
+              border: Border.all(color: accent.withAlpha(41)),
               boxShadow: compact ? null : t.softShadow,
             ),
             child: Column(

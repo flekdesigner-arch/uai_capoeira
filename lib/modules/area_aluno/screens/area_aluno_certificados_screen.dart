@@ -9,6 +9,25 @@ import 'package:xml/xml.dart' as xml;
 
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 
+/// Retorna da abertura externa sem usar a tela quando ela ja foi desmontada.
+Future<void> tentarAbrirCertificado(
+  BuildContext pageContext,
+  Uri uri,
+  Future<bool> Function(Uri) abrir,
+  void Function(String, Color) mostrarMensagem,
+) async {
+  try {
+    final abriu = await abrir(uri);
+    if (!pageContext.mounted) return;
+    if (!abriu) {
+      mostrarMensagem('Não foi possível abrir o certificado.', pageContext.uai.error);
+    }
+  } catch (e) {
+    if (!pageContext.mounted) return;
+    mostrarMensagem('Erro ao abrir certificado: $e', pageContext.uai.error);
+  }
+}
+
 class AreaAlunoCertificadosScreen extends StatefulWidget {
   final Map<String, dynamic> aluno;
   final Map<String, dynamic> authPayload;
@@ -510,15 +529,12 @@ class _AreaAlunoCertificadosScreenState
       return;
     }
 
-    try {
-      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-
-      if (!ok) {
-        _snack('Não foi possível abrir o certificado.', context.uai.error);
-      }
-    } catch (e) {
-      _snack('Erro ao abrir certificado: $e', context.uai.error);
-    }
+    await tentarAbrirCertificado(
+      context,
+      uri,
+      (link) => launchUrl(link, mode: LaunchMode.externalApplication),
+      _snack,
+    );
   }
 
   void _snack(String msg, Color color) {
@@ -681,7 +697,7 @@ class _AreaAlunoCertificadosScreenState
         padding: const EdgeInsets.all(28),
         child: Container(
           padding: const EdgeInsets.all(22),
-          decoration: _cardDecoration(borderColor: danger.withOpacity(0.18)),
+          decoration: _cardDecoration(borderColor: danger.withAlpha(46)),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -752,7 +768,7 @@ class _AreaAlunoCertificadosScreenState
                 Text(
                   'Linha do tempo de graduações',
                   style: TextStyle(
-                    color: onPrimary.withOpacity(0.82),
+                    color: onPrimary.withAlpha(209),
                     fontWeight: FontWeight.w600,
                     fontSize: 12,
                   ),
@@ -818,21 +834,21 @@ class _AreaAlunoCertificadosScreenState
     if (_fotoAluno.isEmpty) {
       return CircleAvatar(
         radius: 34,
-        backgroundColor: onPrimary.withOpacity(0.16),
+        backgroundColor: onPrimary.withAlpha(41),
         child: Icon(Icons.person_rounded, color: onPrimary, size: 38),
       );
     }
 
     return CircleAvatar(
       radius: 34,
-      backgroundColor: onPrimary.withOpacity(0.18),
+      backgroundColor: onPrimary.withAlpha(46),
       child: ClipOval(
         child: Image.network(
           _fotoAluno,
           width: 68,
           height: 68,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) {
+          errorBuilder: (_, _, _) {
             return Icon(Icons.person_rounded, color: onPrimary, size: 38);
           },
         ),
@@ -851,9 +867,9 @@ class _AreaAlunoCertificadosScreenState
       height: 76,
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: onPrimary.withOpacity(0.12),
+        color: onPrimary.withAlpha(31),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: onPrimary.withOpacity(0.16)),
+        border: Border.all(color: onPrimary.withAlpha(41)),
       ),
       child: SvgPicture.string(item!.cordaSvg!, fit: BoxFit.contain),
     );
@@ -866,9 +882,9 @@ class _AreaAlunoCertificadosScreenState
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
-        color: onPrimary.withOpacity(0.14),
+        color: onPrimary.withAlpha(36),
         borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: onPrimary.withOpacity(0.14)),
+        border: Border.all(color: onPrimary.withAlpha(36)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -898,9 +914,9 @@ class _AreaAlunoCertificadosScreenState
           width: 39,
           height: 39,
           decoration: BoxDecoration(
-            color: Color.alphaBlend(accent.withOpacity(0.10), t.cardAlt),
+            color: Color.alphaBlend(accent.withAlpha(26), t.cardAlt),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: accent.withOpacity(0.12)),
+            border: Border.all(color: accent.withAlpha(31)),
           ),
           child: Icon(Icons.timeline_rounded, color: accent, size: 22),
         ),
@@ -989,7 +1005,7 @@ class _AreaAlunoCertificadosScreenState
           Expanded(
             child: Container(
               width: 3,
-              color: isFirst ? Colors.transparent : accent.withOpacity(0.18),
+              color: isFirst ? Colors.transparent : accent.withAlpha(46),
             ),
           ),
           GestureDetector(
@@ -1000,13 +1016,13 @@ class _AreaAlunoCertificadosScreenState
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: LinearGradient(
-                  colors: [accent, accent.withOpacity(0.75)],
+                  colors: [accent, accent.withAlpha(191)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: accent.withOpacity(0.24),
+                    color: accent.withAlpha(61),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
@@ -1018,7 +1034,7 @@ class _AreaAlunoCertificadosScreenState
                     ? Image.network(
                         item.logoUrl,
                         fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) {
+                        errorBuilder: (_, _, _) {
                           return Icon(
                             Icons.emoji_events_rounded,
                             color: _readableOn(accent),
@@ -1035,7 +1051,7 @@ class _AreaAlunoCertificadosScreenState
           Expanded(
             child: Container(
               width: 3,
-              color: isLast ? Colors.transparent : accent.withOpacity(0.18),
+              color: isLast ? Colors.transparent : accent.withAlpha(46),
             ),
           ),
         ],
@@ -1065,7 +1081,7 @@ class _AreaAlunoCertificadosScreenState
             padding: const EdgeInsets.all(15),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(t.cardRadius + 2),
-              border: Border.all(color: accent.withOpacity(0.10)),
+              border: Border.all(color: accent.withAlpha(26)),
               boxShadow: t.softShadow,
             ),
             child: Column(
@@ -1146,7 +1162,7 @@ class _AreaAlunoCertificadosScreenState
                         label: const Text('Detalhes'),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: accent,
-                          side: BorderSide(color: accent.withOpacity(0.26)),
+                          side: BorderSide(color: accent.withAlpha(66)),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(t.buttonRadius),
                           ),
@@ -1197,9 +1213,9 @@ class _AreaAlunoCertificadosScreenState
       width: 58,
       height: 58,
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.10), t.cardAlt),
+        color: Color.alphaBlend(accent.withAlpha(26), t.cardAlt),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: accent.withOpacity(0.12)),
+        border: Border.all(color: accent.withAlpha(31)),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(18),
@@ -1207,7 +1223,7 @@ class _AreaAlunoCertificadosScreenState
             ? Image.network(
                 item.logoUrl,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) {
+                errorBuilder: (_, _, _) {
                   return Icon(
                     Icons.emoji_events_rounded,
                     color: accent,
@@ -1228,9 +1244,9 @@ class _AreaAlunoCertificadosScreenState
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), t.cardAlt),
+        color: Color.alphaBlend(accent.withAlpha(20), t.cardAlt),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: accent.withOpacity(0.13)),
+        border: Border.all(color: accent.withAlpha(33)),
       ),
       child: Row(
         textDirection: alignRight ? ui.TextDirection.rtl : ui.TextDirection.ltr,
@@ -1311,9 +1327,9 @@ class _AreaAlunoCertificadosScreenState
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), t.cardAlt),
+        color: Color.alphaBlend(accent.withAlpha(20), t.cardAlt),
         borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: accent.withOpacity(0.12)),
+        border: Border.all(color: accent.withAlpha(31)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1466,7 +1482,7 @@ class _AreaAlunoCertificadosScreenState
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [color, color.withOpacity(0.75)],
+          colors: [color, color.withAlpha(191)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -1495,7 +1511,7 @@ class _AreaAlunoCertificadosScreenState
                 Text(
                   _formatarDataLonga(item.dataEvento),
                   style: TextStyle(
-                    color: onColor.withOpacity(0.82),
+                    color: onColor.withAlpha(209),
                     fontSize: 12,
                   ),
                 ),
@@ -1514,9 +1530,9 @@ class _AreaAlunoCertificadosScreenState
       width: 58,
       height: 58,
       decoration: BoxDecoration(
-        color: onColor.withOpacity(0.16),
+        color: onColor.withAlpha(41),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: onColor.withOpacity(0.16)),
+        border: Border.all(color: onColor.withAlpha(41)),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(18),
@@ -1524,7 +1540,7 @@ class _AreaAlunoCertificadosScreenState
             ? Image.network(
                 item.logoUrl,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) {
+                errorBuilder: (_, _, _) {
                   return Icon(
                     Icons.emoji_events_rounded,
                     color: onColor,

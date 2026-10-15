@@ -3,6 +3,7 @@ package com.uai_capoeira.uai_capoeira
 import android.content.Intent
 import android.media.MediaScannerConnection
 import android.net.Uri
+import android.view.WindowManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
@@ -14,10 +15,39 @@ import io.flutter.plugin.common.MethodChannel
 import java.io.File
 
 class MainActivity : FlutterActivity() {
+    private var inscricoesAbertas = 0
+    private var capturaEraProtegida = false
+
+    override fun onResume() {
+        super.onResume()
+        if (inscricoesAbertas > 0) window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+    }
+
     private val CHANNEL = "com.example.uai_capoeira/media"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "uai/inscricao_captura")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "entrar" -> {
+                        if (inscricoesAbertas == 0) capturaEraProtegida =
+                            (window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE) != 0
+                        inscricoesAbertas++
+                        window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                        result.success(null)
+                    }
+                    "sair" -> {
+                        if (inscricoesAbertas > 0) {
+                            inscricoesAbertas--
+                            if (inscricoesAbertas == 0 && capturaEraProtegida)
+                                window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                        }
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
             .setMethodCallHandler { call, result ->

@@ -3,6 +3,8 @@
 
 #include <flutter/dart_project.h>
 #include <flutter/flutter_view_controller.h>
+#include <flutter/method_channel.h>
+#include <flutter/standard_method_codec.h>
 
 #include <memory>
 
@@ -28,6 +30,11 @@ class FlutterWindow : public Win32Window {
 
   // The Flutter instance hosted by this window.
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;
+
+  // Bridge used only on Windows to keep the native title bar synchronized
+  // with the Central de Temas.
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      window_theme_channel_;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_

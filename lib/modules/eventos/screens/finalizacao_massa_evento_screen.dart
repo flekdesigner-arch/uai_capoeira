@@ -60,6 +60,25 @@ class _FinalizacaoMassaEventoScreenState
   static const int _viewGraduacoes = 0;
   static const int _viewPrincipal = 1;
 
+  String _normalizarEvento(String value) {
+    return value
+        .trim()
+        .toUpperCase()
+        .replaceAll(RegExp(r'[ÁÀÂÃÄ]'), 'A')
+        .replaceAll(RegExp(r'[ÉÈÊË]'), 'E')
+        .replaceAll(RegExp(r'[ÍÌÎÏ]'), 'I')
+        .replaceAll(RegExp(r'[ÓÒÔÕÖ]'), 'O')
+        .replaceAll(RegExp(r'[ÚÙÛÜ]'), 'U')
+        .replaceAll('Ç', 'C');
+  }
+
+  bool _eventoPermiteGraduacao(String tipo, String nome) {
+    // `nome` é mantido na assinatura por compatibilidade com as chamadas
+    // existentes, mas a decisão é feita SOMENTE pelo tipo do evento.
+    final tipoN = _normalizarEvento(tipo);
+    return tipoN.contains('BATIZADO') || tipoN.contains('TROCA DE CORDAS');
+  }
+
   @override
   void initState() {
     super.initState();
@@ -339,10 +358,12 @@ class _FinalizacaoMassaEventoScreenState
     if (nomeMap != null && nomeMap.isNotEmpty) return nomeMap;
 
     if (item.graduacaoNova.trim().isNotEmpty) return item.graduacaoNova.trim();
-    if (item.graduacaoAtual.trim().isNotEmpty)
+    if (item.graduacaoAtual.trim().isNotEmpty) {
       return item.graduacaoAtual.trim();
-    if (item.graduacaoTexto.trim().isNotEmpty)
+    }
+    if (item.graduacaoTexto.trim().isNotEmpty) {
       return item.graduacaoTexto.trim();
+    }
     return 'SEM GRADUAÇÃO';
   }
 
@@ -398,7 +419,7 @@ class _FinalizacaoMassaEventoScreenState
         if (element.name.local.isEmpty) return;
 
         final hex =
-            '#${color.value.toRadixString(16).substring(2).toLowerCase()}';
+            '#${color.toARGB32().toRadixString(16).substring(2).toLowerCase()}';
         final oldStyle = element.getAttribute('style') ?? '';
 
         if (oldStyle.contains('fill:')) {
@@ -861,10 +882,10 @@ class _FinalizacaoMassaEventoScreenState
                               width: 46,
                               height: 46,
                               decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.16),
+                                color: Colors.white.withAlpha(41),
                                 borderRadius: BorderRadius.circular(16),
                                 border: Border.all(
-                                  color: Colors.white.withOpacity(0.18),
+                                  color: Colors.white.withAlpha(46),
                                 ),
                               ),
                               child: Icon(
@@ -895,7 +916,7 @@ class _FinalizacaoMassaEventoScreenState
                                     style: TextStyle(
                                       color: _readableOn(
                                         t.primary,
-                                      ).withOpacity(0.80),
+                                      ).withAlpha(204),
                                       fontWeight: FontWeight.w700,
                                       fontSize: 12,
                                     ),
@@ -949,7 +970,7 @@ class _FinalizacaoMassaEventoScreenState
                                 shrinkWrap: true,
                                 padding: const EdgeInsets.all(14),
                                 itemCount: chamadosDialog.length,
-                                separatorBuilder: (_, __) =>
+                                separatorBuilder: (_, _) =>
                                     const SizedBox(height: 8),
                                 itemBuilder: (context, index) {
                                   final item = chamadosDialog[index];
@@ -970,10 +991,10 @@ class _FinalizacaoMassaEventoScreenState
                                       9,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: cor.withOpacity(0.055),
+                                      color: cor.withAlpha(14),
                                       borderRadius: BorderRadius.circular(16),
                                       border: Border.all(
-                                        color: cor.withOpacity(0.16),
+                                        color: cor.withAlpha(41),
                                       ),
                                     ),
                                     child: Row(
@@ -1143,6 +1164,7 @@ class _FinalizacaoMassaEventoScreenState
     final permitido = await _permissaoService.temQualquerPermissaoDireta([
       'pode_concluir_participacao_evento',
     ]);
+    if (!mounted) return;
     if (!permitido) {
       _mostrarSnack(
         'Você não tem permissão para finalizar participantes.',
@@ -1195,6 +1217,13 @@ class _FinalizacaoMassaEventoScreenState
         final eventoNomeFinal = item.eventoNome.trim().isNotEmpty
             ? item.eventoNome.trim()
             : widget.eventoNome;
+        final tipoEventoFinal = item.tipoEvento.trim().isNotEmpty
+            ? item.tipoEvento.trim()
+            : (dadosOriginais['tipo_evento']?.toString() ?? 'EVENTO');
+        final permiteGraduacao = _eventoPermiteGraduacao(
+          tipoEventoFinal,
+          eventoNomeFinal,
+        );
 
         // Mesmo conceito do ParticipacaoService.finalizarParticipacao:
         // copia todos os dados atuais para participacoes_eventos com o mesmo ID
@@ -1207,27 +1236,28 @@ class _FinalizacaoMassaEventoScreenState
           'evento_id': eventoIdFinal,
           'evento_nome': eventoNomeFinal,
           'data_evento': Timestamp.fromDate(item.dataEvento),
-          'tipo_evento': item.tipoEvento.trim().isNotEmpty
-              ? item.tipoEvento.trim()
-              : 'EVENTO',
-          'graduacao': graduacaoHistorico,
-          'graduacao_anterior': item.graduacaoAtual.trim(),
-          'graduacao_nova': item.graduacaoNova.trim(),
-          'graduacao_nova_id': item.graduacaoNovaId.trim(),
-          'graduacao_id': item.graduacaoNovaId.trim().isNotEmpty
-              ? item.graduacaoNovaId.trim()
-              : item.graduacaoId.trim(),
+          'tipo_evento': tipoEventoFinal,
+          if (permiteGraduacao) 'graduacao': graduacaoHistorico,
+          if (permiteGraduacao) 'graduacao_anterior': item.graduacaoAtual.trim(),
+          if (permiteGraduacao) 'graduacao_nova': item.graduacaoNova.trim(),
+          if (permiteGraduacao) 'graduacao_nova_id': item.graduacaoNovaId.trim(),
+          if (permiteGraduacao)
+            'graduacao_id': item.graduacaoNovaId.trim().isNotEmpty
+                ? item.graduacaoNovaId.trim()
+                : item.graduacaoId.trim(),
           'tamanho_camisa': item.tamanhoCamisa,
           'status': 'finalizado',
           'finalizado': true,
           'participacao_finalizada': true,
           'aguardando_finalizacao': false,
-          'graduacao_final': item.graduacaoNova.trim().isNotEmpty
-              ? item.graduacaoNova.trim()
-              : null,
-          'graduacao_final_id': item.graduacaoNovaId.trim().isNotEmpty
-              ? item.graduacaoNovaId.trim()
-              : null,
+          if (permiteGraduacao)
+            'graduacao_final': item.graduacaoNova.trim().isNotEmpty
+                ? item.graduacaoNova.trim()
+                : null,
+          if (permiteGraduacao)
+            'graduacao_final_id': item.graduacaoNovaId.trim().isNotEmpty
+                ? item.graduacaoNovaId.trim()
+                : null,
           'origem_finalizacao': 'finalizacao_massa_evento',
           'participacao_andamento_id': item.id,
           'valor_inscricao': item.valorInscricao,
@@ -1281,7 +1311,8 @@ class _FinalizacaoMassaEventoScreenState
         final novaGraduacaoNome = item.graduacaoNova.trim();
         final novaGraduacaoId = item.graduacaoNovaId.trim();
 
-        if (item.alunoId.trim().isNotEmpty &&
+        if (permiteGraduacao &&
+            item.alunoId.trim().isNotEmpty &&
             (novaGraduacaoNome.isNotEmpty || novaGraduacaoId.isNotEmpty)) {
           final alunoRef = _firestore.collection('alunos').doc(item.alunoId);
           final dadosAluno = <String, dynamic>{'atualizado_em': agora};
@@ -1360,7 +1391,7 @@ class _FinalizacaoMassaEventoScreenState
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: appBarFg.withOpacity(0.78),
+                color: appBarFg.withAlpha(199),
                 fontWeight: FontWeight.w800,
                 fontSize: 10.5,
               ),
@@ -1493,8 +1524,8 @@ class _FinalizacaoMassaEventoScreenState
 
   Widget _buildSearchField(Color appBarFg) {
     final t = context.uai;
-    final searchBg = appBarFg.withOpacity(0.13);
-    final searchBorder = appBarFg.withOpacity(0.18);
+    final searchBg = appBarFg.withAlpha(33);
+    final searchBorder = appBarFg.withAlpha(46);
 
     return TextField(
       controller: _buscaController,
@@ -1505,7 +1536,7 @@ class _FinalizacaoMassaEventoScreenState
       cursorColor: appBarFg,
       decoration: InputDecoration(
         hintText: 'Buscar por nome ou graduação...',
-        hintStyle: TextStyle(color: appBarFg.withOpacity(0.72)),
+        hintStyle: TextStyle(color: appBarFg.withAlpha(184)),
         prefixIcon: Icon(Icons.search_rounded, color: appBarFg),
         suffixIcon: _busca.isNotEmpty
             ? IconButton(
@@ -1533,7 +1564,7 @@ class _FinalizacaoMassaEventoScreenState
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(t.buttonRadius),
-          borderSide: BorderSide(color: appBarFg.withOpacity(0.75), width: 1.2),
+          borderSide: BorderSide(color: appBarFg.withAlpha(191), width: 1.2),
         ),
       ),
     );
@@ -1657,9 +1688,9 @@ class _FinalizacaoMassaEventoScreenState
                 width: 43,
                 height: 43,
                 decoration: BoxDecoration(
-                  color: primary.withOpacity(0.10),
+                  color: primary.withAlpha(26),
                   borderRadius: BorderRadius.circular(15),
-                  border: Border.all(color: primary.withOpacity(0.14)),
+                  border: Border.all(color: primary.withAlpha(36)),
                 ),
                 child: Icon(Icons.campaign_rounded, color: primary),
               ),
@@ -1759,9 +1790,9 @@ class _FinalizacaoMassaEventoScreenState
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.09),
+        color: accent.withAlpha(23),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: accent.withOpacity(0.16)),
+        border: Border.all(color: accent.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1892,8 +1923,8 @@ class _FinalizacaoMassaEventoScreenState
       ),
       onSelected: (_) => setState(() => _filtroChamada = label),
       backgroundColor: t.card,
-      selectedColor: primary.withOpacity(0.12),
-      side: BorderSide(color: selected ? primary.withOpacity(0.34) : t.border),
+      selectedColor: primary.withAlpha(31),
+      side: BorderSide(color: selected ? primary.withAlpha(87) : t.border),
       labelStyle: TextStyle(
         color: selected ? primary : t.textSecondary,
         fontWeight: selected ? FontWeight.w900 : FontWeight.w700,
@@ -1925,11 +1956,11 @@ class _FinalizacaoMassaEventoScreenState
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: aberto
-            ? Color.alphaBlend(cor1.withOpacity(0.03), t.card)
+            ? Color.alphaBlend(cor1.withAlpha(8), t.card)
             : t.card,
         borderRadius: BorderRadius.circular(t.cardRadius),
         border: Border.all(
-          color: aberto ? cor1.withOpacity(0.44) : cor1.withOpacity(0.20),
+          color: aberto ? cor1.withAlpha(112) : cor1.withAlpha(51),
         ),
         boxShadow: t.softShadow,
       ),
@@ -1957,9 +1988,9 @@ class _FinalizacaoMassaEventoScreenState
                       height: 58,
                       padding: const EdgeInsets.all(4),
                       decoration: BoxDecoration(
-                        color: cor1.withOpacity(0.07),
+                        color: cor1.withAlpha(18),
                         borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: cor1.withOpacity(0.20)),
+                        border: Border.all(color: cor1.withAlpha(51)),
                       ),
                       child: svg == null
                           ? _buildCordaMiniatura(cor1, cor2)
@@ -1990,7 +2021,7 @@ class _FinalizacaoMassaEventoScreenState
                                             .clamp(0.0, 1.0))
                                         .toDouble(),
                               minHeight: 6,
-                              backgroundColor: t.border.withOpacity(0.65),
+                              backgroundColor: t.border.withAlpha(166),
                               valueColor: AlwaysStoppedAnimation<Color>(cor1),
                             ),
                           ),
@@ -2034,9 +2065,9 @@ class _FinalizacaoMassaEventoScreenState
                         vertical: 7,
                       ),
                       decoration: BoxDecoration(
-                        color: cor1.withOpacity(0.08),
+                        color: cor1.withAlpha(20),
                         borderRadius: BorderRadius.circular(999),
-                        border: Border.all(color: cor1.withOpacity(0.16)),
+                        border: Border.all(color: cor1.withAlpha(41)),
                       ),
                       child: Text(
                         chamadosGrupo > 0
@@ -2089,7 +2120,7 @@ class _FinalizacaoMassaEventoScreenState
         children: [
           Expanded(child: Container(color: cor1)),
           Expanded(child: Container(color: cor2)),
-          if (cor1 == cor2) Container(width: 1, color: t.card.withOpacity(0.8)),
+          if (cor1 == cor2) Container(width: 1, color: t.card.withAlpha(204)),
         ],
       ),
     );
@@ -2247,10 +2278,10 @@ class _FinalizacaoMassaEventoScreenState
               decoration: BoxDecoration(
                 color: t.card,
                 borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: primary.withOpacity(0.18)),
+                border: Border.all(color: primary.withAlpha(46)),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.16),
+                    color: Colors.black.withAlpha(41),
                     blurRadius: 20,
                     offset: const Offset(0, 8),
                   ),
@@ -2267,9 +2298,9 @@ class _FinalizacaoMassaEventoScreenState
                         width: 38,
                         height: 38,
                         decoration: BoxDecoration(
-                          color: primary.withOpacity(0.10),
+                          color: primary.withAlpha(26),
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: primary.withOpacity(0.14)),
+                          border: Border.all(color: primary.withAlpha(36)),
                         ),
                         child: Icon(
                           Icons.campaign_rounded,
@@ -2393,7 +2424,7 @@ class _FinalizacaoMassaEventoScreenState
           decoration: BoxDecoration(
             color: t.card,
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: t.warning.withOpacity(0.20)),
+            border: Border.all(color: t.warning.withAlpha(51)),
             boxShadow: t.softShadow,
           ),
           child: Column(
@@ -2439,7 +2470,7 @@ class _FinalizacaoMassaEventoScreenState
           decoration: BoxDecoration(
             color: t.card,
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: t.error.withOpacity(0.28)),
+            border: Border.all(color: t.error.withAlpha(71)),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -2580,12 +2611,12 @@ class _FinalizacaoAlunoFotoCard extends StatelessWidget {
               color: t.card,
               borderRadius: BorderRadius.circular(cardRadius),
               border: Border.all(
-                color: accent.withOpacity(chamado ? 0.95 : 0.78),
+                color: accent.withAlpha(chamado ? 242 : 199),
                 width: chamado ? 3 : 2,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: accent.withOpacity(chamado ? 0.22 : 0.13),
+                  color: accent.withAlpha(chamado ? 56 : 33),
                   blurRadius: chamado ? 14 : 9,
                   offset: const Offset(0, 4),
                 ),
@@ -2618,8 +2649,8 @@ class _FinalizacaoAlunoFotoCard extends StatelessWidget {
                                           begin: Alignment.bottomCenter,
                                           end: Alignment.center,
                                           colors: [
-                                            Colors.black.withOpacity(0.74),
-                                            Colors.black.withOpacity(0.24),
+                                            Colors.black.withAlpha(189),
+                                            Colors.black.withAlpha(61),
                                             Colors.transparent,
                                           ],
                                         ),
@@ -2701,7 +2732,7 @@ class _FinalizacaoAlunoFotoCard extends StatelessWidget {
                             border: Border.all(color: accent, width: 2),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.22),
+                                color: Colors.black.withAlpha(56),
                                 blurRadius: 7,
                               ),
                             ],
@@ -2727,7 +2758,7 @@ class _FinalizacaoAlunoFotoCard extends StatelessWidget {
                             border: Border.all(color: t.card, width: 2),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.20),
+                                color: Colors.black.withAlpha(51),
                                 blurRadius: 7,
                               ),
                             ],
@@ -2752,7 +2783,7 @@ class _FinalizacaoAlunoFotoCard extends StatelessWidget {
                       if (processando)
                         Positioned.fill(
                           child: Container(
-                            color: Colors.black.withOpacity(0.45),
+                            color: Colors.black.withAlpha(115),
                             alignment: Alignment.center,
                             child: CircularProgressIndicator(color: accent),
                           ),
@@ -2813,7 +2844,7 @@ class _FinalizacaoAlunoHorizontalCard extends StatelessWidget {
             color: t.card,
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: accent.withOpacity(chamado ? 0.80 : 0.22),
+              color: accent.withAlpha(chamado ? 204 : 56),
               width: chamado ? 2.4 : 1,
             ),
             boxShadow: t.softShadow,
@@ -2955,7 +2986,7 @@ class _FinalizacaoAlunoHorizontalCard extends StatelessWidget {
                     if (processando)
                       Positioned.fill(
                         child: Container(
-                          color: Colors.black.withOpacity(0.40),
+                          color: Colors.black.withAlpha(102),
                           alignment: Alignment.center,
                           child: CircularProgressIndicator(color: accent),
                         ),
@@ -3054,8 +3085,9 @@ class _FotoAlunoEventoState extends State<_FotoAlunoEvento> {
     try {
       final value = raw.trim();
       if (value.isEmpty) return null;
-      if (value.startsWith('http://') || value.startsWith('https://'))
+      if (value.startsWith('http://') || value.startsWith('https://')) {
         return value;
+      }
 
       if (value.startsWith('gs://')) {
         return FirebaseStorage.instance.refFromURL(value).getDownloadURL();
@@ -3179,7 +3211,7 @@ class _GradChipMini extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.90),
+        color: Colors.white.withAlpha(230),
         borderRadius: BorderRadius.circular(99),
       ),
       child: Text(
@@ -3206,7 +3238,7 @@ class _CamisaChipMini extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.90),
+        color: Colors.white.withAlpha(230),
         borderRadius: BorderRadius.circular(99),
       ),
       child: Row(

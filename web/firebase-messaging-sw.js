@@ -1,3 +1,13 @@
+
+// PATCH TRACKING 01 — console silencioso no PWA.
+const uaiConsole = {
+  log: () => {},
+  info: () => {},
+  warn: () => {},
+  error: () => {},
+  debug: () => {},
+};
+
 // web/firebase-messaging-sw.js
 // =====================================================
 // 🔥 FIREBASE MESSAGING SERVICE WORKER - UAI CAPOEIRA PWA
@@ -28,7 +38,7 @@ firebase.initializeApp({
 const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage((payload) => {
-  console.log('🔥 [firebase-messaging-sw.js] Mensagem em background:', payload);
+  uaiConsole.log('🔥 [firebase-messaging-sw.js] Mensagem em background:', payload);
 
   const notification = payload.notification || {};
   const data = payload.data || {};
@@ -47,7 +57,7 @@ messaging.onBackgroundMessage((payload) => {
   // aparecem 2 notificações no PWA.
   // =====================================================
   if (notification.title || notification.body) {
-    console.log(
+    uaiConsole.log(
       '✅ Notificação com payload.notification detectada. ' +
       'Deixando Firebase/Chrome exibir automaticamente para evitar duplicidade.'
     );
@@ -82,7 +92,7 @@ messaging.onBackgroundMessage((payload) => {
 });
 
 self.addEventListener('notificationclick', (event) => {
-  console.log('🔔 [firebase-messaging-sw.js] Notificação clicada:', event.notification);
+  uaiConsole.log('🔔 [firebase-messaging-sw.js] Notificação clicada:', event.notification);
 
   event.notification.close();
 
@@ -108,4 +118,4 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 
-console.log('🔥 Firebase Messaging Service Worker UAI Capoeira carregado sem duplicidade!');
+uaiConsole.log('🔥 Firebase Messaging Service Worker UAI Capoeira carregado sem duplicidade!');

@@ -70,6 +70,45 @@ class CacaBugActions {
   static const erroMudarTurmaAluno = 'erro_mudar_turma_aluno';
   static const iniciouContatoAluno = 'iniciou_contato_aluno';
   static const erroContatoAluno = 'erro_contato_aluno';
+
+
+  static const abriuFrequenciaAluno = 'abriu_frequencia_aluno';
+  static const carregouFrequenciaAluno = 'carregou_frequencia_aluno';
+  static const erroCarregarFrequenciaAluno = 'erro_carregar_frequencia_aluno';
+  static const aplicouFiltroFrequenciaAluno = 'aplicou_filtro_frequencia_aluno';
+  static const atualizouFrequenciaAluno = 'atualizou_frequencia_aluno';
+  static const voltouParaDetalheAluno = 'voltou_para_detalhe_aluno';
+
+  static const abriuEventosAluno = 'abriu_eventos_aluno';
+  static const carregouParticipacoesAluno = 'carregou_participacoes_aluno';
+  static const erroCarregarParticipacoesAluno =
+      'erro_carregar_participacoes_aluno';
+  static const atualizouParticipacoesAluno = 'atualizou_participacoes_aluno';
+  static const expandiuParticipacoesAluno = 'expandiu_participacoes_aluno';
+  static const abriuDetalheParticipacaoAluno =
+      'abriu_detalhe_participacao_aluno';
+  static const voltouDetalheParticipacaoAluno =
+      'voltou_detalhe_participacao_aluno';
+  static const carregouDetalheParticipacaoAluno =
+      'carregou_detalhe_participacao_aluno';
+  static const erroCarregarDetalheParticipacaoAluno =
+      'erro_carregar_detalhe_participacao_aluno';
+  static const atualizouDetalheParticipacaoAluno =
+      'atualizou_detalhe_participacao_aluno';
+  static const abriuCertificadoParticipacao =
+      'abriu_certificado_participacao';
+  static const erroAbrirCertificadoParticipacao =
+      'erro_abrir_certificado_participacao';
+  static const iniciouCompartilharCertificadoParticipacao =
+      'iniciou_compartilhar_certificado_participacao';
+  static const erroCompartilharCertificadoParticipacao =
+      'erro_compartilhar_certificado_participacao';
+
+  static const relatorioManualBug = 'relatorio_manual_bug';
+  static const anotacaoInvestigacaoBug = 'anotacao_investigacao_bug';
+  static const marcouBugInvestigado = 'marcou_bug_investigado';
+  static const marcouBugResolvido = 'marcou_bug_resolvido';
+
   static const sessaoIniciada = 'sessao_iniciada';
   static const sessaoFinalizada = 'sessao_finalizada';
   static const limiteEventosAtingido = 'limite_eventos_atingido';

@@ -248,8 +248,12 @@ class _AlunoEstudosDashboardScreenState
                     aluno.graduacao,
                   ].where((e) => e.isNotEmpty).join(' • '),
                 ),
-                _infoLine(Icons.mail_rounded, aluno.googleEmail),
-                _infoLine(Icons.person_rounded, aluno.googleNome),
+                if (aluno.contaEmail.isNotEmpty)
+                  _infoLine(Icons.mail_rounded, aluno.contaEmail),
+                if (aluno.contaNome.isNotEmpty)
+                  _infoLine(Icons.person_rounded, aluno.contaNome),
+                if (aluno.metodoVinculo.isNotEmpty)
+                  _infoLine(Icons.verified_user_rounded, 'Acesso: ${aluno.metodoVinculo}'),
                 _infoLine(
                   Icons.schedule_rounded,
                   'Último acesso: ${formatarDataCurta(dados.resumo.ultimoAcesso)}',

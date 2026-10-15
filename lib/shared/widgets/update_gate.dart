@@ -104,7 +104,7 @@ class _UpdateGateState extends State<UpdateGate> {
   }
 
   Color _softFill(Color color, Color base, [double opacity = 0.10]) {
-    return Color.alphaBlend(color.withOpacity(opacity), base);
+    return Color.alphaBlend(color.withAlpha((255.0 * (opacity)).round()), base);
   }
 
   @override
@@ -181,8 +181,8 @@ class _UpdateGateState extends State<UpdateGate> {
     final danger = _ensureVisible(t.error, t.card);
     final onDanger = _readableOn(danger);
 
-    return WillPopScope(
-      onWillPop: () async => false,
+    return PopScope(
+      canPop: false,
       child: Scaffold(
         backgroundColor: t.background,
         body: SafeArea(
@@ -241,7 +241,7 @@ class _UpdateGateState extends State<UpdateGate> {
         gradient: LinearGradient(
           colors: [
             danger,
-            Color.alphaBlend(Colors.black.withOpacity(0.14), danger),
+            Color.alphaBlend(Colors.black.withAlpha(36), danger),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -257,9 +257,9 @@ class _UpdateGateState extends State<UpdateGate> {
             width: 62,
             height: 62,
             decoration: BoxDecoration(
-              color: onDanger.withOpacity(0.14),
+              color: onDanger.withAlpha(36),
               borderRadius: BorderRadius.circular(t.buttonRadius + 5),
-              border: Border.all(color: onDanger.withOpacity(0.16)),
+              border: Border.all(color: onDanger.withAlpha(41)),
             ),
             child: Icon(Icons.lock_clock_rounded, color: onDanger, size: 34),
           ),
@@ -281,7 +281,7 @@ class _UpdateGateState extends State<UpdateGate> {
                 Text(
                   'Para continuar usando o UAI Capoeira com segurança, atualize o APK.',
                   style: TextStyle(
-                    color: onDanger.withOpacity(0.84),
+                    color: onDanger.withAlpha(214),
                     fontSize: 12.5,
                     height: 1.28,
                     fontWeight: FontWeight.w700,
@@ -381,7 +381,7 @@ class _UpdateGateState extends State<UpdateGate> {
       decoration: BoxDecoration(
         color: _softFill(danger, t.card, 0.07),
         borderRadius: BorderRadius.circular(t.cardRadius),
-        border: Border.all(color: danger.withOpacity(0.14)),
+        border: Border.all(color: danger.withAlpha(36)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,

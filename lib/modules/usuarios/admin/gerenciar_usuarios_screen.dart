@@ -1,11 +1,17 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:uai_capoeira/modules/usuarios/admin/central_identidades_screen.dart';
 import 'package:uai_capoeira/modules/usuarios/admin/editar_usuario_screen.dart';
 import 'package:uai_capoeira/modules/usuarios/admin/usuario_detalhe_screen.dart';
-import 'package:uai_capoeira/modules/auth/screens/aprovar_usuario_screen.dart';
+import 'package:uai_capoeira/modules/usuarios/admin/predefinicoes_permissoes_screen.dart';
+import 'package:uai_capoeira/modules/usuarios/admin/solicitacoes_acesso_screen.dart';
+import 'package:uai_capoeira/modules/usuarios/services/usuario_identidade_service.dart';
+import 'package:uai_capoeira/modules/usuarios/services/usuario_status_service.dart';
 import 'usuario_admin_access.dart';
 
 class GerenciarUsuariosScreen extends StatefulWidget {
@@ -16,13 +22,130 @@ class GerenciarUsuariosScreen extends StatefulWidget {
       _GerenciarUsuariosScreenState();
 }
 
-class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
+class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> with TickerProviderStateMixin {
   late Future<UsuarioAdminAccess> _accessFuture;
+  final UsuarioIdentidadeService _identidadeService = UsuarioIdentidadeService();
+  final TextEditingController _buscaController = TextEditingController();
+  bool _identificandoAreaAluno = false;
+  String _filtroUsuarios = 'todos';
+  Timer? _searchDebounce;
+  late final AnimationController _entryController;
+  late final AnimationController _shimmerController;
+  late final Animation<double> _fadeAnimation;
 
   @override
   void initState() {
     super.initState();
+    _entryController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 420),
+    );
+    _shimmerController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
+    _fadeAnimation = CurvedAnimation(
+      parent: _entryController,
+      curve: Curves.easeOutCubic,
+    );
+    _entryController.forward();
     _accessFuture = carregarAcessoGestaoUsuarios();
+    _accessFuture.then((access) {
+      if (!mounted || !access.liberado) return;
+      _identificarContasAreaAluno(mostrarResultado: false);
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    _buscaController.dispose();
+    _entryController.dispose();
+    _shimmerController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _identificarContasAreaAluno({bool mostrarResultado = true}) async {
+    if (_identificandoAreaAluno) return;
+    if (mounted) setState(() => _identificandoAreaAluno = true);
+    try {
+      final resultado = mostrarResultado
+          ? await _identidadeService.forcarSincronizacao()
+          : await _identidadeService.sincronizarSeNecessario();
+      if (!mounted || !mostrarResultado || resultado == null) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            resultado.vinculadosAreaAluno == 0
+                ? 'Nenhum vínculo da Área do Aluno foi encontrado.'
+                : '${resultado.somenteAreaAluno} conta(s) somente de aluno separada(s) da gestão e ${resultado.hibridos} conta(s) híbrida(s) preservada(s).',
+          ),
+          backgroundColor: context.uai.success,
+        ),
+      );
+    } catch (e) {
+      if (!mounted || !mostrarResultado) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Não foi possível identificar as contas da Área do Aluno: $e',
+          ),
+          backgroundColor: context.uai.error,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _identificandoAreaAluno = false);
+    }
+  }
+
+  Future<void> _marcarComoAreaAluno(
+    BuildContext dialogContext,
+    QueryDocumentSnapshot usuario,
+  ) async {
+    final data = usuario.data() as Map<String, dynamic>;
+    final nome = _textoUsuario(data, ['nome_completo', 'nome', 'name'], 'Usuário');
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Marcar como Área do Aluno'),
+        content: Text(
+          'A conta de $nome deixará de aparecer como solicitação administrativa. '
+          'O vínculo do aluno não será excluído nem alterado.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(context, true),
+            icon: const Icon(Icons.school_rounded),
+            label: const Text('É Área do Aluno'),
+          ),
+        ],
+      ),
+    );
+    if (confirmar != true) return;
+
+    try {
+      await _identidadeService.marcarComoAreaAluno(usuario.id);
+      if (!mounted) return;
+      if (Navigator.of(dialogContext).canPop()) Navigator.of(dialogContext).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$nome foi separado da gestão e mantido na Área do Aluno.'),
+          backgroundColor: context.uai.success,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erro ao classificar a conta: $e'),
+          backgroundColor: context.uai.error,
+        ),
+      );
+    }
   }
 
   Color _readableOn(Color background) {
@@ -84,43 +207,61 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
     return null;
   }
 
+  DateTime? _dataCriacaoFromData(Map<String, dynamic> data) {
+    const campos = [
+      'criado_em',
+      'createdAt',
+      'data_criacao',
+      'criadoEm',
+      'data_cadastro',
+    ];
+    for (final campo in campos) {
+      final value = data[campo];
+      if (value is Timestamp) return value.toDate();
+      if (value is DateTime) return value;
+      if (value is String && value.trim().isNotEmpty) {
+        final parsed = DateTime.tryParse(value.trim());
+        if (parsed != null) return parsed;
+      }
+    }
+    return null;
+  }
+
+  String _formatarDataCriacao(Map<String, dynamic> data) {
+    final date = _dataCriacaoFromData(data);
+    if (date == null) return 'Data de criacao nao informada';
+    final local = date.toLocal();
+    final now = DateTime.now();
+    final hora =
+        '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+    if (local.year == now.year &&
+        local.month == now.month &&
+        local.day == now.day) {
+      return 'Criado hoje as $hora';
+    }
+    final dia = local.day.toString().padLeft(2, '0');
+    final mes = local.month.toString().padLeft(2, '0');
+    return 'Criado em $dia/$mes/${local.year} as $hora';
+  }
+
+  String _textoUsuario(
+    Map<String, dynamic> data,
+    List<String> campos,
+    String fallback,
+  ) {
+    for (final campo in campos) {
+      final value = data[campo]?.toString().trim() ?? '';
+      if (value.isNotEmpty && value.toLowerCase() != 'null') return value;
+    }
+    return fallback;
+  }
+
   List<QueryDocumentSnapshot> _usuariosList = [];
   int _pendentesCount = 0;
 
-  void _showDeleteConfirmation(
-    BuildContext context,
-    String docId,
-    String nome,
-  ) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text('Confirmar Exclusão'),
-          content: Text(
-            "Você tem certeza que deseja excluir o usuário \"$nome\"?\n\nEsta ação é permanente e não pode ser desfeita.",
-          ),
-          actions: <Widget>[
-            TextButton(
-              child: Text('Cancelar'),
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-            TextButton(
-              style: TextButton.styleFrom(foregroundColor: context.uai.error),
-              child: const Text('Excluir'),
-              onPressed: () {
-                FirebaseFirestore.instance
-                    .collection('usuarios')
-                    .doc(docId)
-                    .delete();
-                Navigator.of(context).pop();
-              },
-            ),
-          ],
-        );
-      },
-    );
-  }
+  // Exclusão física de usuários foi removida.
+  // Contas administrativas devem ser bloqueadas/inativadas para preservar
+  // histórico, vínculos e referências de auditoria.
 
   // Função para mostrar usuários pendentes
   void _showPendingUsersDialog(
@@ -128,231 +269,11 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
     List<QueryDocumentSnapshot> pendentes,
     bool canApprove,
   ) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return Dialog(
-          insetPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-          child: Container(
-            width: double.maxFinite,
-            height: MediaQuery.of(context).size.height * 0.8,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              color: context.uai.textPrimary,
-            ),
-            child: Column(
-              children: [
-                // Header do diálogo
-                Container(
-                  padding: EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: context.uai.primary,
-                    borderRadius: BorderRadius.only(
-                      topLeft: Radius.circular(16),
-                      topRight: Radius.circular(16),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.pending_actions, color: context.uai.card),
-                      SizedBox(width: 12),
-                      Text(
-                        'Usuários Pendentes',
-                        style: TextStyle(
-                          color: context.uai.textPrimary,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Spacer(),
-                      Container(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: context.uai.card,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          '${pendentes.length}',
-                          style: TextStyle(
-                            color: context.uai.primary,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Lista de usuários pendentes
-                Expanded(
-                  child: pendentes.isEmpty
-                      ? const Center(child: Text('Nenhum usuário pendente'))
-                      : ListView.builder(
-                          padding: const EdgeInsets.all(8),
-                          itemCount: pendentes.length,
-                          itemBuilder: (context, index) {
-                            final usuario = pendentes[index];
-                            final data = usuario.data() as Map<String, dynamic>;
-                            final nome =
-                                data['nome_completo'] ??
-                                data['name'] ??
-                                'Nome não informado';
-                            final email =
-                                data['email'] ?? 'Email não informado';
-                            final tipo = data['tipo'] ?? 'não definido';
-                            final fotoUrl = _fotoUrlFromData(data);
-
-                            return Card(
-                              elevation: 2,
-                              margin: EdgeInsets.only(bottom: 8),
-                              child: ListTile(
-                                leading: Container(
-                                  width: 50,
-                                  height: 50,
-                                  decoration: BoxDecoration(
-                                    color: context.uai.warning.withOpacity(
-                                      0.16,
-                                    ),
-                                    borderRadius: BorderRadius.circular(25),
-                                  ),
-                                  child:
-                                      fotoUrl != null &&
-                                          fotoUrl.toString().isNotEmpty
-                                      ? ClipRRect(
-                                          borderRadius: BorderRadius.circular(
-                                            25,
-                                          ),
-                                          child: CachedNetworkImage(
-                                            imageUrl: fotoUrl.toString(),
-                                            fit: BoxFit.cover,
-                                            placeholder: (context, url) =>
-                                                CircularProgressIndicator(),
-                                            errorWidget:
-                                                (context, url, error) => Icon(
-                                                  Icons.person,
-                                                  color: context.uai.warning,
-                                                ),
-                                          ),
-                                        )
-                                      : Center(
-                                          child: Text(
-                                            nome.substring(0, 1).toUpperCase(),
-                                            style: TextStyle(
-                                              fontSize: 18,
-                                              fontWeight: FontWeight.bold,
-                                              color: context.uai.warning,
-                                            ),
-                                          ),
-                                        ),
-                                ),
-                                title: Text(
-                                  nome,
-                                  style: TextStyle(fontWeight: FontWeight.bold),
-                                ),
-                                subtitle: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(email, style: TextStyle(fontSize: 12)),
-                                    SizedBox(height: 4),
-                                    Container(
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: 6,
-                                        vertical: 2,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: context.uai.warning.withOpacity(
-                                          0.16,
-                                        ),
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: Text(
-                                        tipo.toUpperCase(),
-                                        style: TextStyle(
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                          color: context.uai.warning,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      icon: Icon(
-                                        Icons.check_circle,
-                                        color: context.uai.success,
-                                      ),
-                                      onPressed: () {
-                                        if (!canApprove) return;
-                                        Navigator.of(
-                                          context,
-                                        ).pop(); // Fecha o diálogo
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (context) =>
-                                                AprovarUsuarioScreen(
-                                                  userId: usuario.id,
-                                                  userData: data,
-                                                  adminData:
-                                                      {}, // Você precisará passar os dados do admin
-                                                ),
-                                          ),
-                                        );
-                                      },
-                                      tooltip: 'Aprovar',
-                                    ),
-                                    IconButton(
-                                      icon: Icon(
-                                        Icons.cancel,
-                                        color: context.uai.error,
-                                      ),
-                                      onPressed: () {
-                                        if (!canApprove) return;
-                                        _showRejectConfirmation(
-                                          context,
-                                          usuario.id,
-                                          nome,
-                                        );
-                                      },
-                                      tooltip: 'Rejeitar',
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                ),
-
-                // Botão fechar
-                Container(
-                  padding: EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    border: Border(
-                      top: BorderSide(color: context.uai.textMuted, width: 0.5),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      TextButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        child: const Text('Fechar'),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SolicitacoesAcessoScreen(canApprove: canApprove),
+      ),
     );
   }
 
@@ -368,7 +289,7 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
         return AlertDialog(
           title: Text('Rejeitar Usuário'),
           content: Text(
-            "Deseja realmente rejeitar o usuário \"$nome\"?\n\nO usuário será removido do sistema.",
+            "Deseja realmente rejeitar o usuário \"$nome\"?\n\nA solicitação será encerrada sem apagar a identidade, vínculos ou histórico.",
           ),
           actions: <Widget>[
             TextButton(
@@ -383,11 +304,11 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
                 Navigator.of(context).pop();
 
                 try {
-                  // Excluir o usuário do Firestore
-                  await FirebaseFirestore.instance
-                      .collection('usuarios')
-                      .doc(userId)
-                      .delete();
+                  await UsuarioStatusService.alterarStatus(
+                    userId: userId,
+                    novoStatus: 'rejeitada',
+                    atorNome: 'Administrador',
+                  );
 
                   // Mostrar mensagem de sucesso
                   if (mounted) {
@@ -429,116 +350,203 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
     }).toList();
 
     if (inactiveUsers.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Nenhum usuário inativo/bloqueado encontrado'),
-          backgroundColor: context.uai.warning,
-        ),
+      _showPremiumSnack(
+        'Nenhum usuário inativo ou bloqueado.',
+        icon: Icons.verified_user_rounded,
+        color: context.uai.success,
       );
       return;
     }
 
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Usuários Inativos/Bloqueados'),
-          content: SizedBox(
-            width: double.maxFinite,
-            height: MediaQuery.of(context).size.height * 0.6,
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: inactiveUsers.length,
-              itemBuilder: (context, index) {
-                final usuario = inactiveUsers[index];
-                final data = usuario.data() as Map<String, dynamic>;
-                final nome =
-                    data['nome_completo'] ??
-                    data['name'] ??
-                    'Nome não informado';
-                final email = data['email'] ?? 'Email não informado';
-                final statusConta = data['status_conta'] ?? '';
-                final fotoUrl = _fotoUrlFromData(data);
-
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  child: ListTile(
-                    leading: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: _getStatusColor(statusConta).withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: fotoUrl != null && fotoUrl.toString().isNotEmpty
-                          ? ClipRRect(
-                              borderRadius: BorderRadius.circular(20),
-                              child: CachedNetworkImage(
-                                imageUrl: fotoUrl.toString(),
-                                fit: BoxFit.cover,
-                                placeholder: (context, url) =>
-                                    CircularProgressIndicator(),
-                                errorWidget: (context, url, error) =>
-                                    Icon(Icons.person, color: context.uai.card),
-                              ),
-                            )
-                          : Center(
-                              child: Text(
-                                nome.substring(0, 1).toUpperCase(),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.72,
+          minChildSize: 0.45,
+          maxChildSize: 0.92,
+          expand: false,
+          builder: (context, scrollController) {
+            return Container(
+              decoration: BoxDecoration(
+                color: context.uai.background,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
+                border: Border.all(color: context.uai.border.withAlpha(140)),
+              ),
+              child: Column(
+                children: [
+                  const SizedBox(height: 10),
+                  Container(
+                    width: 42,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: context.uai.textMuted.withAlpha(89),
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 16, 18, 12),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 42,
+                          height: 42,
+                          decoration: BoxDecoration(
+                            color: context.uai.error.withAlpha(26),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Icon(Icons.person_off_rounded, color: context.uai.error),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Inativos e bloqueados',
                                 style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: _getStatusColor(statusConta),
+                                  color: context.uai.textPrimary,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w900,
                                 ),
                               ),
-                            ),
-                    ),
-                    title: Text(
-                      nome,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    subtitle: Text(email),
-                    trailing: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _getStatusColor(statusConta).withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        statusConta.toUpperCase(),
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: _getStatusColor(statusConta),
+                              Text(
+                                '${inactiveUsers.length} conta${inactiveUsers.length == 1 ? '' : 's'} preservada${inactiveUsers.length == 1 ? '' : 's'}',
+                                style: TextStyle(
+                                  color: context.uai.textSecondary,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                    ),
-                    onTap: () {
-                      Navigator.of(context).pop();
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) =>
-                              UsuarioDetalheScreen(userId: usuario.id),
+                        IconButton(
+                          tooltip: 'Fechar',
+                          onPressed: () => Navigator.pop(sheetContext),
+                          icon: const Icon(Icons.close_rounded),
                         ),
-                      );
-                    },
+                      ],
+                    ),
                   ),
-                );
-              },
-            ),
-          ),
-          actions: <Widget>[
-            TextButton(
-              child: Text('Fechar'),
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-          ],
+                  Expanded(
+                    child: ListView.separated(
+                      controller: scrollController,
+                      padding: const EdgeInsets.fromLTRB(14, 4, 14, 24),
+                      itemCount: inactiveUsers.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 8),
+                      itemBuilder: (context, index) {
+                        final usuario = inactiveUsers[index];
+                        final data = usuario.data() as Map<String, dynamic>;
+                        final nome = _textoUsuario(data, ['nome_completo', 'nome', 'name'], 'Usuário');
+                        final email = _textoUsuario(data, ['email'], 'E-mail não informado');
+                        final status = data['status_conta']?.toString() ?? 'inativa';
+                        final color = _getStatusColor(status);
+                        return Material(
+                          color: context.uai.card,
+                          borderRadius: BorderRadius.circular(18),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(18),
+                            onTap: () {
+                              Navigator.pop(sheetContext);
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => UsuarioDetalheScreen(userId: usuario.id),
+                                ),
+                              );
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Row(
+                                children: [
+                                  _buildUserAvatar(
+                                    nome: nome,
+                                    fotoUrl: _fotoUrlFromData(data),
+                                    color: color,
+                                    size: 44,
+                                    inicial: nome.isNotEmpty ? nome[0].toUpperCase() : '?',
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(nome, style: TextStyle(color: context.uai.textPrimary, fontWeight: FontWeight.w900)),
+                                        const SizedBox(height: 2),
+                                        Text(email, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: context.uai.textSecondary, fontSize: 11.5)),
+                                      ],
+                                    ),
+                                  ),
+                                  _buildMiniBadge(
+                                    label: status.toUpperCase(),
+                                    color: color,
+                                    icon: Icons.block_rounded,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
         );
       },
     );
+  }
+
+  void _showPremiumSnack(
+    String message, {
+    required IconData icon,
+    required Color color,
+  }) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          elevation: 0,
+          backgroundColor: Colors.transparent,
+          content: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: context.uai.card,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: color.withAlpha(71)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withAlpha(31),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Icon(icon, color: color, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    message,
+                    style: TextStyle(
+                      color: context.uai.textPrimary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
   }
 
   Color _getStatusColor(String status) {
@@ -569,7 +577,10 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
           return buildAcessoNegadoGestaoUsuarios(context);
         }
 
-        return _buildConteudoAutorizado(context, access);
+        return FadeTransition(
+          opacity: _fadeAnimation,
+          child: _buildConteudoAutorizado(context, access),
+        );
       },
     );
   }
@@ -597,15 +608,72 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
         elevation: 0,
         actions: [
           _buildPendingActionButton(access.adminMaster),
-          IconButton(
-            icon: Icon(Icons.people_outline_rounded),
-            onPressed: () => _showInactiveUsersDialog(context),
-            tooltip: 'Inativos/Bloqueados',
+          PopupMenuButton<String>(
+            tooltip: 'Mais opções',
+            icon: const Icon(Icons.more_vert_rounded),
+            onSelected: (value) {
+              switch (value) {
+                case 'predefinicoes':
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const PredefinicoesPermissoesScreen(),
+                    ),
+                  );
+                  break;
+                case 'identidades':
+                  if (!_identificandoAreaAluno) {
+                    _identificarContasAreaAluno();
+                  }
+                  break;
+                case 'inativos':
+                  _showInactiveUsersDialog(context);
+                  break;
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'predefinicoes',
+                child: ListTile(
+                  dense: true,
+                  leading: Icon(Icons.tune_rounded),
+                  title: Text('Predefinições'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              PopupMenuItem(
+                value: 'identidades',
+                enabled: !_identificandoAreaAluno,
+                child: ListTile(
+                  dense: true,
+                  leading: _identificandoAreaAluno
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.manage_search_rounded),
+                  title: const Text('Revisar identidades'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'inativos',
+                child: ListTile(
+                  dense: true,
+                  leading: Icon(Icons.people_outline_rounded),
+                  title: Text('Inativos e bloqueados'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+            ],
           ),
+          const SizedBox(width: 4),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: FloatingActionButton(
         heroTag: 'fab_add_usuario',
+        tooltip: 'Novo usuário',
         backgroundColor:
             Theme.of(context).appBarTheme.backgroundColor ??
             context.uai.primary,
@@ -615,11 +683,7 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
               Theme.of(context).appBarTheme.backgroundColor ??
                   context.uai.primary,
             ),
-        icon: const Icon(Icons.person_add_alt_1_rounded),
-        label: const Text(
-          'Novo',
-          style: TextStyle(fontWeight: FontWeight.w900),
-        ),
+        child: const Icon(Icons.person_add_alt_1_rounded),
         onPressed: () {
           Navigator.push(
             context,
@@ -656,7 +720,7 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
                 .snapshots(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
-                return _buildLoadingState('Carregando usuários...');
+                return _buildUsersSkeleton();
               }
 
               if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
@@ -668,29 +732,29 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
                 );
               }
 
-              final usuarios = snapshot.data!.docs;
+              final todosUsuarios = snapshot.data!.docs;
+              final usuarios = todosUsuarios.where((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                return UsuarioIdentidadeService.deveExibirNaGestao(data);
+              }).toList();
               _usuariosList = usuarios;
 
               final pendentes = usuarios.where((doc) {
                 final data = doc.data() as Map<String, dynamic>;
-                return data['status_conta'] == 'pendente' ||
-                    data['aprovado_em'] == null;
+                final status =
+                    (data['status_conta'] ?? '').toString().toLowerCase();
+                return status == 'pendente' &&
+                    data['aprovado_em'] == null &&
+                    data['solicitacao_acesso_gestao'] == true;
               }).toList();
 
               _pendentesCount = pendentes.length;
 
               final aprovados = usuarios.where((doc) {
                 final data = doc.data() as Map<String, dynamic>;
-                return data['status_conta'] == 'ativa' &&
+                return UsuarioStatusService.normalizar(data['status_conta']) ==
+                        'ativa' &&
                     data['aprovado_em'] != null;
-              }).toList();
-
-              final outros = usuarios.where((doc) {
-                final data = doc.data() as Map<String, dynamic>;
-                final status = data['status_conta'] ?? '';
-                return status != 'ativa' &&
-                    status != 'pendente' &&
-                    data['aprovado_em'] == null;
               }).toList();
 
               final bloqueados = usuarios.where((doc) {
@@ -700,18 +764,38 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
                 return status == 'bloqueada' || status == 'inativa';
               }).length;
 
+              final textoBusca = _buscaController.text.trim().toLowerCase();
+              final filtrados = usuarios.where((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                if (!_usuarioPassaFiltro(data, _filtroUsuarios)) return false;
+                if (textoBusca.isEmpty) return true;
+                final nome = _textoUsuario(
+                  data,
+                  ['nome_completo', 'nome', 'name', 'displayName'],
+                  '',
+                ).toLowerCase();
+                final email = _textoUsuario(data, ['email'], '').toLowerCase();
+                final tipo = _textoUsuario(data, ['tipo'], '').toLowerCase();
+                return nome.contains(textoBusca) ||
+                    email.contains(textoBusca) ||
+                    tipo.contains(textoBusca);
+              }).toList();
+
               return RefreshIndicator(
                 color: context.uai.primary,
-                onRefresh: () async => setState(() {}),
+                onRefresh: () async {
+                  await _identificarContasAreaAluno(mostrarResultado: false);
+                  if (mounted) setState(() {});
+                },
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     final isWide = constraints.maxWidth >= 920;
-                    final isCompact = constraints.maxWidth < 520;
+                    final isCompact = constraints.maxWidth < 620;
 
                     return ListView(
                       padding: EdgeInsets.fromLTRB(
                         isCompact ? 12 : 18,
-                        isCompact ? 12 : 18,
+                        isCompact ? 12 : 16,
                         isCompact ? 12 : 18,
                         96,
                       ),
@@ -729,48 +813,39 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
                                   bloqueados: bloqueados,
                                   compact: isCompact,
                                 ),
-                                SizedBox(height: 14),
-                                _buildQuickActionsRow(
-                                  pendentes: pendentes,
-                                  compact: isCompact,
-                                  canApprove: podeAdministrarAlvosCriticos,
+                                const SizedBox(height: 10),
+                                _buildQuickActionChips(
+                                  pendentes: pendentes.length,
+                                  inativos: bloqueados,
+                                  canApprove: access.adminMaster,
                                 ),
-                                SizedBox(height: 16),
-                                if (aprovados.isNotEmpty)
-                                  _buildSectionHeaderPremium(
-                                    title: 'Usuários ativos',
-                                    count: aprovados.length,
-                                    icon: Icons.verified_user_rounded,
-                                    color: context.uai.success,
-                                  ),
-                                if (aprovados.isNotEmpty)
+                                const SizedBox(height: 10),
+                                _buildSearchAndFilters(
+                                  compact: isCompact,
+                                  totalFiltrado: filtrados.length,
+                                  usuarios: usuarios,
+                                ),
+                                const SizedBox(height: 14),
+                                _buildSectionHeaderPremium(
+                                  title: _tituloFiltroUsuarios(_filtroUsuarios),
+                                  count: filtrados.length,
+                                  icon: Icons.manage_accounts_rounded,
+                                  color: context.uai.primary,
+                                ),
+                                if (filtrados.isNotEmpty)
                                   _buildUserGrid(
-                                    usuarios: aprovados,
+                                    usuarios: filtrados,
                                     isWide: isWide,
                                     isAdmin: podeAdministrarAlvosCriticos,
                                     adminData: adminData,
-                                  ),
-                                if (outros.isNotEmpty) ...[
-                                  SizedBox(height: 16),
-                                  _buildSectionHeaderPremium(
-                                    title: 'Outros usuários',
-                                    count: outros.length,
-                                    icon: Icons.manage_accounts_rounded,
-                                    color: context.uai.warning,
-                                  ),
-                                  _buildUserGrid(
-                                    usuarios: outros,
-                                    isWide: isWide,
-                                    isAdmin: podeAdministrarAlvosCriticos,
-                                    adminData: adminData,
-                                  ),
-                                ],
-                                if (aprovados.isEmpty && outros.isEmpty)
+                                  )
+                                else
                                   _buildEmptyState(
-                                    icon: Icons.verified_user_outlined,
-                                    title: 'Nenhum usuário aprovado',
-                                    subtitle:
-                                        'Usuários pendentes ficam no botão de notificações.',
+                                    icon: Icons.person_search_rounded,
+                                    title: 'Nenhum usuário encontrado',
+                                    subtitle: textoBusca.isNotEmpty
+                                        ? 'Tente outro nome, e-mail ou perfil.'
+                                        : 'Não há usuários neste filtro.',
                                   ),
                               ],
                             ),
@@ -788,31 +863,726 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
     );
   }
 
+
+  bool _usuarioPassaFiltro(Map<String, dynamic> data, String filtro) {
+    final status = (data['status_conta'] ?? '').toString().toLowerCase();
+    final tipo = (data['tipo'] ?? '').toString().toLowerCase();
+    final aprovado = data['aprovado_em'] != null;
+    switch (filtro) {
+      case 'ativos':
+        return status == 'ativa' && aprovado;
+      case 'pendentes':
+        return status == 'pendente' && !aprovado && data['solicitacao_acesso_gestao'] == true;
+      case 'administradores':
+        return tipo == 'admin' || tipo == 'administrador';
+      case 'professores':
+        return tipo == 'professor';
+      case 'monitores':
+        return tipo == 'monitor';
+      case 'inativos':
+        return status == 'inativa' || status == 'bloqueada';
+      default:
+        return true;
+    }
+  }
+
+  String _tituloFiltroUsuarios(String filtro) {
+    switch (filtro) {
+      case 'ativos':
+        return 'Usuários ativos';
+      case 'pendentes':
+        return 'Solicitações pendentes';
+      case 'administradores':
+        return 'Administradores';
+      case 'professores':
+        return 'Professores';
+      case 'monitores':
+        return 'Monitores';
+      case 'inativos':
+        return 'Inativos e bloqueados';
+      default:
+        return 'Todos os usuários';
+    }
+  }
+
+  Widget _buildQuickActionChips({
+    required int pendentes,
+    required int inativos,
+    required bool canApprove,
+  }) {
+    Widget chip({
+      required IconData icon,
+      required String label,
+      required Color color,
+      required VoidCallback onTap,
+    }) {
+      return ActionChip(
+        avatar: Icon(icon, size: 16, color: color),
+        label: Text(label, style: TextStyle(color: context.uai.textPrimary, fontWeight: FontWeight.w800, fontSize: 11.5)),
+        onPressed: onTap,
+        backgroundColor: context.uai.card,
+        side: BorderSide(color: color.withAlpha(61)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(99)),
+      );
+    }
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          chip(
+            icon: Icons.pending_actions_rounded,
+            label: pendentes == 0 ? 'Sem pendências' : '$pendentes pendente${pendentes == 1 ? '' : 's'}',
+            color: pendentes == 0 ? context.uai.success : context.uai.warning,
+            onTap: () => _showPendingUsersDialog(context, const [], canApprove),
+          ),
+          const SizedBox(width: 7),
+          chip(
+            icon: Icons.hub_rounded,
+            label: 'Central de identidades',
+            color: context.uai.info,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const CentralIdentidadesScreen()),
+            ),
+          ),
+          const SizedBox(width: 7),
+          chip(
+            icon: Icons.tune_rounded,
+            label: 'Predefinições',
+            color: context.uai.primary,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const PredefinicoesPermissoesScreen()),
+            ),
+          ),
+          const SizedBox(width: 7),
+          chip(
+            icon: _identificandoAreaAluno ? Icons.sync_rounded : Icons.manage_search_rounded,
+            label: _identificandoAreaAluno ? 'Revisando...' : 'Revisar identidades',
+            color: context.uai.info,
+            onTap: () {
+              if (!_identificandoAreaAluno) _identificarContasAreaAluno();
+            },
+          ),
+          const SizedBox(width: 7),
+          chip(
+            icon: Icons.person_off_rounded,
+            label: '$inativos inativo${inativos == 1 ? '' : 's'}',
+            color: context.uai.error,
+            onTap: () => _showInactiveUsersDialog(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUsersSkeleton() {
+    return AnimatedBuilder(
+      animation: _shimmerController,
+      builder: (context, _) {
+        final t = 0.35 + (_shimmerController.value * 0.25);
+        final base = context.uai.border.withAlpha((255.0 * (t)).round());
+        Widget line(double width, double height) => Container(
+              width: width,
+              height: height,
+              decoration: BoxDecoration(
+                color: base,
+                borderRadius: BorderRadius.circular(99),
+              ),
+            );
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(14, 16, 14, 96),
+          children: [
+            Container(
+              height: 150,
+              decoration: BoxDecoration(
+                color: base,
+                borderRadius: BorderRadius.circular(24),
+              ),
+            ),
+            const SizedBox(height: 14),
+            for (var i = 0; i < 5; i++)
+              Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: context.uai.card,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: context.uai.border.withAlpha(140)),
+                ),
+                child: Row(
+                  children: [
+                    Container(width: 52, height: 52, decoration: BoxDecoration(color: base, shape: BoxShape.circle)),
+                    const SizedBox(width: 12),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        line(160, 12),
+                        const SizedBox(height: 8),
+                        line(220, 9),
+                        const SizedBox(height: 9),
+                        line(110, 9),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildSlimDashboardSummary({
+    required int total,
+    required int ativos,
+    required int pendentes,
+    required int bloqueados,
+    required bool compact,
+  }) {
+    final primary = context.uai.primary;
+
+    Widget metric({
+      required IconData icon,
+      required int value,
+      required String label,
+      required Color color,
+    }) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        decoration: BoxDecoration(
+          color: color.withAlpha(20),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 15, color: color),
+            const SizedBox(width: 6),
+            Text(
+              '$value',
+              style: TextStyle(
+                color: context.uai.textPrimary,
+                fontSize: 13,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: context.uai.textSecondary,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: primary.withAlpha(26),
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                child: Icon(
+                  Icons.manage_accounts_rounded,
+                  color: primary,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Gestão de acessos',
+                      style: TextStyle(
+                        color: context.uai.textPrimary,
+                        fontSize: compact ? 17 : 18,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    Text(
+                      '$total usuário${total == 1 ? '' : 's'} administrativo${total == 1 ? '' : 's'}',
+                      style: TextStyle(
+                        color: context.uai.textSecondary,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 7,
+            runSpacing: 7,
+            children: [
+              metric(
+                icon: Icons.check_circle_rounded,
+                value: ativos,
+                label: 'ativos',
+                color: context.uai.success,
+              ),
+              metric(
+                icon: Icons.pending_actions_rounded,
+                value: pendentes,
+                label: 'pendentes',
+                color: context.uai.warning,
+              ),
+              metric(
+                icon: Icons.block_rounded,
+                value: bloqueados,
+                label: 'inativos',
+                color: context.uai.error,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSlimStat({
+    required IconData icon,
+    required int value,
+    required String label,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
+      decoration: BoxDecoration(
+        color: color.withAlpha(18),
+        borderRadius: BorderRadius.circular(13),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: color, size: 16),
+              const SizedBox(width: 5),
+              Text(
+                '$value',
+                style: TextStyle(
+                  color: context.uai.textPrimary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
+                  height: 1,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 3),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: context.uai.textSecondary,
+              fontSize: 9.5,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCompactDashboardHeader({
+    required int total,
+    required int ativos,
+    required int pendentes,
+    required int bloqueados,
+    required bool compact,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final stats = <Widget>[
+      _buildCompactStat(
+        icon: Icons.people_alt_rounded,
+        value: total,
+        label: 'Gestão',
+        color: context.uai.primary,
+      ),
+      _buildCompactStat(
+        icon: Icons.verified_user_rounded,
+        value: ativos,
+        label: 'Ativos',
+        color: context.uai.success,
+      ),
+      _buildCompactStat(
+        icon: Icons.pending_actions_rounded,
+        value: pendentes,
+        label: 'Pendentes',
+        color: context.uai.warning,
+      ),
+      _buildCompactStat(
+        icon: Icons.block_rounded,
+        value: bloqueados,
+        label: 'Inativos',
+        color: context.uai.error,
+      ),
+    ];
+
+    return Container(
+      padding: EdgeInsets.all(compact ? 14 : 16),
+      decoration: BoxDecoration(
+        color: context.uai.card,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: colorScheme.outlineVariant.withAlpha(179)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: context.uai.primary.withAlpha(31),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  Icons.admin_panel_settings_rounded,
+                  color: context.uai.primary,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Usuários da gestão',
+                      style: TextStyle(
+                        color: context.uai.textPrimary,
+                        fontSize: compact ? 19 : 22,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Acessos administrativos, funções e permissões.',
+                      style: TextStyle(
+                        color: context.uai.textSecondary,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (!compact)
+                FilledButton.icon(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const EditarUsuarioScreen(),
+                    ),
+                  ),
+                  icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
+                  label: const Text('Novo usuário'),
+                ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          if (compact)
+            Wrap(spacing: 8, runSpacing: 8, children: stats)
+          else
+            Row(
+              children: stats
+                  .map((e) => Expanded(child: Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: e,
+                      )))
+                  .toList(),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCompactStat({
+    required IconData icon,
+    required int value,
+    required String label,
+    required Color color,
+  }) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 112),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withAlpha(20),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withAlpha(41)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 19),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '$value',
+                style: TextStyle(
+                  color: context.uai.textPrimary,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w900,
+                  height: 1,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                label,
+                style: TextStyle(
+                  color: context.uai.textSecondary,
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchAndFilters({
+    required bool compact,
+    required int totalFiltrado,
+    required List<QueryDocumentSnapshot> usuarios,
+  }) {
+    final filtros = <String, String>{
+      'todos': 'Todos',
+      'ativos': 'Ativos',
+      'administradores': 'Admins',
+      'professores': 'Professores',
+      'monitores': 'Monitores',
+      'pendentes': 'Pendentes',
+      'inativos': 'Inativos',
+    };
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          controller: _buscaController,
+          onChanged: (_) {
+            _searchDebounce?.cancel();
+            _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+              if (mounted) setState(() {});
+            });
+          },
+          decoration: InputDecoration(
+            hintText: 'Buscar por nome, e-mail ou função...',
+            prefixIcon: const Icon(Icons.search_rounded),
+            suffixIcon: _buscaController.text.isEmpty
+                ? null
+                : IconButton(
+                    tooltip: 'Limpar busca',
+                    onPressed: () {
+                      _buscaController.clear();
+                      setState(() {});
+                    },
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+            filled: true,
+            fillColor: context.uai.card,
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(vertical: 12),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide(color: context.uai.border),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide(color: context.uai.border),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide(color: context.uai.primary, width: 1.4),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: filtros.entries.map((entry) {
+                    final selecionado = _filtroUsuarios == entry.key;
+                    final count = usuarios.where((doc) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      return _usuarioPassaFiltro(data, entry.key);
+                    }).length;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 7),
+                      child: FilterChip(
+                        selected: selecionado,
+                        label: Text('${entry.value}  $count'),
+                        onSelected: (_) => setState(() => _filtroUsuarios = entry.key),
+                        avatar: selecionado ? const Icon(Icons.check_rounded, size: 16) : null,
+                        showCheckmark: false,
+                        selectedColor: context.uai.primary.withAlpha(36),
+                        side: BorderSide(
+                          color: selecionado
+                              ? context.uai.primary.withAlpha(115)
+                              : context.uai.border.withAlpha(191),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+            if (!compact) ...[
+              const SizedBox(width: 10),
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  '$totalFiltrado resultado${totalFiltrado == 1 ? '' : 's'}',
+                  style: TextStyle(
+                    color: context.uai.textMuted,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCompactQuickActions({
+    required List<QueryDocumentSnapshot> pendentes,
+    required bool compact,
+    required bool canApprove,
+  }) {
+    final actions = <Widget>[
+      _buildCompactActionButton(
+        icon: Icons.pending_actions_rounded,
+        label: pendentes.isEmpty
+            ? 'Sem pendências'
+            : '${pendentes.length} pendente${pendentes.length == 1 ? '' : 's'}',
+        color: context.uai.warning,
+        onTap: () => _showPendingUsersDialog(context, pendentes, canApprove),
+      ),
+      _buildCompactActionButton(
+        icon: Icons.hub_rounded,
+        label: 'Central de identidades',
+        color: context.uai.info,
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const CentralIdentidadesScreen()),
+        ),
+      ),
+      _buildCompactActionButton(
+        icon: Icons.tune_rounded,
+        label: 'Predefinições',
+        color: context.uai.primary,
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const PredefinicoesPermissoesScreen(),
+          ),
+        ),
+      ),
+      _buildCompactActionButton(
+        icon: Icons.manage_search_rounded,
+        label: _identificandoAreaAluno ? 'Identificando...' : 'Revisar identidades',
+        color: context.uai.success,
+        onTap: _identificandoAreaAluno ? null : () => _identificarContasAreaAluno(),
+      ),
+    ];
+    if (compact) {
+      return SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: actions
+              .map((e) => Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: e,
+                  ))
+              .toList(),
+        ),
+      );
+    }
+    return Row(
+      children: actions
+          .map((e) => Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: e,
+                ),
+              ))
+          .toList(),
+    );
+  }
+
+  Widget _buildCompactActionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback? onTap,
+  }) {
+    return OutlinedButton.icon(
+      onPressed: onTap,
+      icon: Icon(icon, size: 18, color: color),
+      label: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontWeight: FontWeight.w800),
+      ),
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
+        side: BorderSide(color: color.withAlpha(64)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+    );
+  }
+
   Widget _buildPendingActionButton(bool canApprove) {
     return Stack(
       children: [
         IconButton(
           icon: Icon(Icons.notifications_rounded),
           onPressed: () {
-            FirebaseFirestore.instance
-                .collection('usuarios')
-                .where('status_conta', isEqualTo: 'pendente')
-                .get()
-                .then((snapshot) {
-                  if (mounted) {
-                    _showPendingUsersDialog(context, snapshot.docs, canApprove);
-                  }
-                })
-                .catchError((error) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Erro ao carregar pendentes: $error'),
-                        backgroundColor: context.uai.error,
-                      ),
-                    );
-                  }
-                });
+            final visiveis = _usuariosList.where((doc) {
+              final data = doc.data() as Map<String, dynamic>;
+              final status =
+                  (data['status_conta'] ?? '').toString().toLowerCase();
+              return status == 'pendente' &&
+                  data['solicitacao_acesso_gestao'] == true &&
+                  UsuarioIdentidadeService.deveExibirNaGestao(data);
+            }).toList();
+            _showPendingUsersDialog(context, visiveis, canApprove);
           },
           tooltip: 'Usuários pendentes',
         ),
@@ -855,7 +1625,7 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
         borderRadius: BorderRadius.circular(compact ? 24 : 30),
         boxShadow: [
           BoxShadow(
-            color: context.uai.primary.withOpacity(0.14),
+            color: context.uai.primary.withAlpha(36),
             blurRadius: 12,
             offset: const Offset(0, 5),
           ),
@@ -870,9 +1640,9 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
             width: compact ? 58 : 70,
             height: compact ? 58 : 70,
             decoration: BoxDecoration(
-              color: onHero.withOpacity(0.14),
+              color: onHero.withAlpha(36),
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: onHero.withOpacity(0.16)),
+              border: Border.all(color: onHero.withAlpha(41)),
             ),
             child: Icon(Icons.groups_rounded, color: onHero, size: 36),
           );
@@ -897,7 +1667,7 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
                 'Controle usuários, permissões, status de conta e aprovações do sistema.',
                 textAlign: narrow ? TextAlign.center : TextAlign.left,
                 style: TextStyle(
-                  color: onHero.withOpacity(0.82),
+                  color: onHero.withAlpha(209),
                   fontSize: compact ? 12.8 : 15,
                   height: 1.35,
                   fontWeight: FontWeight.w600,
@@ -921,6 +1691,50 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
                       Icons.block_rounded,
                       '$bloqueados bloqueados',
                     ),
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(99),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const EditarUsuarioScreen(),
+                        ),
+                      ),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 11,
+                          vertical: 7,
+                        ),
+                        decoration: BoxDecoration(
+                          color: onHero.withAlpha(36),
+                          borderRadius: BorderRadius.circular(99),
+                          border: Border.all(
+                            color: onHero.withAlpha(41),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.person_add_alt_1_rounded,
+                              size: 15,
+                              color: onHero,
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              'Novo usuário',
+                              style: TextStyle(
+                                color: onHero,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ],
@@ -948,9 +1762,9 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: onHero.withOpacity(0.14),
+        color: onHero.withAlpha(36),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: onHero.withOpacity(0.16)),
+        border: Border.all(color: onHero.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1053,10 +1867,10 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
           padding: const EdgeInsets.all(13),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: color.withOpacity(0.18)),
+            border: Border.all(color: color.withAlpha(46)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.025),
+                color: Colors.black.withAlpha(6),
                 blurRadius: 6,
                 offset: Offset(0, 2),
               ),
@@ -1068,7 +1882,7 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.10),
+                  color: color.withAlpha(26),
                   borderRadius: BorderRadius.circular(15),
                 ),
                 child: Icon(icon, color: color, size: 22),
@@ -1150,12 +1964,11 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
       child: Row(
         children: [
           Container(
-            width: 38,
-            height: 38,
+            width: 34,
+            height: 34,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.10),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: color.withOpacity(0.18)),
+              color: color.withAlpha(26),
+              borderRadius: BorderRadius.circular(11),
             ),
             child: Icon(icon, color: color, size: 21),
           ),
@@ -1173,9 +1986,9 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.10),
+              color: color.withAlpha(26),
               borderRadius: BorderRadius.circular(99),
-              border: Border.all(color: color.withOpacity(0.18)),
+              border: Border.all(color: color.withAlpha(46)),
             ),
             child: Text(
               '$count',
@@ -1204,10 +2017,15 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
     final email = data['email'] ?? 'Email não informado';
     final fotoUrl = _fotoUrlFromData(data);
     final statusConta = data['status_conta'] ?? '';
-    final aprovadoEm = data['aprovado_em'];
     final pesoPermissao = data['peso_permissao'] ?? 0;
     final tipo = data['tipo'] ?? '';
-    final bool podeExcluir = isAdmin && pesoPermissao < 90;
+    final ultimoAcesso = data['ultimo_acesso'];
+    final criadoEm = _dataCriacaoFromData(data);
+    final now = DateTime.now();
+    final ultimoAcessoDate = _dateTimeFromValue(ultimoAcesso);
+    final online = ultimoAcessoDate != null && now.difference(ultimoAcessoDate.toLocal()).inMinutes.abs() <= 5;
+    final novo = criadoEm != null && now.difference(criadoEm.toLocal()).inDays >= 0 && now.difference(criadoEm.toLocal()).inDays <= 3;
+    final bool podeEditarRapido = isAdmin && pesoPermissao < 90;
     final tipoColor = _ensureVisible(_getTipoColor(tipo), context.uai.card);
     final statusColor = _ensureVisible(
       _getStatusColor(statusConta),
@@ -1222,19 +2040,19 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: context.uai.card,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: context.uai.border),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: statusColor.withAlpha(statusConta == 'ativa' ? 41 : 82)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.055),
-              blurRadius: 14,
-              offset: const Offset(0, 6),
+              color: statusColor.withAlpha(statusConta == 'ativa' ? 14 : 28),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
         child: Material(
           color: Colors.transparent,
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(18),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: () {
@@ -1246,30 +2064,73 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
               );
             },
             child: Padding(
-              padding: const EdgeInsets.all(13),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
               child: Row(
                 children: [
-                  _buildUserAvatar(
-                    nome: nome.toString(),
-                    fotoUrl: fotoUrl,
-                    color: tipoColor,
-                    size: 58,
-                    inicial: inicial,
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      _buildUserAvatar(
+                        nome: nome.toString(),
+                        fotoUrl: fotoUrl,
+                        color: tipoColor,
+                        size: 52,
+                        inicial: inicial,
+                      ),
+                      Positioned(
+                        right: -1,
+                        bottom: 1,
+                        child: Container(
+                          width: 13,
+                          height: 13,
+                          decoration: BoxDecoration(
+                            color: online ? context.uai.success : context.uai.textMuted,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: context.uai.card, width: 2.2),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          nome.toString(),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: context.uai.textPrimary,
-                            fontSize: 15.5,
-                            fontWeight: FontWeight.w900,
-                          ),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                nome.toString(),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: context.uai.textPrimary,
+                                  fontSize: 15.5,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ),
+                            if (novo) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: context.uai.info.withAlpha(26),
+                                  borderRadius: BorderRadius.circular(99),
+                                  border: Border.all(color: context.uai.info.withAlpha(51)),
+                                ),
+                                child: Text(
+                                  'NOVO',
+                                  style: TextStyle(
+                                    color: _ensureVisible(context.uai.info, context.uai.card),
+                                    fontSize: 8.5,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                         const SizedBox(height: 3),
                         Text(
@@ -1294,35 +2155,29 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
                               color: tipoColor,
                               icon: Icons.badge_rounded,
                             ),
-                            _buildMiniBadge(
-                              label: 'PESO $pesoPermissao',
-                              color: _ensureVisible(
-                                context.uai.info,
-                                context.uai.card,
-                              ),
-                              icon: Icons.security_rounded,
-                            ),
                             if (statusConta != 'ativa')
                               _buildMiniBadge(
                                 label: statusConta.toString().toUpperCase(),
                                 color: statusColor,
                                 icon: Icons.info_rounded,
                               ),
-                            if (aprovadoEm != null)
+                            if (UsuarioIdentidadeService.ehContaHibrida(data))
                               _buildMiniBadge(
-                                label: 'APROVADO',
+                                label: 'GESTÃO + ALUNO',
                                 color: _ensureVisible(
-                                  context.uai.success,
+                                  context.uai.info,
                                   context.uai.card,
                                 ),
-                                icon: Icons.verified_rounded,
+                                icon: Icons.hub_rounded,
                               ),
                           ],
                         ),
+                        const SizedBox(height: 7),
+                        _buildLastAccessLine(ultimoAcesso),
                       ],
                     ),
                   ),
-                  if (podeExcluir)
+                  if (podeEditarRapido)
                     PopupMenuButton<String>(
                       tooltip: 'Ações',
                       color: context.uai.card,
@@ -1338,12 +2193,6 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
                               builder: (context) =>
                                   EditarUsuarioScreen(userId: userId),
                             ),
-                          );
-                        } else if (value == 'excluir') {
-                          _showDeleteConfirmation(
-                            context,
-                            userId,
-                            nome.toString(),
                           );
                         }
                       },
@@ -1363,23 +2212,6 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
                                 style: TextStyle(
                                   color: context.uai.textPrimary,
                                 ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        PopupMenuItem(
-                          value: 'excluir',
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.delete_forever_rounded,
-                                size: 18,
-                                color: context.uai.error,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                'Excluir',
-                                style: TextStyle(color: context.uai.error),
                               ),
                             ],
                           ),
@@ -1408,7 +2240,7 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
     required String inicial,
   }) {
     final avatarBg = Color.alphaBlend(
-      color.withOpacity(0.12),
+      color.withAlpha(31),
       context.uai.cardAlt,
     );
 
@@ -1418,7 +2250,7 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
       decoration: BoxDecoration(
         color: avatarBg,
         shape: BoxShape.circle,
-        border: Border.all(color: color.withOpacity(0.28)),
+        border: Border.all(color: color.withAlpha(71)),
       ),
       child: ClipOval(
         child: fotoUrl != null && fotoUrl.trim().isNotEmpty
@@ -1470,15 +2302,16 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withAlpha(20),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: color.withOpacity(0.12)),
+        border: Border.all(color: color.withAlpha(31)),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+      child: Wrap(
+        spacing: 4,
+        runSpacing: 2,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           Icon(icon, color: color, size: 11),
-          SizedBox(width: 4),
           Text(
             label,
             style: TextStyle(
@@ -1490,6 +2323,70 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> {
         ],
       ),
     );
+  }
+
+  DateTime? _dateTimeFromValue(dynamic value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value is String && value.trim().isNotEmpty) {
+      return DateTime.tryParse(value.trim());
+    }
+    return null;
+  }
+
+  Widget _buildLastAccessLine(dynamic value) {
+    final texto = _formatLastAccessCard(value);
+    final semRegistro = texto == 'Nunca acessou';
+    final dt = _dateTimeFromValue(value);
+    final online = dt != null && DateTime.now().difference(dt.toLocal()).inMinutes.abs() <= 5;
+    return Row(
+      children: [
+        Icon(
+          online ? Icons.circle : (semRegistro ? Icons.schedule_rounded : Icons.access_time_filled_rounded),
+          size: online ? 9 : 13,
+          color: online ? context.uai.success : (semRegistro ? context.uai.textMuted : context.uai.textSecondary),
+        ),
+        const SizedBox(width: 5),
+        Expanded(
+          child: Text(
+            online ? 'Online agora' : 'Último acesso: $texto',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: semRegistro ? context.uai.textMuted : context.uai.textSecondary,
+              fontSize: 10.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatLastAccessCard(dynamic value) {
+    DateTime? dt;
+    if (value is Timestamp) {
+      dt = value.toDate();
+    } else if (value is DateTime) {
+      dt = value;
+    } else if (value is String && value.trim().isNotEmpty) {
+      dt = DateTime.tryParse(value.trim());
+    }
+    if (dt == null) return 'Nunca acessou';
+
+    final local = dt.toLocal();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final date = DateTime(local.year, local.month, local.day);
+    final diff = today.difference(date).inDays;
+    final hh = local.hour.toString().padLeft(2, '0');
+    final mm = local.minute.toString().padLeft(2, '0');
+
+    if (diff == 0) return 'Hoje, $hh:$mm';
+    if (diff == 1) return 'Ontem, $hh:$mm';
+    final dd = local.day.toString().padLeft(2, '0');
+    final mo = local.month.toString().padLeft(2, '0');
+    return '$dd/$mo/${local.year} às $hh:$mm';
   }
 
   Widget _buildLoadingState(String message) {

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:intl/intl.dart';
 import 'package:uai_capoeira/modules/campeonatos/models/campeonato_model.dart';
 import 'package:uai_capoeira/modules/campeonatos/services/campeonato_service.dart';
 import 'package:uai_capoeira/core/permissions/permissao_service.dart';
@@ -51,13 +50,11 @@ class _GestaoCampeonatoScreenState extends State<GestaoCampeonatoScreen>
 
   Future<void> _verificarPermissoes() async {
     _podeGerenciarInscricoes =
-        await _permissaoService.temPermissao('pode_gerenciar_inscricoes') ??
-        false;
+        await _permissaoService.temPermissao('pode_gerenciar_inscricoes');
     _podeGerenciarFinanceiro =
-        await _permissaoService.temPermissao('pode_gerenciar_financeiro') ??
-        false;
+        await _permissaoService.temPermissao('pode_gerenciar_financeiro');
     _podeGerenciarChaves =
-        await _permissaoService.temPermissao('pode_gerenciar_chaves') ?? false;
+        await _permissaoService.temPermissao('pode_gerenciar_chaves');
 
     if (mounted) setState(() {});
   }
@@ -538,7 +535,7 @@ class _GestaoCampeonatoScreenState extends State<GestaoCampeonatoScreen>
                   ],
                 ),
               );
-            }).toList(),
+            }),
           ],
         ),
       ),
@@ -766,7 +763,7 @@ class _GestaoCampeonatoScreenState extends State<GestaoCampeonatoScreen>
               ),
             ),
           );
-        }).toList(),
+        }),
       ],
     );
   }

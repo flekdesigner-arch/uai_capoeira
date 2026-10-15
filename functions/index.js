@@ -8,7 +8,15 @@ const { Storage } = require('@google-cloud/storage');
 const { DateTime } = require('luxon');
 const axios = require('axios');
 const crypto = require('crypto');
+const sharp = require('sharp');
+const { Resvg } = require('@resvg/resvg-js');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { GoogleAuth } = require('google-auth-library');
+const { defineSecret } = require('firebase-functions/params');
+const { extrairMillis, escolherHistoricoMaisRecente, incluirAlunoNaListaGraduacao, escolherEventoPorDataGraduacao } = require('./graduacoes_logged_helpers');
+const GEMINI_API_KEY = defineSecret('GEMINI_API_KEY');
+const GOOGLE_DRIVE_CLIENT_ID = defineSecret('GOOGLE_DRIVE_CLIENT_ID');
+const GOOGLE_DRIVE_CLIENT_SECRET = defineSecret('GOOGLE_DRIVE_CLIENT_SECRET');
 
 admin.initializeApp();
 
@@ -18,6 +26,226 @@ const bucketName = 'uai-capoeira-52753.firebasestorage.app';
 const ESTUDOS_CRITERIO_APROVACAO_PERCENTUAL = 70;
 const ESTUDOS_VERSAO_AVALIACAO = 1;
 const ESTUDOS_PERGUNTA_STATUS_AVALIAVEL = new Set(['publicado', 'ativa']);
+
+
+function rasterizarSvgCertificadoComResvg(sourceBytes, width, height) {
+    const source = Buffer.isBuffer(sourceBytes) ? sourceBytes.toString('utf8') : String(sourceBytes || '');
+    if (!source.trim()) throw new Error('SVG vazio.');
+
+    // Os SVGs do Studio já são normalizados para A4. O resvg entende CSS,
+    // gradientes, imagens embutidas e defs do Corel melhor do que o pipeline
+    // SVG dos clientes Flutter. O resultado vira o fundo fixo universal.
+    const renderer = new Resvg(source, {
+        background: '#FFFFFF',
+        fitTo: { mode: 'width', value: width },
+        font: { loadSystemFonts: true },
+    });
+    const rendered = renderer.render();
+    const png = rendered.asPng();
+    if (!png?.length) throw new Error('Renderer retornou PNG vazio.');
+    return png;
+}
+
+// =============================================================
+// CERTIFICADOS NASA - RENDER CACHE DE SVG PESADO (COREL)
+// =============================================================
+// O SVG mestre continua no Storage para edição/PDF. Esta callable gera um
+// PNG leve para o Canvas do Windows, evitando que flutter_svg compile milhares
+// de paths/gradientes a cada rebuild.
+exports.renderizarPreviewSvgCertificado = onCall(
+    {
+        region: 'us-central1',
+        timeoutSeconds: 120,
+        memory: '1GiB',
+    },
+    async (request) => {
+        if (!request.auth?.uid) {
+            throw new HttpsError('unauthenticated', 'Usuario nao autenticado.');
+        }
+
+        const storagePath = String(request.data?.storagePath || '').trim();
+        const orientation = String(request.data?.orientation || 'portrait').trim().toLowerCase();
+        if (!storagePath.startsWith('certificados/studio/')) {
+            throw new HttpsError('permission-denied', 'Arquivo fora da biblioteca do Studio.');
+        }
+        if (!storagePath.toLowerCase().endsWith('.svg')) {
+            throw new HttpsError('invalid-argument', 'O arquivo mestre precisa ser SVG.');
+        }
+
+        const bucket = storage.bucket(bucketName);
+        const sourceFile = bucket.file(storagePath);
+        const [exists] = await sourceFile.exists();
+        if (!exists) throw new HttpsError('not-found', 'SVG mestre nao encontrado.');
+
+        const [sourceBytes] = await sourceFile.download();
+        if (!sourceBytes?.length) throw new HttpsError('failed-precondition', 'SVG mestre vazio.');
+        if (sourceBytes.length > 20 * 1024 * 1024) {
+            throw new HttpsError('resource-exhausted', 'SVG acima de 20 MB para preview online.');
+        }
+
+        const portrait = orientation !== 'landscape';
+        const width = portrait ? 2480 : 3508;
+        const height = portrait ? 3508 : 2480;
+        const previewPath = `${storagePath}.preview.png`;
+
+        let png;
+        try {
+            png = rasterizarSvgCertificadoComResvg(sourceBytes, width, height);
+        } catch (error) {
+            console.error('Falha ao rasterizar SVG do certificado:', error);
+            throw new HttpsError(
+                'invalid-argument',
+                'O renderizador do servidor nao conseguiu rasterizar este SVG. Tente sanitizar novamente o arquivo.'
+            );
+        }
+
+        await bucket.file(previewPath).save(png, {
+            resumable: false,
+            metadata: {
+                contentType: 'image/png',
+                cacheControl: 'public,max-age=31536000,immutable',
+                metadata: {
+                    uaiModulo: 'certificados_studio',
+                    origemSvg: storagePath,
+                    previewCache: 'true',
+                    larguraPx: String(width),
+                    alturaPx: String(height),
+                },
+            },
+        });
+
+        return {
+            success: true,
+            previewStoragePath: previewPath,
+            width,
+            height,
+            bytes: png.length,
+        };
+    }
+);
+
+
+// Endpoint HTTP direto para o Editor Master no Windows.
+// Evita depender do canal Pigeon do plugin cloud_functions no Windows Desktop.
+exports.renderizarPreviewSvgCertificadoHttp = onRequest(
+    {
+        region: 'us-central1',
+        timeoutSeconds: 120,
+        memory: '1GiB',
+        cors: true,
+    },
+    async (req, res) => {
+        res.set('Access-Control-Allow-Origin', '*');
+        res.set('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+        res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+
+        if (req.method === 'OPTIONS') {
+            res.status(204).send('');
+            return;
+        }
+        if (req.method !== 'POST') {
+            res.status(405).json({ error: 'Use POST.' });
+            return;
+        }
+
+        try {
+            const authHeader = String(req.get('authorization') || '').trim();
+            const match = authHeader.match(/^Bearer\s+(.+)$/i);
+            if (!match) {
+                res.status(401).json({ error: 'Usuario nao autenticado.' });
+                return;
+            }
+
+            let decodedToken;
+            try {
+                decodedToken = await admin.auth().verifyIdToken(match[1]);
+            } catch (error) {
+                console.error('Token invalido no renderer HTTP:', error);
+                res.status(401).json({ error: 'Sessao invalida ou expirada.' });
+                return;
+            }
+
+            if (!decodedToken?.uid) {
+                res.status(401).json({ error: 'Usuario nao autenticado.' });
+                return;
+            }
+
+            const storagePath = String(req.body?.storagePath || '').trim();
+            const orientation = String(req.body?.orientation || 'portrait').trim().toLowerCase();
+
+            if (!storagePath.startsWith('certificados/studio/')) {
+                res.status(403).json({ error: 'Arquivo fora da biblioteca do Studio.' });
+                return;
+            }
+            if (!storagePath.toLowerCase().endsWith('.svg')) {
+                res.status(400).json({ error: 'O arquivo mestre precisa ser SVG.' });
+                return;
+            }
+
+            const bucket = storage.bucket(bucketName);
+            const sourceFile = bucket.file(storagePath);
+            const [exists] = await sourceFile.exists();
+            if (!exists) {
+                res.status(404).json({ error: 'SVG mestre nao encontrado.' });
+                return;
+            }
+
+            const [sourceBytes] = await sourceFile.download();
+            if (!sourceBytes?.length) {
+                res.status(412).json({ error: 'SVG mestre vazio.' });
+                return;
+            }
+            if (sourceBytes.length > 20 * 1024 * 1024) {
+                res.status(413).json({ error: 'SVG acima de 20 MB para preview online.' });
+                return;
+            }
+
+            const portrait = orientation !== 'landscape';
+            const width = portrait ? 2480 : 3508;
+            const height = portrait ? 3508 : 2480;
+            const previewPath = `${storagePath}.preview.png`;
+
+            let png;
+            try {
+                png = rasterizarSvgCertificadoComResvg(sourceBytes, width, height);
+            } catch (error) {
+                console.error('Falha ao rasterizar SVG no renderer HTTP:', error);
+                res.status(422).json({
+                    error: 'O renderizador nao conseguiu rasterizar este SVG.',
+                });
+                return;
+            }
+
+            await bucket.file(previewPath).save(png, {
+                resumable: false,
+                metadata: {
+                    contentType: 'image/png',
+                    cacheControl: 'public,max-age=31536000,immutable',
+                    metadata: {
+                        uaiModulo: 'certificados_studio',
+                        origemSvg: storagePath,
+                        previewCache: 'true',
+                        larguraPx: String(width),
+                        alturaPx: String(height),
+                        geradoPor: decodedToken.uid,
+                    },
+                },
+            });
+
+            res.status(200).json({
+                success: true,
+                previewStoragePath: previewPath,
+                width,
+                height,
+                bytes: png.length,
+            });
+        } catch (error) {
+            console.error('Erro inesperado no renderer HTTP:', error);
+            res.status(500).json({ error: 'Erro interno ao gerar a previa do certificado.' });
+        }
+    }
+);
+
 
 function textoPerfilUsuarioSeguro(value, maxLength = 120) {
     if (typeof value !== 'string') return '';
@@ -55,7 +283,9 @@ exports.criarPerfilUsuarioInicial = onCall(
         const contatoPayload = textoPerfilUsuarioSeguro(payload.contato || '', 40);
         const origem = textoPerfilUsuarioSeguro(payload.origem || 'auth', 60) || 'auth';
         const plataforma = textoPerfilUsuarioSeguro(payload.plataforma || '', 40);
+        const fluxo = textoPerfilUsuarioSeguro(payload.fluxo || '', 40).toLowerCase();
         const provider = providerPerfilUsuarioSeguro(payload.provider || token.firebase?.sign_in_provider || 'auth');
+        const solicitacaoGestao = fluxo === 'gestao' || ['cadastro', 'cadastro_gestao', 'login_gestao', 'login_google_gestao'].includes(origem);
 
         const email = emailToken || emailPayload;
         const nome = nomeToken || nomePayload || 'Usuario';
@@ -75,6 +305,11 @@ exports.criarPerfilUsuarioInicial = onCall(
                 peso_permissao: 0,
                 status_conta: 'pendente',
                 origem_cadastro: origem,
+                contexto_conta: solicitacaoGestao ? 'gestao' : 'nao_classificada',
+                acesso_gestao: false,
+                acesso_area_aluno: false,
+                solicitacao_acesso_gestao: solicitacaoGestao,
+                exibir_na_gestao: solicitacaoGestao,
                 provider,
                 criado_em: agora,
                 atualizado_em: agora,
@@ -113,6 +348,21 @@ exports.criarPerfilUsuarioInicial = onCall(
         if (fotoUrl) update.foto_url = fotoUrl;
         if (contatoPayload && !textoPerfilUsuarioSeguro(atual.contato || '', 40)) update.contato = contatoPayload;
         if (plataforma) update.ultima_plataforma_login = plataforma;
+        if (solicitacaoGestao) {
+            const statusAtual = String(atual.status_conta || '').trim().toLowerCase();
+            const tipoAtual = String(atual.tipo || '').trim().toLowerCase();
+            const jaTemGestao = atual.acesso_gestao === true ||
+                Number(atual.peso_permissao || 0) > 0 ||
+                ['admin', 'administrador', 'professor', 'monitor', 'super_admin', 'superadmin'].includes(tipoAtual) ||
+                (statusAtual === 'ativa' && atual.aprovado_em);
+            if (!jaTemGestao) update.solicitacao_acesso_gestao = true;
+            update.exibir_na_gestao = true;
+            if (atual.acesso_area_aluno === true) {
+                update.contexto_conta = 'gestao_area_aluno';
+            } else if (!jaTemGestao) {
+                update.contexto_conta = 'gestao';
+            }
+        }
 
         await userRef.set(update, { merge: true });
         console.log('Perfil existente atualizado com campos seguros.', { uid, provider, origem });
@@ -387,6 +637,28 @@ function ordenarPerguntasEstudo(a, b) {
     return a.id.localeCompare(b.id);
 }
 
+
+async function estudosAlunoPertenceAoUsuarioAutenticado(alunoId, aluno, uid) {
+    const googleOk = aluno.areaAlunoGoogleVinculado === true &&
+        String(aluno.areaAlunoGoogleUid || '').trim() === uid;
+    if (googleOk) return true;
+
+    const contaUaiUid = String(aluno.conta_uai_uid || '').trim();
+    const emailOk = aluno.email_confirmado === true && contaUaiUid === uid;
+    if (emailOk) return true;
+
+    // Compatibilidade/autorreparo para alunos aprovados antes da gravação do
+    // conta_uai_uid no documento do aluno. Um vínculo real e ativo da Conta UAI
+    // também autoriza Estudos e Fundamentos.
+    const vinculos = await db.collection('contas_acesso')
+        .doc(uid)
+        .collection('vinculos')
+        .where('aluno_id', '==', alunoId)
+        .limit(1)
+        .get();
+    return vinculos.docs.some((doc) => String((doc.data() || {}).estado || '') === 'aluno');
+}
+
 exports.buscarPerguntasEstudo = onCall(async (request) => {
     if (!request.auth?.uid) {
         throw new HttpsError('unauthenticated', 'Usuario nao autenticado.');
@@ -399,11 +671,11 @@ exports.buscarPerguntasEstudo = onCall(async (request) => {
 
     const alunoDoc = await db.collection('alunos').doc(alunoId).get();
     if (!alunoDoc.exists) {
-        throw new HttpsError('not-found', 'Aluno nao encontrado.');
+        throw new HttpsError('not-found', 'Aluno n\u00e3o encontrado.');
     }
 
     const aluno = alunoDoc.data() || {};
-    if (aluno.areaAlunoGoogleUid !== googleUid || aluno.areaAlunoGoogleVinculado !== true) {
+    if (!(await estudosAlunoPertenceAoUsuarioAutenticado(alunoId, aluno, googleUid))) {
         throw new HttpsError('permission-denied', 'Aluno nao vinculado ao usuario autenticado.');
     }
 
@@ -1238,7 +1510,7 @@ exports.finalizarTentativaEstudo = onCall(async (request) => {
         throw new HttpsError('not-found', 'Aluno nao encontrado.');
     }
     const aluno = alunoDoc.data() || {};
-    if (aluno.areaAlunoGoogleUid !== googleUid || aluno.areaAlunoGoogleVinculado !== true) {
+    if (!(await estudosAlunoPertenceAoUsuarioAutenticado(alunoId, aluno, googleUid))) {
         throw new HttpsError('permission-denied', 'Aluno nao vinculado ao usuario autenticado.');
     }
 
@@ -2162,6 +2434,120 @@ function montarUpdatesContadorFrequencia({
     return updates;
 }
 
+// ============================================================
+// AUTORIZACAO DE CHAMADAS POR USUARIO + TURMA
+// ============================================================
+async function validarAcessoChamadaNaTurma(uid, turmaId, acao = 'criar') {
+    if (!uid) {
+        throw new HttpsError('unauthenticated', 'Usuário não autenticado');
+    }
+
+    if (!turmaId || typeof turmaId !== 'string') {
+        throw new HttpsError('invalid-argument', 'Turma inválida para a operação de chamada.');
+    }
+
+    const usuarioRef = db.collection('usuarios').doc(uid);
+    const [usuarioDoc, permissoesDoc, turmaDoc] = await Promise.all([
+        usuarioRef.get(),
+        usuarioRef.collection('permissoes_usuario').doc('configuracoes').get(),
+        db.collection('turmas').doc(turmaId).get(),
+    ]);
+
+    if (!usuarioDoc.exists) {
+        throw new HttpsError('permission-denied', 'Usuário sem perfil autorizado.');
+    }
+
+    const usuario = usuarioDoc.data() || {};
+    const statusConta = String(usuario.status_conta || usuario.statusConta || '')
+        .trim()
+        .toLowerCase();
+    const statusBloqueado = new Set([
+        'bloqueada', 'bloqueado', 'inativa', 'inativo', 'rejeitada', 'rejeitado'
+    ]);
+
+    if (statusBloqueado.has(statusConta) || usuario.ativo === false) {
+        throw new HttpsError('permission-denied', 'Conta sem acesso para realizar chamadas.');
+    }
+
+    const pesoPermissao = Number(usuario.peso_permissao || 0);
+    const tipoUsuario = String(usuario.tipo || '').trim().toLowerCase();
+    const usuarioAdmin =
+        pesoPermissao >= 90 ||
+        tipoUsuario === 'admin' ||
+        tipoUsuario === 'administrador';
+
+    if (!turmaDoc.exists) {
+        throw new HttpsError('not-found', 'Turma não encontrada.');
+    }
+
+    if (usuarioAdmin) {
+        return { usuario, turma: turmaDoc.data() || {}, admin: true };
+    }
+
+    const permissoes = permissoesDoc.exists ? (permissoesDoc.data() || {}) : {};
+    const podeFazer = permissoes.pode_fazer_chamada === true;
+    const podeEditar =
+        permissoes.pode_editar_chamada === true ||
+        permissoes.pode_editar_chamadas === true ||
+        permissoes.podeEditarChamada === true;
+    const podeExcluir =
+        permissoes.pode_excluir_chamada === true ||
+        permissoes.pode_excluir_chamadas === true ||
+        permissoes.podeExcluirChamada === true;
+
+    let autorizadoPelaAcao = false;
+    if (acao === 'criar') autorizadoPelaAcao = podeFazer;
+    if (acao === 'editar') autorizadoPelaAcao = podeEditar;
+    if (acao === 'excluir') autorizadoPelaAcao = podeEditar && podeExcluir;
+
+    if (!autorizadoPelaAcao) {
+        throw new HttpsError(
+            'permission-denied',
+            `Você não tem permissão para ${acao === 'criar' ? 'realizar' : acao} chamadas.`
+        );
+    }
+
+    const turma = turmaDoc.data() || {};
+    const pesoMinimoTurma = Number(turma.peso_do_usuario_para_acessar || 0);
+    if (pesoPermissao < pesoMinimoTurma) {
+        throw new HttpsError(
+            'permission-denied',
+            'Seu nível de acesso não permite operar chamadas desta turma.'
+        );
+    }
+
+    const professoresTurma = Array.isArray(turma.professores_ids) ? turma.professores_ids : [];
+    let vinculado = professoresTurma.includes(uid);
+
+    // Compatibilidade com o fluxo atual do app: um professor/responsável
+    // vinculado à academia pode acessar as turmas daquela academia, desde
+    // que também possua a permissão operacional correspondente.
+    if (!vinculado) {
+        const academiaId = String(turma.academia_id || '').trim();
+        if (academiaId) {
+            const academiaDoc = await db.collection('academias').doc(academiaId).get();
+            if (academiaDoc.exists) {
+                const academia = academiaDoc.data() || {};
+                const professoresAcademia = Array.isArray(academia.professores_ids)
+                    ? academia.professores_ids
+                    : [];
+                vinculado =
+                    professoresAcademia.includes(uid) ||
+                    String(academia.responsavel_id || '') === uid;
+            }
+        }
+    }
+
+    if (!vinculado) {
+        throw new HttpsError(
+            'permission-denied',
+            'Você não possui vínculo com esta turma/academia para realizar esta operação.'
+        );
+    }
+
+    return { usuario, turma, admin: false };
+}
+
 // ============================================
 // FUNÇÃO 2: PROCESSAR CHAMADA (COM CONTADORES DO DASHBOARD)
 // ============================================
@@ -2185,7 +2571,16 @@ exports.processarChamada = onCall(async (request) => {
     } = data;
 
     if (!turmaId || !dataChamada || !Array.isArray(alunos)) {
-        throw new Error('Dados inválidos para processar chamada');
+        throw new HttpsError('invalid-argument', 'Dados inválidos para processar chamada');
+    }
+
+    // Segurança no backend: não basta estar autenticado. O usuário precisa
+    // ter permissão para fazer chamada E vínculo com esta turma/academia.
+    await validarAcessoChamadaNaTurma(request.auth.uid, turmaId, 'criar');
+
+    // Evita que um cliente alterado atribua a chamada a outro usuário.
+    if (professorId && professorId !== request.auth.uid) {
+        throw new HttpsError('permission-denied', 'Professor informado não corresponde ao usuário autenticado.');
     }
 
     // 🔥 CORREÇÃO DO FUSO HORÁRIO
@@ -2539,40 +2934,15 @@ exports.excluirChamada = onCall(async (request) => {
         throw new HttpsError('unauthenticated', 'Usuário não autenticado');
     }
 
-    const uid = request.auth.uid;
-    const usuarioDoc = await db.collection('usuarios').doc(uid).get();
-    const usuarioData = usuarioDoc.exists ? usuarioDoc.data() || {} : {};
-    const pesoPermissao = Number(usuarioData.peso_permissao || 0);
-    const tipoUsuario = String(usuarioData.tipo || '').trim().toLowerCase();
-    const usuarioAdmin = pesoPermissao >= 90 || tipoUsuario === 'admin' || tipoUsuario === 'administrador';
-
-    if (!usuarioAdmin) {
-        const permissoesDoc = await db
-            .collection('usuarios')
-            .doc(uid)
-            .collection('permissoes_usuario')
-            .doc('configuracoes')
-            .get();
-        const permissoes = permissoesDoc.exists ? permissoesDoc.data() || {} : {};
-        const podeEditarChamada =
-            permissoes.pode_editar_chamada === true ||
-            permissoes.pode_editar_chamadas === true ||
-            permissoes.podeEditarChamada === true;
-        const podeExcluirChamada =
-            permissoes.pode_excluir_chamada === true ||
-            permissoes.pode_excluir_chamadas === true ||
-            permissoes.podeExcluirChamada === true;
-
-        if (!podeEditarChamada || !podeExcluirChamada) {
-            throw new HttpsError('permission-denied', 'Você não tem permissão para excluir chamadas.');
-        }
-    }
-
     const { chamadaId, turmaId } = request.data;
 
     if (!chamadaId || !turmaId) {
-        throw new Error('Parâmetros obrigatórios: chamadaId e turmaId');
+        throw new HttpsError('invalid-argument', 'Parâmetros obrigatórios: chamadaId e turmaId');
     }
+
+    // Mesma proteção usada na criação: permissão operacional + vínculo
+    // com a turma/academia. Para excluir, edição e exclusão são exigidas.
+    await validarAcessoChamadaNaTurma(request.auth.uid, turmaId, 'excluir');
 
     const chamadaDoc = await db.collection('chamadas').doc(chamadaId).get();
 
@@ -2581,6 +2951,11 @@ exports.excluirChamada = onCall(async (request) => {
     }
 
     const chamadaData = chamadaDoc.data();
+
+    if (String(chamadaData.turma_id || '') !== String(turmaId)) {
+        throw new HttpsError('permission-denied', 'A chamada não pertence à turma informada.');
+    }
+
     const alunos = chamadaData.alunos || [];
     const dataFormatada = chamadaData.data_formatada;
     const dataChamadaTimestamp = chamadaData.data_chamada;
@@ -2741,6 +3116,61 @@ exports.restaurarFotosDoBackup = onRequest(
 
         if (req.method === 'OPTIONS') {
             res.status(204).send('');
+            return;
+        }
+
+        // Esta Function altera fotos e documentos reais de alunos.
+        // Por isso, nao basta conhecer a URL: e obrigatorio enviar um
+        // Firebase ID Token valido de um administrador ativo.
+        try {
+            const authorization = String(req.get('Authorization') || '').trim();
+            const matchBearer = authorization.match(/^Bearer\s+(.+)$/i);
+
+            if (!matchBearer) {
+                res.status(401).json({
+                    success: false,
+                    error: 'Autenticacao obrigatoria.'
+                });
+                return;
+            }
+
+            const decodedToken = await admin.auth().verifyIdToken(matchBearer[1]);
+            const usuarioDoc = await db.collection('usuarios').doc(decodedToken.uid).get();
+            const usuarioData = usuarioDoc.exists ? (usuarioDoc.data() || {}) : {};
+            const tipo = String(usuarioData.tipo || '').trim().toLowerCase();
+            const pesoPermissao = Number(usuarioData.peso_permissao || 0);
+            const statusConta = String(usuarioData.status_conta || '').trim().toLowerCase();
+            const contaAtiva = !['bloqueada', 'bloqueado', 'inativa', 'inativo', 'rejeitada', 'rejeitado'].includes(statusConta);
+            const tiposAdmin = new Set(['admin', 'administrador', 'super_admin', 'superadmin']);
+            const adminAutorizado = usuarioDoc.exists
+                && contaAtiva
+                && (pesoPermissao >= 90 || tiposAdmin.has(tipo));
+
+            if (!adminAutorizado) {
+                console.warn('Tentativa negada de restaurar fotos do backup.', {
+                    uid: decodedToken.uid,
+                    tipo,
+                    pesoPermissao,
+                    statusConta
+                });
+                res.status(403).json({
+                    success: false,
+                    error: 'Apenas administradores podem executar esta restauracao.'
+                });
+                return;
+            }
+
+            console.log('Administrador autorizado para restaurar fotos do backup.', {
+                uid: decodedToken.uid,
+                tipo,
+                pesoPermissao
+            });
+        } catch (authError) {
+            console.warn('Falha de autenticacao em restaurarFotosDoBackup:', authError?.message || authError);
+            res.status(401).json({
+                success: false,
+                error: 'Token de autenticacao invalido ou expirado.'
+            });
             return;
         }
 
@@ -3822,6 +4252,7 @@ function normalizarConfigAreaAluno(config = {}) {
         mostrar_frequencia: boolConfigAreaAluno(config, 'mostrar_frequencia', true),
         mostrar_eventos: boolConfigAreaAluno(config, 'mostrar_eventos', true),
         mostrar_certificados: boolConfigAreaAluno(config, 'mostrar_certificados', true),
+        mostrar_pedidos: boolConfigAreaAluno(config, 'mostrar_pedidos', true),
         mostrar_financeiro_eventos: boolConfigAreaAluno(config, 'mostrar_financeiro_eventos', true),
         mostrar_solicitacao_alteracao: boolConfigAreaAluno(config, 'mostrar_solicitacao_alteracao', true),
         mostrar_graduacao_evento: boolConfigAreaAluno(config, 'mostrar_graduacao_evento', true),
@@ -3841,6 +4272,7 @@ function normalizarConfigAreaAluno(config = {}) {
         sem_google_mostrar_frequencia: boolConfigAreaAluno(config, 'sem_google_mostrar_frequencia', boolConfigAreaAluno(config, 'mostrar_frequencia', true)),
         sem_google_mostrar_eventos: boolConfigAreaAluno(config, 'sem_google_mostrar_eventos', boolConfigAreaAluno(config, 'mostrar_eventos', true)),
         sem_google_mostrar_certificados: boolConfigAreaAluno(config, 'sem_google_mostrar_certificados', boolConfigAreaAluno(config, 'mostrar_certificados', true)),
+        sem_google_mostrar_pedidos: boolConfigAreaAluno(config, 'sem_google_mostrar_pedidos', boolConfigAreaAluno(config, 'mostrar_pedidos', true)),
         sem_google_mostrar_financeiro_eventos: boolConfigAreaAluno(config, 'sem_google_mostrar_financeiro_eventos', boolConfigAreaAluno(config, 'mostrar_financeiro_eventos', true)),
         sem_google_modo_financeiro: textoConfigAreaAluno(config, 'sem_google_modo_financeiro', textoConfigAreaAluno(config, 'modo_financeiro', 'completo')),
         sem_google_mostrar_graduacao_evento: boolConfigAreaAluno(config, 'sem_google_mostrar_graduacao_evento', boolConfigAreaAluno(config, 'mostrar_graduacao_evento', true)),
@@ -3854,6 +4286,7 @@ function normalizarConfigAreaAluno(config = {}) {
         com_google_mostrar_frequencia: boolConfigAreaAluno(config, 'com_google_mostrar_frequencia', boolConfigAreaAluno(config, 'mostrar_frequencia', true)),
         com_google_mostrar_eventos: boolConfigAreaAluno(config, 'com_google_mostrar_eventos', boolConfigAreaAluno(config, 'mostrar_eventos', true)),
         com_google_mostrar_certificados: boolConfigAreaAluno(config, 'com_google_mostrar_certificados', boolConfigAreaAluno(config, 'mostrar_certificados', true)),
+        com_google_mostrar_pedidos: boolConfigAreaAluno(config, 'com_google_mostrar_pedidos', boolConfigAreaAluno(config, 'mostrar_pedidos', true)),
         com_google_mostrar_financeiro_eventos: boolConfigAreaAluno(config, 'com_google_mostrar_financeiro_eventos', boolConfigAreaAluno(config, 'mostrar_financeiro_eventos', true)),
         com_google_modo_financeiro: textoConfigAreaAluno(config, 'com_google_modo_financeiro', textoConfigAreaAluno(config, 'modo_financeiro', 'completo')),
         com_google_mostrar_graduacao_evento: boolConfigAreaAluno(config, 'com_google_mostrar_graduacao_evento', boolConfigAreaAluno(config, 'mostrar_graduacao_evento', true)),
@@ -3888,9 +4321,16 @@ function normalizarConfigAreaAluno(config = {}) {
 
 function configEfetivaAreaAluno(config, modoAcesso = 'basico', alunoData = {}) {
     const base = normalizarConfigAreaAluno(config);
-    const prefixo = modoAcesso === 'google' ? 'com_google' : 'sem_google';
     const googleVinculado = alunoData.areaAlunoGoogleVinculado === true && !!alunoData.areaAlunoGoogleUid;
-    const exigirGoogle = base.google_login_ativo === true && (
+    const emailContaUai = String(alunoData.email_conta_uai || '').trim().toLowerCase();
+    const emailConfirmado = alunoData.email_confirmado === true && !!emailContaUai;
+
+    // Google deixou de ser requisito de identidade. Uma Conta UAI com e-mail
+    // confirmado recebe o mesmo conjunto completo de permissões que o acesso
+    // Google, sem remover o acesso tradicional como fallback.
+    const identidadeCompleta = modoAcesso === 'google' || modoAcesso === 'email' || modoAcesso === 'conta_uai';
+    const prefixo = identidadeCompleta ? 'com_google' : 'sem_google';
+    const exigirGoogle = !emailConfirmado && base.google_login_ativo === true && (
         base.google_vinculacao_modo === 'obrigatoria_para_completo' ||
         (base.google_vinculacao_modo === 'obrigatoria_apos_vincular' && googleVinculado)
     );
@@ -3903,6 +4343,7 @@ function configEfetivaAreaAluno(config, modoAcesso = 'basico', alunoData = {}) {
         'mostrar_frequencia',
         'mostrar_eventos',
         'mostrar_certificados',
+        'mostrar_pedidos',
         'mostrar_financeiro_eventos',
         'modo_financeiro',
         'mostrar_graduacao_evento',
@@ -3928,6 +4369,7 @@ function configEfetivaAreaAluno(config, modoAcesso = 'basico', alunoData = {}) {
         efetiva.mostrar_frequencia = false;
         efetiva.mostrar_eventos = false;
         efetiva.mostrar_certificados = false;
+        efetiva.mostrar_pedidos = false;
         efetiva.mostrar_financeiro_eventos = false;
         efetiva.mostrar_graduacao_evento = false;
         efetiva.mostrar_camisa_evento = false;
@@ -3940,7 +4382,10 @@ function configEfetivaAreaAluno(config, modoAcesso = 'basico', alunoData = {}) {
     efetiva.modo_acesso = modoAcesso;
     efetiva.google_vinculado = googleVinculado;
     efetiva.google_email_mascarado = mascararEmailAreaAluno(alunoData.areaAlunoGoogleEmail || '');
-    efetiva.exige_google_para_completo = modoAcesso !== 'google' && exigirGoogle;
+    efetiva.email_confirmado = emailConfirmado;
+    efetiva.email_conta_uai_mascarado = mascararEmailAreaAluno(emailContaUai);
+    efetiva.acesso_identidade_completa = identidadeCompleta;
+    efetiva.exige_google_para_completo = !identidadeCompleta && modoAcesso !== 'google' && exigirGoogle;
     efetiva.mostrar_aviso_auditoria = false;
     efetiva.aviso_auditoria_acesso = '';
 
@@ -4538,28 +4983,69 @@ function sanitizarAlunoVinculadoGoogle(doc) {
         academia: String(data.academia || data.academia_nome || ''),
         status_atividade: String(data.status_atividade || ''),
         graduacao: String(data.graduacao_nome || data.graduacao_atual || data.graduacao || ''),
-        areaAlunoGoogleEmail: String(data.areaAlunoGoogleEmail || ''),
+        // Mantemos os nomes legados no payload para não quebrar telas antigas,
+        // mas agora eles também representam uma Conta UAI por e-mail/senha.
+        areaAlunoGoogleEmail: String(data.email_conta_uai || data.areaAlunoGoogleEmail || ''),
         areaAlunoGoogleNome: String(data.areaAlunoGoogleNome || ''),
-        ultimoAcessoGoogleEm: timestampIsoAreaAluno(data.areaAlunoUltimoAcessoGoogleEm),
+        ultimoAcessoGoogleEm: timestampIsoAreaAluno(
+            data.conta_uai_ultimo_acesso_em || data.areaAlunoUltimoAcessoGoogleEm
+        ),
+        modoVinculo: String(
+            data.conta_uai_uid ? 'conta_uai' :
+            (data.areaAlunoGoogleVinculado === true ? 'google' : 'conta_uai')
+        ),
     };
 }
 
-async function buscarAlunosVinculadosGooglePorUid(uid) {
-    const snapshot = await db
+async function buscarAlunosVinculadosContaAtualPorUid(uid) {
+    const encontrados = new Map();
+
+    // Fonte principal atual: vínculo genérico da Conta UAI.
+    const contaSnapshot = await db
+        .collection('alunos')
+        .where('conta_uai_uid', '==', uid)
+        .get();
+    contaSnapshot.forEach((doc) => encontrados.set(doc.id, sanitizarAlunoVinculadoGoogle(doc)));
+
+    // Compatibilidade com vínculos Google antigos ainda existentes.
+    const googleSnapshot = await db
         .collection('alunos')
         .where('areaAlunoGoogleUid', '==', uid)
         .get();
-
-    const alunos = [];
-    snapshot.forEach((doc) => {
+    googleSnapshot.forEach((doc) => {
         const data = doc.data() || {};
-        if (data.areaAlunoGoogleVinculado === true) {
-            alunos.push(sanitizarAlunoVinculadoGoogle(doc));
+        if (data.areaAlunoGoogleVinculado === true && !encontrados.has(doc.id)) {
+            encontrados.set(doc.id, sanitizarAlunoVinculadoGoogle(doc));
         }
     });
 
+    // Camada de recuperação: um vínculo pode existir em contas_acesso antes
+    // de a ficha do aluno ter sido totalmente normalizada. Nunca inventamos
+    // um perfil: só carregamos IDs que realmente existem em alunos.
+    const links = await db.collection('contas_acesso').doc(uid).collection('vinculos').get();
+    const idsPendentes = new Set();
+    links.forEach((doc) => {
+        const data = doc.data() || {};
+        const alunoId = String(data.aluno_id || '').trim();
+        if (alunoId && !encontrados.has(alunoId)) idsPendentes.add(alunoId);
+    });
+    if (idsPendentes.size > 0) {
+        const docs = await Promise.all(
+            [...idsPendentes].slice(0, 30).map((id) => db.collection('alunos').doc(id).get())
+        );
+        for (const doc of docs) {
+            if (doc.exists) encontrados.set(doc.id, sanitizarAlunoVinculadoGoogle(doc));
+        }
+    }
+
+    const alunos = [...encontrados.values()];
     alunos.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
     return alunos;
+}
+
+// Alias legado: outras rotas ainda usam esse nome internamente.
+async function buscarAlunosVinculadosGooglePorUid(uid) {
+    return buscarAlunosVinculadosContaAtualPorUid(uid);
 }
 
 exports.buscarAlunosVinculadosAoGoogle = onCall(
@@ -4572,12 +5058,12 @@ exports.buscarAlunosVinculadosAoGoogle = onCall(
             throw new HttpsError('unauthenticated', 'Entre com uma conta Google para continuar.');
         }
 
-        const google = dadosGoogleAuthAreaAluno(request);
-        const alunos = await buscarAlunosVinculadosGooglePorUid(request.auth.uid);
+        const identidade = dadosGoogleAuthAreaAluno(request);
+        const alunos = await buscarAlunosVinculadosContaAtualPorUid(request.auth.uid);
 
-        await registrarLogGoogleAreaAluno('buscar_alunos_vinculados_google', {
-            google_uid: request.auth.uid,
-            google_email: google.email || '',
+        await registrarLogGoogleAreaAluno('buscar_alunos_vinculados_conta_atual', {
+            conta_uid: request.auth.uid,
+            conta_email: identidade.email || request.auth.token?.email || '',
             total_alunos: alunos.length,
         });
 
@@ -4732,6 +5218,9 @@ exports.vincularGoogleAreaAluno = onCall(
             areaAlunoGoogleNome: google.nome || '',
             areaAlunoGoogleFoto: google.foto || '',
             areaAlunoUltimoAcessoGoogleEm: admin.firestore.FieldValue.serverTimestamp(),
+            areaAlunoVinculoMetodo: 'google',
+            areaAlunoVinculoMetodoLabel: 'Google',
+            areaAlunoVinculoEmail: google.email,
         };
 
         if (!uidVinculado) {
@@ -4740,6 +5229,25 @@ exports.vincularGoogleAreaAluno = onCall(
         }
 
         await alunoRef.set(update, { merge: true });
+
+        // Registra a identidade Google no histórico do aluno sem duplicar o
+        // evento quando a mesma conta apenas autentica novamente.
+        if (!uidVinculado) {
+            await alunoRef.collection('historico_edicoes').add({
+                tipo_edicao: 'acesso_area_aluno',
+                subtipo_edicao: 'google_vinculado',
+                origem: 'area_aluno',
+                resumo: 'Conta Google vinculada',
+                descricao_evento: `Conta Google ${google.email} vinculada como opção de acesso à Área do Aluno.`,
+                pode_reverter: false,
+                revertido: false,
+                criado_em: admin.firestore.FieldValue.serverTimestamp(),
+                criado_por_nome: 'Área do Aluno',
+                criado_por_email: google.email,
+                metodo_vinculo: 'google',
+                metodo_vinculo_label: 'Google',
+            });
+        }
 
         const alunoAtualizado = { ...alunoData, ...update, areaAlunoGoogleUid: google.uid };
         const configEfetiva = configEfetivaAreaAluno(config, 'google', alunoAtualizado);
@@ -4765,6 +5273,179 @@ exports.vincularGoogleAreaAluno = onCall(
     }
 );
 
+
+exports.vincularContaUaiAreaAluno = onCall(
+    {
+        cors: true,
+        invoker: 'public',
+    },
+    async (request) => {
+        if (!request.auth?.uid) {
+            throw new HttpsError('unauthenticated', 'Confirme o e-mail para continuar.');
+        }
+
+        const payload = request.data || {};
+        const alunoId = String(payload.alunoId || payload.aluno_id || '').trim();
+        const authPayload = payload.authPayload || {};
+
+        if (!alunoId) {
+            return {
+                success: false,
+                code: 'aluno_nao_informado',
+                message: 'Aluno não informado.',
+            };
+        }
+
+        const authUser = await admin.auth().getUser(request.auth.uid);
+        const authEmail = String(authUser.email || '').trim().toLowerCase();
+
+        if (!authEmail || authUser.emailVerified !== true) {
+            return {
+                success: false,
+                code: 'email_nao_confirmado',
+                message: 'Confirme o e-mail com o código antes de vincular.',
+            };
+        }
+
+        const alunoRef = db.collection('alunos').doc(alunoId);
+        const alunoDoc = await alunoRef.get();
+        if (!alunoDoc.exists) {
+            return {
+                success: false,
+                code: 'aluno_nao_encontrado',
+                message: 'Perfil do aluno não encontrado.',
+            };
+        }
+
+        const alunoData = alunoDoc.data() || {};
+
+        // Segurança: a conta só pode ser ligada ao aluno que acabou de ser
+        // identificado pelos três fatores do acesso tradicional.
+        if (!validarIdentidadeBasicaAreaAluno(alunoData, authPayload)) {
+            return {
+                success: false,
+                code: 'identidade_nao_confirmada',
+                message: 'A identificação do aluno expirou. Entre novamente com os dados do aluno e tente vincular o e-mail.',
+            };
+        }
+
+        const uidExistente = String(alunoData.conta_uai_uid || '').trim();
+        const emailExistente = String(alunoData.email_conta_uai || '').trim().toLowerCase();
+
+        if (uidExistente && uidExistente !== request.auth.uid) {
+            return {
+                success: false,
+                code: 'conta_uai_diferente',
+                message: 'Este aluno já possui outro e-mail vinculado. Use a conta correta ou procure a coordenação.',
+            };
+        }
+
+        if (!uidExistente && alunoData.email_confirmado === true &&
+            emailExistente && emailExistente !== authEmail) {
+            return {
+                success: false,
+                code: 'email_diferente',
+                message: 'Este aluno já possui outro e-mail confirmado. Use o e-mail vinculado ou procure a coordenação.',
+            };
+        }
+
+        const contaRef = db.collection('contas_acesso').doc(request.auth.uid);
+        await contaRef.set({
+            uid: request.auth.uid,
+            email: authEmail,
+            email_verificado: true,
+            atualizado_em: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+
+        // Reaproveita vínculo criado durante a inscrição, se ele já existir.
+        const vinculosAluno = await contaRef
+            .collection('vinculos')
+            .where('aluno_id', '==', alunoId)
+            .limit(1)
+            .get();
+
+        let vinculoId = `aluno_${alunoId}`;
+        let vinculoJaExistia = false;
+        if (!vinculosAluno.empty) {
+            vinculoId = vinculosAluno.docs[0].id;
+            vinculoJaExistia = true;
+        }
+
+        await contaRef.collection('vinculos').doc(vinculoId).set({
+            vinculo_id: vinculoId,
+            aluno_id: alunoId,
+            estado: 'aluno',
+            nome: alunoData.nome || 'Aluno UAI',
+            foto_url: alunoData.foto || alunoData.foto_url || alunoData.foto_perfil_aluno || '',
+            atualizado_em: admin.firestore.FieldValue.serverTimestamp(),
+            ...(vinculoJaExistia ? {} : {
+                criado_em: admin.firestore.FieldValue.serverTimestamp(),
+                origem: 'area_aluno_dashboard',
+            }),
+        }, { merge: true });
+
+        const criandoVinculo = !uidExistente;
+        await alunoRef.set({
+            conta_uai_uid: request.auth.uid,
+            email_conta_uai: authEmail,
+            email_confirmado: true,
+            conta_uai_vinculada_em: admin.firestore.FieldValue.serverTimestamp(),
+            areaAlunoVinculadoEm: admin.firestore.FieldValue.serverTimestamp(),
+            areaAlunoVinculadoOrigem: 'area_aluno_dashboard',
+            areaAlunoVinculoMetodo: 'email',
+            areaAlunoVinculoMetodoLabel: 'E-mail + código',
+            areaAlunoVinculoEmail: authEmail,
+        }, { merge: true });
+
+        if (criandoVinculo) {
+            await alunoRef.collection('historico_edicoes').add({
+                tipo_edicao: 'acesso_area_aluno',
+                subtipo_edicao: 'conta_uai_email_vinculado',
+                origem: 'area_aluno_dashboard',
+                resumo: 'E-mail vinculado à Área do Aluno',
+                descricao_evento: `E-mail ${authEmail} confirmado por código e vinculado à Área do Aluno.`,
+                pode_reverter: false,
+                revertido: false,
+                criado_em: admin.firestore.FieldValue.serverTimestamp(),
+                criado_por_nome: 'Área do Aluno',
+                criado_por_email: authEmail,
+                metodo_vinculo: 'codigo_email',
+                metodo_vinculo_label: 'E-mail + código',
+            });
+        }
+
+        const alunoAtualizado = {
+            ...alunoData,
+            conta_uai_uid: request.auth.uid,
+            email_conta_uai: authEmail,
+            email_confirmado: true,
+        };
+        const config = await carregarConfigAreaAluno();
+        const configEfetiva = configEfetivaAreaAluno(config, 'email', alunoAtualizado);
+        configEfetiva.modo_acesso = 'email';
+        configEfetiva.email_confirmado = true;
+        configEfetiva.email_conta_uai = authEmail;
+        const dadosAluno = await montarDadosAlunoLiberados(
+            alunoId,
+            alunoAtualizado,
+            configEfetiva
+        );
+
+        return {
+            success: true,
+            code: criandoVinculo ? 'conta_uai_vinculada' : 'conta_uai_confirmada',
+            message: criandoVinculo
+                ? 'E-mail vinculado com sucesso.'
+                : 'E-mail vinculado confirmado.',
+            modo_acesso: 'email',
+            vinculo_id: vinculoId,
+            aluno: dadosAluno,
+            config: configEfetiva,
+        };
+    }
+);
+
+
 exports.validarAcessoGoogleAreaAluno = onCall(
     {
         cors: true,
@@ -4772,162 +5453,500 @@ exports.validarAcessoGoogleAreaAluno = onCall(
     },
     async (request) => {
         if (!request.auth?.uid) {
-            throw new HttpsError('unauthenticated', 'Entre com a conta Google vinculada.');
+            throw new HttpsError('unauthenticated', 'Entre com sua Conta UAI para continuar.');
         }
 
         const alunoId = String(request.data?.alunoId || request.data?.aluno_id || '').trim();
-        const google = dadosGoogleAuthAreaAluno(request);
-
-        if (!alunoId || google.provider !== 'google.com') {
+        if (!alunoId) {
             return { success: false, code: 'dados_invalidos', message: 'Perfil não informado.' };
         }
 
-        const alunoDoc = await db.collection('alunos').doc(alunoId).get();
+        const alunoRef = db.collection('alunos').doc(alunoId);
+        const alunoDoc = await alunoRef.get();
         if (!alunoDoc.exists) {
             return { success: false, code: 'aluno_nao_encontrado', message: 'Perfil não encontrado.' };
         }
 
         const alunoData = alunoDoc.data() || {};
-        const uidVinculado = String(alunoData.areaAlunoGoogleUid || '').trim();
+        const uid = request.auth.uid;
+        const authEmail = String(request.auth.token?.email || '').trim().toLowerCase();
+        const contaUid = String(alunoData.conta_uai_uid || '').trim();
+        const googleUid = String(alunoData.areaAlunoGoogleUid || '').trim();
+        const googleAtivo = alunoData.areaAlunoGoogleVinculado === true && !!googleUid;
 
-        if (!uidVinculado || alunoData.areaAlunoGoogleVinculado !== true) {
-            return { success: false, code: 'sem_vinculo', message: 'Este perfil ainda não possui conta Google vinculada.' };
+        let modoAcesso = '';
+        if (contaUid === uid) {
+            modoAcesso = 'conta_uai';
+        } else if (googleAtivo && googleUid === uid) {
+            modoAcesso = 'google';
+        } else {
+            // Recuperação por vínculo explícito em contas_acesso. Isso cobre
+            // vínculos administrativos criados segundos antes da normalização
+            // completa da ficha, sem liberar acesso por simples coincidência de e-mail.
+            const linkSnap = await db.collection('contas_acesso')
+                .doc(uid)
+                .collection('vinculos')
+                .where('aluno_id', '==', alunoId)
+                .limit(1)
+                .get();
+            if (!linkSnap.empty) modoAcesso = 'conta_uai';
         }
 
-        if (uidVinculado !== google.uid) {
-            await registrarLogGoogleAreaAluno('acesso_google_negado_uid_diferente', {
+        if (!modoAcesso) {
+            await registrarLogGoogleAreaAluno('acesso_area_aluno_negado_uid_diferente', {
                 aluno_id: alunoId,
-                google_uid: google.uid,
-                google_email: google.email,
+                conta_uid: uid,
+                conta_email: authEmail,
             });
-
             return {
                 success: false,
-                code: 'google_diferente',
-                message: 'Este perfil está vinculado a outra conta Google. Entre com a conta correta ou procure a coordenação.',
+                code: 'conta_diferente',
+                message: 'Este perfil está vinculado a outra conta. Entre com a conta correta ou procure a coordenação.',
             };
         }
 
-        await db.collection('alunos').doc(alunoId).set({
+        const atualizacao = {
             areaAlunoUltimoAcessoGoogleEm: admin.firestore.FieldValue.serverTimestamp(),
-        }, { merge: true });
+            conta_uai_ultimo_acesso_em: admin.firestore.FieldValue.serverTimestamp(),
+            areaAlunoVinculoMetodo: modoAcesso,
+            areaAlunoVinculoMetodoLabel: modoAcesso === 'google' ? 'Google' : 'Conta UAI',
+        };
+        if (authEmail) atualizacao.areaAlunoVinculoEmail = authEmail;
+        if (modoAcesso === 'conta_uai' && contaUid !== uid) {
+            atualizacao.conta_uai_uid = uid;
+            if (authEmail) atualizacao.email_conta_uai = authEmail;
+        }
+        await alunoRef.set(atualizacao, { merge: true });
+
+        const alunoAtualizado = { ...alunoData, ...atualizacao };
+        if (modoAcesso === 'conta_uai') {
+            alunoAtualizado.conta_uai_uid = uid;
+            if (authEmail) alunoAtualizado.email_conta_uai = authEmail;
+        }
 
         const config = await carregarConfigAreaAluno();
-        const configEfetiva = configEfetivaAreaAluno(config, 'google', alunoData);
-        const dadosAluno = await montarDadosAlunoLiberados(alunoId, alunoData, configEfetiva);
+        const configEfetiva = configEfetivaAreaAluno(config, modoAcesso, alunoAtualizado);
+        const dadosAluno = await montarDadosAlunoLiberados(alunoId, alunoAtualizado, configEfetiva);
 
-        await registrarLogGoogleAreaAluno('acesso_google_sucesso', {
+        await registrarLogGoogleAreaAluno('acesso_area_aluno_sucesso', {
             aluno_id: alunoId,
             aluno_nome: alunoData.nome || '',
-            google_uid: google.uid,
-            google_email: google.email,
+            conta_uid: uid,
+            conta_email: authEmail,
+            modo_acesso: modoAcesso,
         });
 
         return {
             success: true,
-            code: 'acesso_google_liberado',
+            code: 'acesso_area_aluno_liberado',
             message: 'Acesso liberado.',
-            modo_acesso: 'google',
-            google_vinculado: true,
-            google_email_mascarado: mascararEmailAreaAluno(google.email),
+            modo_acesso: modoAcesso,
+            google_vinculado: googleAtivo,
+            conta_uai_vinculada: modoAcesso === 'conta_uai',
+            google_email_mascarado: mascararEmailAreaAluno(alunoData.areaAlunoGoogleEmail || ''),
+            email_conta_uai_mascarado: mascararEmailAreaAluno(
+                authEmail || alunoData.email_conta_uai || ''
+            ),
             aluno: dadosAluno,
             config: configEfetiva,
         };
     }
 );
 
-exports.resetarVinculoGoogleAreaAluno = onCall(
+
+exports.vincularContaUsuarioAoAlunoAdmin = onCall(
     {
-        cors: true,
-        invoker: 'public',
+        region: 'us-central1',
+        timeoutSeconds: 60,
+        memory: '256MiB',
     },
     async (request) => {
         const adminAtual = await validarAdminAreaAluno(request);
-        const alunoIds = Array.isArray(request.data?.alunoIds)
-            ? request.data.alunoIds
-            : [request.data?.alunoId].filter(Boolean);
+        const payload = request.data || {};
+        const usuarioUid = String(payload.usuarioUid || payload.usuario_uid || '').trim();
+        const alunoId = String(payload.alunoId || payload.aluno_id || '').trim();
+        const substituirVinculo = payload.substituirVinculo === true;
 
-        if (alunoIds.length === 0) {
-            return { success: false, code: 'sem_alunos', message: 'Nenhum aluno informado.' };
+        if (!usuarioUid || !alunoId) {
+            return {
+                success: false,
+                code: 'dados_invalidos',
+                message: 'Informe o usuário e o aluno para criar o vínculo.',
+            };
+        }
+
+        const usuarioRef = db.collection('usuarios').doc(usuarioUid);
+        const alunoRef = db.collection('alunos').doc(alunoId);
+
+        let authUser = null;
+        try {
+            authUser = await admin.auth().getUser(usuarioUid);
+        } catch (error) {
+            if (error?.code === 'auth/user-not-found') {
+                return {
+                    success: false,
+                    code: 'usuario_auth_nao_encontrado',
+                    message: 'Esta conta não existe mais no Firebase Authentication.',
+                };
+            }
+            throw error;
+        }
+
+        const [usuarioDoc, alunoDoc] = await Promise.all([
+            usuarioRef.get(),
+            alunoRef.get(),
+        ]);
+
+        if (!usuarioDoc.exists) {
+            return {
+                success: false,
+                code: 'usuario_nao_encontrado',
+                message: 'O usuário existe no login, mas não possui perfil em usuarios. Repare a identidade antes de vincular.',
+            };
+        }
+
+        if (!alunoDoc.exists) {
+            return {
+                success: false,
+                code: 'aluno_nao_encontrado',
+                message: 'Aluno não encontrado.',
+            };
+        }
+
+        const usuarioData = usuarioDoc.data() || {};
+        const alunoData = alunoDoc.data() || {};
+
+        // O ecossistema UAI permite uma mesma conta acompanhar vários
+        // filhos/alunos. Portanto, vínculo de OUTRO aluno com o mesmo UID
+        // não é conflito. O único conflito real é o aluno escolhido já
+        // pertencer a OUTRA conta.
+        const contaUidAtual = String(alunoData.conta_uai_uid || '').trim();
+        const googleUidAtual = String(alunoData.areaAlunoGoogleUid || '').trim();
+        const uidAtualAluno = contaUidAtual || googleUidAtual;
+        const alunoJaVinculadoOutroUid =
+            uidAtualAluno && uidAtualAluno !== usuarioUid;
+
+        if (alunoJaVinculadoOutroUid && !substituirVinculo) {
+            return {
+                success: false,
+                code: 'aluno_ja_vinculado',
+                message: 'Este aluno já está vinculado a outra conta. Confirme para substituir o vínculo.',
+                vinculoAtual: {
+                    uid: uidAtualAluno,
+                    email: String(
+                        alunoData.email_conta_uai ||
+                        alunoData.areaAlunoGoogleEmail ||
+                        ''
+                    ),
+                    nome: String(alunoData.areaAlunoGoogleNome || ''),
+                },
+            };
+        }
+
+        const usuarioEmail = String(
+            authUser.email ||
+            usuarioData.email ||
+            ''
+        ).trim().toLowerCase();
+        const usuarioNome = String(
+            usuarioData.nome_completo ||
+            usuarioData.nome ||
+            usuarioData.name ||
+            authUser.displayName ||
+            usuarioEmail ||
+            usuarioUid
+        ).trim();
+        const usuarioFoto = String(
+            usuarioData.foto_url ||
+            usuarioData.photoURL ||
+            usuarioData.photoUrl ||
+            authUser.photoURL ||
+            ''
+        ).trim();
+
+        const contaRef = db.collection('contas_acesso').doc(usuarioUid);
+        const vinculoId = `aluno_${alunoId}`;
+        const vinculoRef = contaRef.collection('vinculos').doc(vinculoId);
+
+        // Se o aluno estava em outra conta, removemos SOMENTE o vínculo
+        // deste aluno naquela conta. Os outros filhos/alunos continuam.
+        let linksContaAnterior = [];
+        if (alunoJaVinculadoOutroUid && substituirVinculo) {
+            const oldContaRef = db.collection('contas_acesso').doc(uidAtualAluno);
+            const oldLinks = await oldContaRef
+                .collection('vinculos')
+                .where('aluno_id', '==', alunoId)
+                .get();
+            linksContaAnterior = oldLinks.docs.map((d) => d.ref);
+            linksContaAnterior.push(
+                oldContaRef.collection('vinculos').doc(vinculoId)
+            );
         }
 
         const batch = db.batch();
-        for (const alunoIdRaw of alunoIds) {
-            const alunoId = String(alunoIdRaw || '').trim();
-            if (!alunoId) continue;
-            batch.set(db.collection('alunos').doc(alunoId), {
-                areaAlunoGoogleVinculado: false,
-                areaAlunoGoogleUid: admin.firestore.FieldValue.delete(),
-                areaAlunoGoogleEmail: admin.firestore.FieldValue.delete(),
-                areaAlunoGoogleNome: admin.firestore.FieldValue.delete(),
-                areaAlunoGoogleFoto: admin.firestore.FieldValue.delete(),
-                areaAlunoVinculoResetadoEm: admin.firestore.FieldValue.serverTimestamp(),
-                areaAlunoVinculoResetadoPor: adminAtual.uid,
-            }, { merge: true });
+
+        for (const ref of linksContaAnterior) {
+            batch.delete(ref);
         }
 
+        batch.set(contaRef, {
+            uid: usuarioUid,
+            email: usuarioEmail,
+            email_verificado: authUser.emailVerified === true,
+            atualizado_em: admin.firestore.FieldValue.serverTimestamp(),
+            origem_ultimo_vinculo: 'admin_area_aluno',
+        }, { merge: true });
+
+        batch.set(vinculoRef, {
+            vinculo_id: vinculoId,
+            aluno_id: alunoId,
+            estado: 'aluno',
+            nome: String(alunoData.nome || 'Aluno UAI'),
+            foto_url: String(
+                alunoData.foto ||
+                alunoData.foto_url ||
+                alunoData.foto_perfil_aluno ||
+                ''
+            ),
+            origem: 'admin_area_aluno',
+            criado_em: admin.firestore.FieldValue.serverTimestamp(),
+            atualizado_em: admin.firestore.FieldValue.serverTimestamp(),
+            vinculado_por_uid: adminAtual.uid,
+            vinculado_por_nome: adminAtual.nome,
+        }, { merge: true });
+
+        // Normalizamos o vínculo administrativo para Conta UAI genérica.
+        // Não forçamos "Google": contas password e Google usam o mesmo UID
+        // autenticado e aparecem corretamente na Minha UAI.
+        batch.set(alunoRef, {
+            conta_uai_uid: usuarioUid,
+            email_conta_uai: usuarioEmail,
+            email_confirmado: authUser.emailVerified === true,
+            conta_uai_vinculada_em: admin.firestore.FieldValue.serverTimestamp(),
+            areaAlunoVinculadoEm: admin.firestore.FieldValue.serverTimestamp(),
+            areaAlunoVinculadoOrigem: 'admin_gestao',
+            areaAlunoVinculadoPor: adminAtual.uid,
+            areaAlunoVinculadoPorNome: adminAtual.nome,
+            areaAlunoVinculoMetodo: 'conta_uai',
+            areaAlunoVinculoMetodoLabel: 'Conta UAI • vínculo administrativo',
+            areaAlunoVinculoEmail: usuarioEmail,
+
+            // Limpa a representação Google legada para não deixar dois
+            // métodos concorrentes apontando para a mesma ficha.
+            areaAlunoGoogleVinculado: false,
+            areaAlunoGoogleUid: admin.firestore.FieldValue.delete(),
+            areaAlunoGoogleEmail: admin.firestore.FieldValue.delete(),
+            areaAlunoGoogleNome: admin.firestore.FieldValue.delete(),
+            areaAlunoGoogleFoto: admin.firestore.FieldValue.delete(),
+        }, { merge: true });
+
+        const acessoGestao =
+            usuarioData.acesso_gestao === true ||
+            usuarioData.solicitacao_acesso_gestao === true ||
+            ['administrador', 'admin', 'professor', 'monitor']
+                .includes(String(usuarioData.tipo || '').trim().toLowerCase());
+
+        batch.set(usuarioRef, {
+            acesso_area_aluno: true,
+            contexto_conta: acessoGestao
+                ? 'gestao_area_aluno'
+                : 'area_aluno',
+            areaAlunoVinculoManualAlunoId: alunoId,
+            areaAlunoVinculoManualEm: admin.firestore.FieldValue.serverTimestamp(),
+            areaAlunoVinculoManualPor: adminAtual.uid,
+        }, { merge: true });
+
         await batch.commit();
-        await registrarLogGoogleAreaAluno('vinculo_resetado_admin', {
-            aluno_ids: alunoIds,
-            resetado_por: adminAtual.uid,
-            resetado_por_nome: adminAtual.nome,
+
+        await alunoRef.collection('historico_edicoes').add({
+            tipo_edicao: 'acesso_area_aluno',
+            subtipo_edicao: 'vinculo_conta_admin',
+            origem: 'area_aluno_admin',
+            resumo: 'Conta UAI vinculada administrativamente',
+            descricao_evento: `A coordenação vinculou ${usuarioEmail || usuarioNome} a este aluno.`,
+            conta_uid: usuarioUid,
+            conta_email: usuarioEmail,
+            substituiu_vinculo: alunoJaVinculadoOutroUid && substituirVinculo,
+            uid_anterior: alunoJaVinculadoOutroUid ? uidAtualAluno : '',
+            criado_em: admin.firestore.FieldValue.serverTimestamp(),
+            criado_por_uid: adminAtual.uid,
+            criado_por_nome: adminAtual.nome,
+            pode_reverter: false,
+            revertido: false,
+        }).catch(() => null);
+
+        await registrarLogGoogleAreaAluno('vinculo_manual_admin', {
+            admin_uid: adminAtual.uid,
+            admin_nome: adminAtual.nome,
+            usuario_uid: usuarioUid,
+            usuario_email: usuarioEmail,
+            usuario_nome: usuarioNome,
+            aluno_id: alunoId,
+            aluno_nome: String(alunoData.nome || ''),
+            aluno_uid_anterior: uidAtualAluno || '',
+            substituiu_vinculo: alunoJaVinculadoOutroUid && substituirVinculo,
+            metodo: 'conta_uai',
         });
 
-        return { success: true, total: alunoIds.length };
+        console.log('Vínculo manual de conta com aluno criado.', {
+            admin_uid: adminAtual.uid,
+            usuario_uid: usuarioUid,
+            aluno_id: alunoId,
+            substituiu_vinculo: alunoJaVinculadoOutroUid && substituirVinculo,
+        });
+
+        return {
+            success: true,
+            code: 'vinculo_manual_criado',
+            message: 'Conta vinculada ao aluno.',
+            usuarioUid,
+            alunoId,
+            vinculoId,
+            substituiuVinculo: alunoJaVinculadoOutroUid && substituirVinculo,
+            emailVerificado: authUser.emailVerified === true,
+        };
     }
 );
 
-exports.resetarVinculosGoogleAreaAlunoEmMassa = onCall(
-    {
-        cors: true,
-        invoker: 'public',
-    },
-    async (request) => {
-        const adminAtual = await validarAdminAreaAluno(request);
-        const resetarTodos = request.data?.resetarTodos === true;
-        const alunoIds = Array.isArray(request.data?.alunoIds) ? request.data.alunoIds : [];
-        let refs = [];
+async function resetarContaVinculadaAreaAluno({ alunoId, adminAtual }) {
+    const alunoRef = db.collection('alunos').doc(alunoId);
+    const snap = await alunoRef.get();
+    if (!snap.exists) return false;
 
-        if (resetarTodos) {
-            const snap = await db.collection('alunos')
-                .where('areaAlunoGoogleVinculado', '==', true)
-                .limit(450)
-                .get();
-            refs = snap.docs.map(doc => doc.ref);
-        } else {
-            refs = alunoIds
-                .map(id => String(id || '').trim())
-                .filter(Boolean)
-                .map(id => db.collection('alunos').doc(id));
+    const data = snap.data() || {};
+    const contaUid = String(data.conta_uai_uid || '').trim();
+    const googleUid = String(data.areaAlunoGoogleUid || '').trim();
+    const email = String(data.email_conta_uai || data.areaAlunoGoogleEmail || '').trim();
+    const metodo = String(data.areaAlunoVinculoMetodo || (googleUid ? 'google' : contaUid ? 'email' : '')).trim();
+
+    const update = {
+        areaAlunoGoogleVinculado: false,
+        areaAlunoGoogleUid: admin.firestore.FieldValue.delete(),
+        areaAlunoGoogleEmail: admin.firestore.FieldValue.delete(),
+        areaAlunoGoogleNome: admin.firestore.FieldValue.delete(),
+        areaAlunoGoogleFoto: admin.firestore.FieldValue.delete(),
+        conta_uai_uid: admin.firestore.FieldValue.delete(),
+        email_conta_uai: admin.firestore.FieldValue.delete(),
+        areaAlunoVinculoMetodo: admin.firestore.FieldValue.delete(),
+        areaAlunoVinculoMetodoLabel: admin.firestore.FieldValue.delete(),
+        areaAlunoVinculoEmail: admin.firestore.FieldValue.delete(),
+        areaAlunoVinculoResetadoEm: admin.firestore.FieldValue.serverTimestamp(),
+        areaAlunoVinculoResetadoPor: adminAtual.uid,
+        areaAlunoVinculoResetadoOrigem: 'admin_area_aluno',
+    };
+    await alunoRef.set(update, { merge: true });
+
+    // Remove somente o vínculo deste aluno dentro da Conta UAI. A mesma conta
+    // pode continuar ligada a outros filhos/alunos.
+    if (contaUid) {
+        const links = await db.collection('contas_acesso').doc(contaUid)
+            .collection('vinculos').where('aluno_id', '==', alunoId).get();
+        if (!links.empty) {
+            const batch = db.batch();
+            links.docs.forEach(doc => batch.delete(doc.ref));
+            await batch.commit();
         }
-
-        if (refs.length === 0) {
-            return { success: false, code: 'sem_alunos', message: 'Nenhum vínculo encontrado.' };
-        }
-
-        const batch = db.batch();
-        for (const ref of refs) {
-            batch.set(ref, {
-                areaAlunoGoogleVinculado: false,
-                areaAlunoGoogleUid: admin.firestore.FieldValue.delete(),
-                areaAlunoGoogleEmail: admin.firestore.FieldValue.delete(),
-                areaAlunoGoogleNome: admin.firestore.FieldValue.delete(),
-                areaAlunoGoogleFoto: admin.firestore.FieldValue.delete(),
-                areaAlunoVinculoResetadoEm: admin.firestore.FieldValue.serverTimestamp(),
-                areaAlunoVinculoResetadoPor: adminAtual.uid,
-            }, { merge: true });
-        }
-
-        await batch.commit();
-        await registrarLogGoogleAreaAluno('vinculos_resetados_em_massa', {
-            total: refs.length,
-            resetado_por: adminAtual.uid,
-            resetado_por_nome: adminAtual.nome,
-            resetar_todos: resetarTodos,
-        });
-
-        return { success: true, total: refs.length };
     }
+
+    await alunoRef.collection('historico_edicoes').add({
+        tipo_edicao: 'acesso_area_aluno',
+        subtipo_edicao: 'vinculo_conta_resetado',
+        origem: 'area_aluno_admin',
+        resumo: 'Vínculo da Área do Aluno removido',
+        descricao_evento: `A coordenação removeu o vínculo ${metodo || 'de conta'}${email ? ` (${email})` : ''}.`,
+        metodo_vinculo: metodo || 'nao_informado',
+        metodo_vinculo_label: metodo === 'google' ? 'Google' : metodo === 'email' ? 'E-mail verificado' : 'Não informado',
+        pode_reverter: false,
+        revertido: false,
+        criado_em: admin.firestore.FieldValue.serverTimestamp(),
+        criado_por_nome: adminAtual.nome || 'Admin',
+    });
+
+    return true;
+}
+
+const resetarVinculoContaAreaAlunoHandler = async (request) => {
+    const adminAtual = await validarAdminAreaAluno(request);
+    const alunoIds = Array.isArray(request.data?.alunoIds)
+        ? request.data.alunoIds
+        : [request.data?.alunoId].filter(Boolean);
+
+    if (alunoIds.length === 0) {
+        return { success: false, code: 'sem_alunos', message: 'Nenhum aluno informado.' };
+    }
+
+    let total = 0;
+    for (const raw of alunoIds) {
+        const alunoId = String(raw || '').trim();
+        if (!alunoId) continue;
+        if (await resetarContaVinculadaAreaAluno({ alunoId, adminAtual })) total++;
+    }
+
+    await registrarLogGoogleAreaAluno('vinculo_conta_resetado_admin', {
+        aluno_ids: alunoIds,
+        total,
+        resetado_por: adminAtual.uid,
+        resetado_por_nome: adminAtual.nome,
+    });
+    return { success: true, total };
+};
+
+exports.resetarVinculoContaAreaAluno = onCall(
+    { cors: true, invoker: 'public' },
+    resetarVinculoContaAreaAlunoHandler
+);
+// Compatibilidade com clientes antigos.
+exports.resetarVinculoGoogleAreaAluno = onCall(
+    { cors: true, invoker: 'public' },
+    resetarVinculoContaAreaAlunoHandler
+);
+
+const resetarVinculosContaAreaAlunoEmMassaHandler = async (request) => {
+    const adminAtual = await validarAdminAreaAluno(request);
+    const resetarTodos = request.data?.resetarTodos === true;
+    const alunoIds = Array.isArray(request.data?.alunoIds) ? request.data.alunoIds : [];
+    let ids = alunoIds.map(id => String(id || '').trim()).filter(Boolean);
+
+    if (resetarTodos) {
+        // Operação administrativa deliberada. Limite alto o suficiente para o
+        // grupo atual, sem varrer Firestore indefinidamente.
+        const snap = await db.collection('alunos').orderBy('nome').limit(450).get();
+        ids = snap.docs
+            .filter(doc => {
+                const d = doc.data() || {};
+                return d.areaAlunoGoogleVinculado === true ||
+                    String(d.areaAlunoGoogleUid || '').trim() ||
+                    String(d.conta_uai_uid || '').trim() ||
+                    String(d.email_conta_uai || '').trim();
+            })
+            .map(doc => doc.id);
+    }
+
+    if (ids.length === 0) {
+        return { success: false, code: 'sem_alunos', message: 'Nenhum vínculo encontrado.' };
+    }
+
+    let total = 0;
+    for (const alunoId of ids) {
+        if (await resetarContaVinculadaAreaAluno({ alunoId, adminAtual })) total++;
+    }
+
+    await registrarLogGoogleAreaAluno('vinculos_conta_resetados_em_massa', {
+        total,
+        resetado_por: adminAtual.uid,
+        resetado_por_nome: adminAtual.nome,
+        resetar_todos: resetarTodos,
+    });
+    return { success: true, total };
+};
+
+exports.resetarVinculosContaAreaAlunoEmMassa = onCall(
+    { cors: true, invoker: 'public', timeoutSeconds: 120 },
+    resetarVinculosContaAreaAlunoEmMassaHandler
+);
+exports.resetarVinculosGoogleAreaAlunoEmMassa = onCall(
+    { cors: true, invoker: 'public', timeoutSeconds: 120 },
+    resetarVinculosContaAreaAlunoEmMassaHandler
 );
 
 // ============================================
@@ -6832,3 +7851,3080 @@ exports.reconstruirDashboardTurmaCache = onCall(async (request) => {
         throw new HttpsError('internal', error.message || 'Erro interno ao reconstruir cache.');
     }
 });
+
+
+// ============================================================
+// INSCRIÇÕES — NOTIFICAÇÕES E TRIAGEM
+// ============================================================
+const buildNotificacoesInscricao = require('./inscricoes/notificacoes_inscricao');
+const notificacoesInscricao = buildNotificacoesInscricao({
+    onDocumentWritten,
+    db,
+    registrarNotificacaoUsuarios,
+    enviarMulticastEmLotes,
+});
+
+/** Avisa usuários autorizados quando uma nova inscrição pendente é criada. */
+exports.notificarNovaInscricaoPendente = notificacoesInscricao.notificarNovaInscricaoPendente;
+
+const buildSegurancaInscricao = require('./inscricoes/seguranca_inscricao');
+const segurancaInscricao = buildSegurancaInscricao({ onCall, HttpsError, db });
+
+/** Analisa duplicidade e sinais suspeitos sem impedir que a pessoa conclua a inscrição. */
+exports.analisarSegurancaInscricaoPublica = segurancaInscricao.analisarSegurancaInscricaoPublica;
+
+// =============================================================
+// INSCRIÇÕES V4 — JORNADA PRÉ-ALUNO / CONTA UAI
+// =============================================================
+// Implementação isolada em functions/inscricoes/conta_uai_v4.js.
+// O index fica apenas como catálogo das funções publicadas, evitando
+// concentrar centenas de linhas de regra de negócio neste arquivo.
+const buildContaUaiV4 = require('./inscricoes/conta_uai_v4');
+const contaUaiV4 = buildContaUaiV4({
+    onCall,
+    onDocumentWritten,
+    onSchedule,
+    HttpsError,
+    admin,
+    db,
+    crypto,
+    DateTime,
+    carregarConfigAreaAluno,
+    configEfetivaAreaAluno,
+});
+
+/** Cria uma inscrição pública com validações e reserva de vaga em transação atômica. */
+exports.criarInscricaoPublicaSegura = contaUaiV4.criarInscricaoPublicaSegura;
+
+/** Recalcula/libera o contador de vagas quando uma inscrição deixa a fila ativa. */
+exports.ajustarContadorVagasAoRemoverInscricao = contaUaiV4.ajustarContadorVagasAoRemoverInscricao;
+
+/** Envia o código de 6 dígitos para autenticação/vinculação da Conta UAI por e-mail. */
+exports.solicitarCodigoContaUai = contaUaiV4.solicitarCodigoContaUai;
+
+/** Envia código de 6 dígitos para confirmar o e-mail antes do cadastro comum da gestão. */
+exports.solicitarCodigoCadastroGestao = contaUaiV4.solicitarCodigoCadastroGestao;
+/** Valida o código do cadastro comum e emite uma prova temporária de confirmação. */
+exports.validarCodigoCadastroGestao = contaUaiV4.validarCodigoCadastroGestao;
+/** Finaliza o cadastro autenticado, marca o e-mail como verificado e cria a solicitação de gestão. */
+exports.concluirCadastroGestaoVerificado = contaUaiV4.concluirCadastroGestaoVerificado;
+
+/** Teste administrativo do envio profissional via Resend para a própria conta autenticada. */
+exports.testarEmailResendUai = contaUaiV4.testarEmailResendUai;
+
+/** Confirma o código recebido por e-mail e autentica/vincula a Conta UAI. */
+exports.confirmarCodigoContaUai = contaUaiV4.confirmarCodigoContaUai;
+
+/** Confirma a Conta UAI pelo botão seguro enviado no e-mail e inicia a sessão. */
+exports.ativarContaUaiPorLink = contaUaiV4.ativarContaUaiPorLink;
+
+/** Vincula à conta autenticada a inscrição recém-criada usando token seguro de vínculo. */
+exports.vincularInscricaoContaAtual = contaUaiV4.vincularInscricaoContaAtual;
+
+/** Retorna somente os perfis/inscrições que a Conta UAI atual tem autorização para acompanhar. */
+exports.buscarPerfisContaUai = contaUaiV4.buscarPerfisContaUai;
+
+/** Entrega a visão pública e sanitizada de uma inscrição para o inscrito/responsável. */
+exports.obterAreaInscricaoContaUai = contaUaiV4.obterAreaInscricaoContaUai;
+
+/** Entrega os dados autorizados da Área do Aluno para um vínculo já convertido em aluno. */
+exports.obterAreaAlunoContaUai = contaUaiV4.obterAreaAlunoContaUai;
+
+/** Valida no servidor se a Conta UAI atual pode acessar determinado perfil de aluno. */
+exports.validarAcessoContaUaiAreaAluno = contaUaiV4.validarAcessoContaUaiAreaAluno;
+
+/** Promove automaticamente vínculos de inscrição para vínculos de aluno após a aprovação. */
+exports.promoverVinculosContaUaiAoAprovar = contaUaiV4.promoverVinculosContaUaiAoAprovar;
+
+/** Ativa um link seguro de boas-vindas e abre diretamente o perfil aprovado na Área do Aluno. */
+exports.ativarAreaAlunoPorLink = contaUaiV4.ativarAreaAlunoPorLink;
+
+/** Sincroniza o token FCM da Conta UAI para lembretes e avisos destinados à família/aluno. */
+exports.sincronizarTokenContaUai = contaUaiV4.sincronizarTokenContaUai;
+
+/** Agenda e envia lembretes de aulas experimentais para contas vinculadas. */
+exports.notificarAulasExperimentaisContaUai = contaUaiV4.notificarAulasExperimentaisContaUai;
+
+/** Sinaliza ou arquiva inscrições sem movimentação conforme a configuração administrativa. */
+exports.marcarInscricoesSemMovimento = contaUaiV4.marcarInscricoesSemMovimento;
+
+/** Execução manual/simulação do robô diário de limpeza de inscrições. */
+exports.executarRoboLimpezaInscricoesAgora = contaUaiV4.executarRoboLimpezaInscricoesAgora;
+
+/** Gera um código temporário para o próprio aluno vincular seu celular/e-mail ao perfil existente. */
+exports.gerarCodigoVinculoAlunoContaUai = contaUaiV4.gerarCodigoVinculoAlunoContaUai;
+
+/** Consome o código temporário e cria o vínculo da conta própria do aluno com a mesma ficha. */
+exports.vincularAlunoComCodigoContaUai = contaUaiV4.vincularAlunoComCodigoContaUai;
+exports.classificarContaUaiAtual = contaUaiV4.classificarContaUaiAtual;
+/** Repara de forma idempotente a identidade e vínculos da Conta UAI atual. */
+exports.reconciliarContaUaiAtual = contaUaiV4.reconciliarContaUaiAtual;
+
+/** Lista apenas as cidades das academias ativas para o dropdown do formulário público. */
+exports.listarCidadesAcademiasAtivasInscricao = contaUaiV4.listarCidadesAcademiasAtivasInscricao;
+
+
+/** Pesquisa inscrições por telefone completo para recuperar/acessar a Minha UAI sem depender do link original. */
+exports.buscarInscricoesPorTelefoneContaUai = contaUaiV4.buscarInscricoesPorTelefoneContaUai;
+
+/** Remove vínculos órfãos da Conta UAI quando uma inscrição ativa é realmente apagada. */
+exports.limparVinculosContaUaiAoExcluirInscricaoAtiva = contaUaiV4.limparVinculosContaUaiAoExcluirInscricaoAtiva;
+
+/** Remove vínculos órfãos da Conta UAI quando uma inscrição arquivada é realmente apagada. */
+exports.limparVinculosContaUaiAoExcluirInscricaoArquivada = contaUaiV4.limparVinculosContaUaiAoExcluirInscricaoArquivada;
+
+/** Remove vínculos órfãos da Conta UAI quando um registro aprovado deixa de existir. */
+exports.limparVinculosContaUaiAoExcluirInscricaoAprovada = contaUaiV4.limparVinculosContaUaiAoExcluirInscricaoAprovada;
+
+
+// =============================================================
+// INSCRIÇÕES — E-MAIL AUTOMÁTICO APÓS APROVAÇÃO
+// =============================================================
+const buildEmailAlunoAprovado = require('./inscricoes/email_aluno_aprovado');
+const emailAlunoAprovado = buildEmailAlunoAprovado({
+    onDocumentWritten,
+    admin,
+    db,
+});
+
+/** Envia automaticamente um e-mail profissional quando a inscrição vira aluno. */
+exports.enviarEmailAlunoAprovado = emailAlunoAprovado.enviarEmailAlunoAprovado;
+
+
+// ============================================
+// ASSOCIAÇÃO - GERADOR DE OFÍCIOS COM GEMINI
+// ============================================
+exports.gerarOficioAssociacao = onCall(
+  {
+    region: 'us-central1',
+    timeoutSeconds: 60,
+    memory: '256MiB',
+    secrets: [GEMINI_API_KEY],
+  },
+  async (request) => {
+    if (!request.auth?.uid) {
+      throw new HttpsError('unauthenticated', 'Usuário não autenticado.');
+    }
+
+    const input = request.data && typeof request.data === 'object' ? request.data : {};
+    const clean = (v, max = 6000) => typeof v === 'string' ? v.trim().slice(0, max) : '';
+    const tipo = clean(input.tipo, 80);
+    const assunto = clean(input.assunto, 220);
+    const destinatario = clean(input.destinatario, 220);
+    const cargoSetor = clean(input.cargoSetor, 220);
+    const objetivo = clean(input.objetivo, 6000);
+    const informacoes = clean(input.informacoesAdicionais, 5000);
+    const textoAtual = clean(input.textoAtual, 9000);
+    const acao = clean(input.acao, 40) || 'gerar';
+
+    if (!objetivo && !textoAtual) {
+      throw new HttpsError('invalid-argument', 'Informe o objetivo ou o texto do ofício.');
+    }
+
+    const instrucoesAcao = {
+      gerar: 'Redija o ofício completo a partir das informações fornecidas.',
+      mais_formal: 'Reescreva o texto atual com linguagem mais formal e institucional, preservando integralmente os fatos.',
+      mais_curto: 'Enxugue o texto atual, mantendo todas as informações essenciais e o tom institucional.',
+      corrigir: 'Corrija ortografia, gramática, pontuação e clareza do texto atual, sem mudar os fatos ou o sentido.',
+    };
+
+    // A IA recebe a fonte institucional oficial diretamente do Firestore.
+    // Esses dados são contexto disponível — não devem ser despejados no texto.
+    // A decisão de uso depende do tipo/objetivo do ofício.
+    let institucional = {};
+    try {
+      const cfgSnap = await db.collection('associacao_config').doc('institucional').get();
+      institucional = cfgSnap.exists && cfgSnap.data() ? cfgSnap.data() : {};
+    } catch (e) {
+      console.warn('gerarOficioAssociacao: não foi possível carregar configuração institucional:', e);
+      institucional = {};
+    }
+
+    const inst = {
+      nomeOficial: clean(institucional.nomeOficial || 'ASSOCIAÇÃO UAI CAPOEIRA', 180),
+      nomeFantasia: clean(institucional.nomeFantasia, 160),
+      cnpj: clean(institucional.cnpj, 40),
+      dataFundacao: clean(institucional.dataFundacao, 40),
+      natureza: clean(institucional.natureza, 160),
+      endereco: clean(institucional.endereco, 220),
+      bairro: clean(institucional.bairro, 120),
+      cidade: clean(institucional.cidade, 120),
+      estado: clean(institucional.estado, 20),
+      cep: clean(institucional.cep, 30),
+      telefone: clean(institucional.telefone, 60),
+      emailInstitucional: clean(institucional.emailInstitucional, 180),
+      site: clean(institucional.site, 220),
+      instagram: clean(institucional.instagram, 160),
+      cidadeDocumentos: clean(institucional.cidadeDocumentos, 120),
+      textoInstitucional: clean(institucional.textoInstitucional, 2500),
+    };
+
+    const enderecoCompleto = [
+      inst.endereco,
+      inst.bairro,
+      [inst.cidade, inst.estado].filter(Boolean).join('/'),
+      inst.cep ? `CEP ${inst.cep}` : '',
+    ].filter(Boolean).join(' • ');
+
+    const prompt = `
+Você é o redator institucional da Associação UAI Capoeira, uma associação brasileira de capoeira.
+Sua função é profissionalizar textos de ofícios administrativos.
+
+REGRAS OBRIGATÓRIAS:
+1. Preserve EXATAMENTE nomes, datas, horários, valores, quantidades, locais e demais fatos fornecidos.
+2. NÃO invente leis, números de processo, CNPJ, endereço, autoridades, compromissos, datas, valores ou fatos não informados.
+3. NÃO afirme que algo foi aprovado, combinado ou confirmado se o usuário não informou isso.
+4. Corrija ortografia, gramática, concordância, pontuação e clareza.
+5. Use português do Brasil, tom respeitoso, profissional, objetivo e institucional.
+6. Evite exageros, bajulação e linguagem jurídica desnecessária.
+7. Não inclua número do ofício, data, assinatura ou cabeçalho; o aplicativo adicionará isso no PDF.
+8. Se uma informação essencial estiver ausente, redija sem inventá-la.
+9. Os DADOS INSTITUCIONAIS OFICIAIS abaixo são fonte confiável e podem ser usados no corpo, MAS SOMENTE quando agregarem valor real ao objetivo do ofício.
+10. NÃO faça uma lista de dados cadastrais e NÃO despeje CNPJ, endereço, telefone, e-mail, site ou data de fundação automaticamente.
+11. Use CNPJ quando for útil identificar formalmente a entidade (ex.: parceria, patrocínio, cessão, convênio, cadastro, compra ou solicitação institucional). Se o contexto já identificar suficientemente a Associação, pode omiti-lo.
+12. Use a natureza da entidade e/ou o texto institucional quando isso ajudar a explicar caráter social, finalidade, atuação comunitária ou interesse público.
+13. Use endereço/cidade apenas quando localização, sede, território de atuação ou logística forem relevantes.
+14. Use telefone/e-mail/site/Instagram somente quando for realmente útil colocar um canal de contato no CORPO.
+15. Use data de fundação apenas quando tempo de existência/histórico da Associação for relevante.
+16. Nunca repita dados só porque estão disponíveis. Prefira um texto natural, curto e convincente.
+17. Não diga que um dado institucional foi 'informado pelo usuário'; trate-o naturalmente como informação oficial da Associação.
+18. Retorne APENAS JSON válido, sem markdown e sem comentários.
+
+AÇÃO: ${instrucoesAcao[acao] || instrucoesAcao.gerar}
+
+DADOS INSTITUCIONAIS OFICIAIS (USO SELETIVO):
+Nome oficial: ${inst.nomeOficial || '(não cadastrado)'}
+Nome fantasia: ${inst.nomeFantasia || '(não cadastrado)'}
+CNPJ: ${inst.cnpj || '(não cadastrado)'}
+Natureza: ${inst.natureza || '(não cadastrada)'}
+Data de fundação: ${inst.dataFundacao || '(não cadastrada)'}
+Endereço/sede: ${enderecoCompleto || '(não cadastrado)'}
+Cidade padrão dos documentos: ${inst.cidadeDocumentos || '(não cadastrada)'}
+Telefone: ${inst.telefone || '(não cadastrado)'}
+E-mail institucional: ${inst.emailInstitucional || '(não cadastrado)'}
+Site: ${inst.site || '(não cadastrado)'}
+Instagram: ${inst.instagram || '(não cadastrado)'}
+Apresentação/finalidade institucional: ${inst.textoInstitucional || '(não cadastrada)'}
+
+DADOS INFORMADOS PELO USUÁRIO:
+Tipo: ${tipo || 'Ofício institucional'}
+Assunto informado: ${assunto || '(não informado)'}
+Destinatário: ${destinatario || '(não informado)'}
+Cargo/setor: ${cargoSetor || '(não informado)'}
+Objetivo em linguagem do usuário: ${objetivo || '(não informado)'}
+Informações adicionais: ${informacoes || '(nenhuma)'}
+Texto atual para revisão: ${textoAtual || '(nenhum)'}
+
+FORMATO EXATO DE RESPOSTA:
+{"assunto":"...","vocativo":"...","corpo":"...","encerramento":"Atenciosamente,"}
+`;
+
+    try {
+      const apiKey = GEMINI_API_KEY.value();
+      if (!apiKey) throw new Error('GEMINI_API_KEY não configurada.');
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const modelName = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
+      const model = genAI.getGenerativeModel({ model: modelName });
+      const result = await model.generateContent(prompt);
+      let text = result.response.text().trim();
+      text = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```$/i, '').trim();
+      const parsed = JSON.parse(text);
+      const output = {
+        assunto: clean(parsed.assunto, 260) || assunto,
+        vocativo: clean(parsed.vocativo, 300),
+        corpo: clean(parsed.corpo, 10000),
+        encerramento: clean(parsed.encerramento, 300) || 'Atenciosamente,',
+      };
+      if (!output.corpo) throw new Error('Resposta da IA sem corpo do ofício.');
+      return output;
+    } catch (error) {
+      console.error('Erro gerarOficioAssociacao:', error);
+      throw new HttpsError('internal', 'Não foi possível gerar o ofício com IA neste momento.');
+    }
+  }
+);
+
+
+// ============================================================
+// ASSOCIAÇÃO • ARQUIVOS ÚTEIS • GOOGLE DRIVE
+// OAuth institucional + organização automática + upload resumable.
+// O refresh token fica SOMENTE em coleção interna do backend
+// (não há regra de leitura/escrita para o cliente Flutter).
+// ============================================================
+const DRIVE_SCOPE_UAI = 'https://www.googleapis.com/auth/drive.file';
+const DRIVE_REDIRECT_URI_UAI = 'https://us-central1-uai-capoeira-52753.cloudfunctions.net/googleDriveOAuthCallback';
+const DRIVE_INTEGRACAO_REF_UAI = db.collection('associacao_integracoes').doc('google_drive');
+const DRIVE_STATES_COL_UAI = db.collection('associacao_oauth_states');
+const DRIVE_FOLDER_MIME_UAI = 'application/vnd.google-apps.folder';
+
+function driveTextoSeguroUai(value, max = 180) {
+  return typeof value === 'string' ? value.trim().replace(/\s+/g, ' ').slice(0, max) : '';
+}
+
+function driveStatusUsuarioAtivoUai(data) {
+  if (!data || typeof data !== 'object') return false;
+  const status = String(data.status_conta || '').trim().toLowerCase();
+  return !['bloqueada','bloqueado','inativa','inativo','rejeitada','rejeitado'].includes(status);
+}
+
+function driveUsuarioAdminUai(data) {
+  const tipo = String(data?.tipo || '').trim().toLowerCase();
+  const peso = Number(data?.peso_permissao || 0);
+  return peso >= 90 || tipo === 'admin' || tipo === 'administrador';
+}
+
+const DRIVE_ASSOC_KEYS_UAI = [
+  'pode_ver_financeiro_associacao','pode_lancar_financeiro_associacao',
+  'pode_estornar_financeiro_associacao','pode_sincronizar_financeiro_associacao',
+  'pode_configurar_financeiro_associacao','pode_exportar_financeiro_associacao',
+  'pode_ver_associados_associacao','pode_gerenciar_associados_associacao',
+  'pode_gerenciar_mensalidades_associacao','pode_gerenciar_gestoes_associacao',
+  'pode_ver_oficios_associacao','pode_criar_oficio_associacao',
+  'pode_editar_oficio_associacao','pode_usar_ia_oficio_associacao',
+  'pode_alterar_status_oficio_associacao','pode_registrar_resposta_oficio_associacao',
+  'pode_ver_config_associacao','pode_editar_config_associacao',
+  'pode_ver_arquivos_associacao','pode_gerenciar_arquivos_associacao',
+  'pode_compartilhar_arquivos_associacao','pode_excluir_arquivos_associacao',
+  'pode_limpar_drive_arquivos_associacao',
+  'pode_ver_patrimonio_associacao','pode_gerenciar_patrimonio_associacao',
+];
+
+async function driveExigirPermissaoUai(uid, chave = 'pode_gerenciar_arquivos_associacao') {
+  if (!uid) throw new HttpsError('unauthenticated', 'Usuário não autenticado.');
+  const userRef = db.collection('usuarios').doc(uid);
+  const [userSnap, permSnap] = await Promise.all([
+    userRef.get(),
+    userRef.collection('permissoes_usuario').doc('configuracoes').get(),
+  ]);
+  const user = userSnap.data() || {};
+  if (!userSnap.exists || !driveStatusUsuarioAtivoUai(user)) {
+    throw new HttpsError('permission-denied', 'Conta sem acesso ao módulo.');
+  }
+  if (driveUsuarioAdminUai(user)) return user;
+  const perms = permSnap.data() || {};
+  if (perms[chave] === true) return user;
+  const jaMigrado = DRIVE_ASSOC_KEYS_UAI.some((k) => Object.prototype.hasOwnProperty.call(perms, k));
+  if (!jaMigrado && (perms.podeAcessarAssociacao === true || perms.pode_acessar_associacao === true)) {
+    return user;
+  }
+  throw new HttpsError('permission-denied', 'Você não tem permissão para gerenciar os Arquivos úteis.');
+}
+
+function driveEscapeQueryUai(value) {
+  return String(value || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+async function driveAccessTokenUai() {
+  const snap = await DRIVE_INTEGRACAO_REF_UAI.get();
+  const cfg = snap.data() || {};
+  const refreshToken = driveTextoSeguroUai(cfg.refreshToken, 4000);
+  if (!refreshToken || cfg.conectado !== true) {
+    throw new HttpsError('failed-precondition', 'Google Drive ainda não está conectado.');
+  }
+  try {
+    const body = new URLSearchParams({
+      client_id: GOOGLE_DRIVE_CLIENT_ID.value(),
+      client_secret: GOOGLE_DRIVE_CLIENT_SECRET.value(),
+      refresh_token: refreshToken,
+      grant_type: 'refresh_token',
+    });
+    const response = await axios.post('https://oauth2.googleapis.com/token', body.toString(), {
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      timeout: 20000,
+    });
+    const token = driveTextoSeguroUai(response.data?.access_token, 5000);
+    if (!token) throw new Error('Google não retornou access_token.');
+    return { accessToken: token, config: cfg };
+  } catch (error) {
+    console.error('Drive refresh token falhou:', error?.response?.data || error?.message || error);
+    throw new HttpsError('unavailable', 'Não foi possível autenticar no Google Drive. Reconecte a conta institucional.');
+  }
+}
+
+async function driveGetFileUai(accessToken, fileId, fields = 'id,name,mimeType,webViewLink,webContentLink,parents,size,trashed') {
+  const id = encodeURIComponent(String(fileId || ''));
+  const response = await axios.get(`https://www.googleapis.com/drive/v3/files/${id}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    params: { fields },
+    timeout: 20000,
+  });
+  return response.data || {};
+}
+
+async function driveFolderValidaUai(accessToken, folderId) {
+  const id = driveTextoSeguroUai(folderId, 300);
+  if (!id) return null;
+  try {
+    const data = await driveGetFileUai(accessToken, id, 'id,name,mimeType,webViewLink,trashed');
+    if (data?.id && data.mimeType === DRIVE_FOLDER_MIME_UAI && data.trashed !== true) return data;
+  } catch (_) {}
+  return null;
+}
+
+async function driveBuscarPastaUai(accessToken, name, parentId) {
+  const safeName = driveEscapeQueryUai(name);
+  const parentClause = parentId ? ` and '${driveEscapeQueryUai(parentId)}' in parents` : " and 'root' in parents";
+  const q = `name = '${safeName}' and mimeType = '${DRIVE_FOLDER_MIME_UAI}' and trashed = false${parentClause}`;
+  const response = await axios.get('https://www.googleapis.com/drive/v3/files', {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    params: { q, spaces: 'drive', pageSize: 10, fields: 'files(id,name,webViewLink,parents)' },
+    timeout: 20000,
+  });
+  return Array.isArray(response.data?.files) && response.data.files.length ? response.data.files[0] : null;
+}
+
+async function driveCriarPastaUai(accessToken, name, parentId) {
+  const metadata = {
+    name: driveTextoSeguroUai(name, 160) || 'Pasta',
+    mimeType: DRIVE_FOLDER_MIME_UAI,
+    parents: [parentId || 'root'],
+    appProperties: { uaiModulo: 'arquivos_uteis' },
+  };
+  const response = await axios.post('https://www.googleapis.com/drive/v3/files', metadata, {
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json; charset=UTF-8' },
+    params: { fields: 'id,name,webViewLink,parents' },
+    timeout: 20000,
+  });
+  return response.data || {};
+}
+
+async function driveGarantirPastaUai(accessToken, name, parentId, preferredId = '') {
+  const preferred = await driveFolderValidaUai(accessToken, preferredId);
+  if (preferred) return preferred;
+  const found = await driveBuscarPastaUai(accessToken, name, parentId);
+  if (found) return found;
+  return driveCriarPastaUai(accessToken, name, parentId);
+}
+
+async function driveGarantirEstruturaUai(accessToken, cfg = {}) {
+  const raiz = await driveGarantirPastaUai(accessToken, 'UAI CAPOEIRA', null, cfg.driveRootFolderId || '');
+  const biblioteca = await driveGarantirPastaUai(accessToken, 'ARQUIVOS ÚTEIS', raiz.id, cfg.arquivosUteisFolderId || '');
+  await DRIVE_INTEGRACAO_REF_UAI.set({
+    driveRootFolderId: raiz.id,
+    driveRootFolderUrl: raiz.webViewLink || `https://drive.google.com/drive/folders/${raiz.id}`,
+    arquivosUteisFolderId: biblioteca.id,
+    arquivosUteisFolderUrl: biblioteca.webViewLink || `https://drive.google.com/drive/folders/${biblioteca.id}`,
+    estruturaAtualizadaEm: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+  return { raiz, biblioteca };
+}
+
+function driveHtmlUai(title, message, ok = true) {
+  const color = ok ? '#1b8f3a' : '#b91c1c';
+  const icon = ok ? '✓' : '!';
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title></head><body style="font-family:Arial,sans-serif;background:#f7f8fb;margin:0;padding:32px"><main style="max-width:620px;margin:8vh auto;background:white;border-radius:24px;padding:32px;box-shadow:0 12px 40px rgba(0,0,0,.08);text-align:center"><div style="width:64px;height:64px;border-radius:50%;background:${color};color:white;display:grid;place-items:center;font-size:34px;margin:0 auto 18px">${icon}</div><h1 style="font-size:24px;margin:0 0 12px">${title}</h1><p style="color:#566070;line-height:1.55">${message}</p><p style="font-size:13px;color:#8b93a1;margin-top:26px">Você já pode fechar esta janela e voltar ao UAI Capoeira.</p></main></body></html>`;
+}
+
+exports.googleDriveCriarAutorizacao = onCall(
+  {
+    region: 'us-central1', timeoutSeconds: 60, memory: '256MiB',
+    secrets: [GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET],
+  },
+  async (request) => {
+    const uid = request.auth?.uid;
+    await driveExigirPermissaoUai(uid, 'pode_gerenciar_arquivos_associacao');
+    const state = crypto.randomBytes(32).toString('hex');
+    await DRIVE_STATES_COL_UAI.doc(state).set({
+      uid,
+      criadoEm: admin.firestore.FieldValue.serverTimestamp(),
+      expiraEm: admin.firestore.Timestamp.fromMillis(Date.now() + 10 * 60 * 1000),
+      usado: false,
+    });
+    const params = new URLSearchParams({
+      client_id: GOOGLE_DRIVE_CLIENT_ID.value(),
+      redirect_uri: DRIVE_REDIRECT_URI_UAI,
+      response_type: 'code',
+      scope: DRIVE_SCOPE_UAI,
+      access_type: 'offline',
+      prompt: 'consent',
+      include_granted_scopes: 'true',
+      state,
+    });
+    return { authUrl: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}` };
+  }
+);
+
+exports.googleDriveOAuthCallback = onRequest(
+  {
+    region: 'us-central1', timeoutSeconds: 60, memory: '256MiB', cors: true,
+    secrets: [GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET],
+  },
+  async (req, res) => {
+    res.set('Content-Type', 'text/html; charset=utf-8');
+    try {
+      if (req.query.error) {
+        return res.status(400).send(driveHtmlUai('Autorização cancelada', `O Google retornou: ${String(req.query.error)}`, false));
+      }
+      const code = driveTextoSeguroUai(req.query.code, 5000);
+      const state = driveTextoSeguroUai(req.query.state, 200);
+      if (!code || !state) return res.status(400).send(driveHtmlUai('Autorização inválida', 'Código ou estado OAuth ausente.', false));
+      const stateRef = DRIVE_STATES_COL_UAI.doc(state);
+      const stateSnap = await stateRef.get();
+      const stateData = stateSnap.data() || {};
+      const expira = stateData.expiraEm?.toMillis ? stateData.expiraEm.toMillis() : 0;
+      if (!stateSnap.exists || stateData.usado === true || !expira || expira < Date.now()) {
+        return res.status(400).send(driveHtmlUai('Autorização expirada', 'Inicie uma nova conexão pelo aplicativo.', false));
+      }
+      await driveExigirPermissaoUai(stateData.uid, 'pode_gerenciar_arquivos_associacao');
+      const tokenBody = new URLSearchParams({
+        code,
+        client_id: GOOGLE_DRIVE_CLIENT_ID.value(),
+        client_secret: GOOGLE_DRIVE_CLIENT_SECRET.value(),
+        redirect_uri: DRIVE_REDIRECT_URI_UAI,
+        grant_type: 'authorization_code',
+      });
+      const tokenResponse = await axios.post('https://oauth2.googleapis.com/token', tokenBody.toString(), {
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'}, timeout: 20000,
+      });
+      const refreshToken = driveTextoSeguroUai(tokenResponse.data?.refresh_token, 4000);
+      const accessToken = driveTextoSeguroUai(tokenResponse.data?.access_token, 5000);
+      if (!refreshToken || !accessToken) throw new Error('Google não retornou refresh_token/access_token.');
+
+      let googleUser = {};
+      try {
+        const about = await axios.get('https://www.googleapis.com/drive/v3/about', {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          params: { fields: 'user(displayName,emailAddress,photoLink)' }, timeout: 15000,
+        });
+        googleUser = about.data?.user || {};
+      } catch (_) {}
+
+      await DRIVE_INTEGRACAO_REF_UAI.set({
+        conectado: true,
+        refreshToken,
+        scope: DRIVE_SCOPE_UAI,
+        contaEmail: driveTextoSeguroUai(googleUser.emailAddress, 240),
+        contaNome: driveTextoSeguroUai(googleUser.displayName, 180),
+        contaFoto: driveTextoSeguroUai(googleUser.photoLink, 1000),
+        conectadoPorUid: stateData.uid,
+        conectadoEm: admin.firestore.FieldValue.serverTimestamp(),
+        atualizadoEm: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+      const cfgSnap = await DRIVE_INTEGRACAO_REF_UAI.get();
+      const estrutura = await driveGarantirEstruturaUai(accessToken, cfgSnap.data() || {});
+      await stateRef.set({ usado: true, usadoEm: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+      return res.status(200).send(driveHtmlUai('Google Drive conectado', `A biblioteca foi ligada à conta ${driveTextoSeguroUai(googleUser.emailAddress, 240) || 'Google selecionada'} e a pasta “${estrutura.biblioteca.name}” está pronta.`));
+    } catch (error) {
+      console.error('googleDriveOAuthCallback:', error?.response?.data || error?.message || error);
+      return res.status(500).send(driveHtmlUai('Não foi possível conectar', 'A autorização não pôde ser concluída. Volte ao app e tente novamente.', false));
+    }
+  }
+);
+
+exports.googleDriveStatus = onCall(
+  {
+    region: 'us-central1', timeoutSeconds: 60, memory: '256MiB',
+    secrets: [GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET],
+  },
+  async (request) => {
+    const uid = request.auth?.uid;
+    await driveExigirPermissaoUai(uid, 'pode_ver_arquivos_associacao');
+    const snap = await DRIVE_INTEGRACAO_REF_UAI.get();
+    const cfg = snap.data() || {};
+    return {
+      conectado: cfg.conectado === true && !!cfg.refreshToken,
+      contaEmail: driveTextoSeguroUai(cfg.contaEmail, 240),
+      contaNome: driveTextoSeguroUai(cfg.contaNome, 180),
+      pastaNome: 'UAI CAPOEIRA / ARQUIVOS ÚTEIS',
+      pastaId: driveTextoSeguroUai(cfg.arquivosUteisFolderId, 300),
+      pastaUrl: driveTextoSeguroUai(cfg.arquivosUteisFolderUrl, 1200),
+    };
+  }
+);
+
+exports.googleDriveDesconectar = onCall(
+  {
+    region: 'us-central1', timeoutSeconds: 60, memory: '256MiB',
+    secrets: [GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET],
+  },
+  async (request) => {
+    const uid = request.auth?.uid;
+    await driveExigirPermissaoUai(uid, 'pode_gerenciar_arquivos_associacao');
+    await DRIVE_INTEGRACAO_REF_UAI.set({
+      conectado: false,
+      refreshToken: admin.firestore.FieldValue.delete(),
+      desconectadoPorUid: uid,
+      desconectadoEm: admin.firestore.FieldValue.serverTimestamp(),
+      atualizadoEm: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+    return { ok: true };
+  }
+);
+
+exports.googleDriveUploadArquivo = onCall(
+  {
+    region: 'us-central1', timeoutSeconds: 120, memory: '512MiB',
+    secrets: [GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET],
+  },
+  async (request) => {
+    const uid = request.auth?.uid;
+    await driveExigirPermissaoUai(uid, 'pode_gerenciar_arquivos_associacao');
+    const data = request.data && typeof request.data === 'object' ? request.data : {};
+    const fileName = driveTextoSeguroUai(data.fileName, 220);
+    const mimeType = driveTextoSeguroUai(data.mimeType, 180) || 'application/octet-stream';
+    const categoria = driveTextoSeguroUai(data.categoria, 120) || 'Outros';
+    const pacoteNome = driveTextoSeguroUai(data.pacoteNome, 180);
+    const preferredFolderId = driveTextoSeguroUai(data.parentFolderId, 300);
+    const publico = data.publico === true;
+    if (publico) await driveExigirPermissaoUai(uid, 'pode_compartilhar_arquivos_associacao');
+    const declaredSize = Math.max(0, Math.floor(Number(data.size || 0)));
+    const encoded = typeof data.base64 === 'string' ? data.base64 : '';
+
+    if (!fileName) throw new HttpsError('invalid-argument', 'Nome do arquivo ausente.');
+    if (!encoded) throw new HttpsError('invalid-argument', 'Conteúdo do arquivo ausente.');
+
+    let bytes;
+    try {
+      bytes = Buffer.from(encoded, 'base64');
+    } catch (_) {
+      throw new HttpsError('invalid-argument', 'Conteúdo do arquivo inválido.');
+    }
+    const maxBytes = 15 * 1024 * 1024;
+    if (!bytes.length) throw new HttpsError('invalid-argument', 'Arquivo vazio.');
+    if (bytes.length > maxBytes) {
+      throw new HttpsError('invalid-argument', 'Upload direto limitado a 15 MB por arquivo nesta versão.');
+    }
+    if (declaredSize > 0 && declaredSize !== bytes.length) {
+      console.warn(`Google Drive upload: tamanho informado ${declaredSize} diferente do recebido ${bytes.length}.`);
+    }
+
+    const { accessToken, config } = await driveAccessTokenUai();
+    const estrutura = await driveGarantirEstruturaUai(accessToken, config);
+    const categoriaFolder = await driveGarantirPastaUai(accessToken, categoria, estrutura.biblioteca.id, '');
+    let destino = categoriaFolder;
+    if (pacoteNome) {
+      destino = await driveGarantirPastaUai(accessToken, pacoteNome, categoriaFolder.id, preferredFolderId);
+    } else if (preferredFolderId) {
+      const preferred = await driveFolderValidaUai(accessToken, preferredFolderId);
+      if (preferred) destino = preferred;
+    }
+
+    const metadata = {
+      name: fileName,
+      parents: [destino.id],
+      appProperties: {
+        uaiModulo: 'arquivos_uteis',
+        uaiCategoria: categoria.slice(0, 120),
+        uaiCriadoPorUid: String(uid).slice(0, 120),
+      },
+    };
+
+    // Multipart upload feito no backend. Evita CORS e URLs de sessão
+    // resumable no navegador Flutter Web.
+    const boundary = `uai_capoeira_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const preamble = Buffer.from(
+      `--${boundary}\r\n` +
+      'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+      JSON.stringify(metadata) + '\r\n' +
+      `--${boundary}\r\n` +
+      `Content-Type: ${mimeType}\r\n\r\n`,
+      'utf8'
+    );
+    const ending = Buffer.from(`\r\n--${boundary}--\r\n`, 'utf8');
+    const body = Buffer.concat([preamble, bytes, ending]);
+
+    let response;
+    try {
+      response = await axios.post(
+        'https://www.googleapis.com/upload/drive/v3/files',
+        body,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': `multipart/related; boundary=${boundary}`,
+            'Content-Length': String(body.length),
+          },
+          params: {
+            uploadType: 'multipart',
+            fields: 'id,name,mimeType,size,webViewLink,webContentLink,parents,trashed,createdTime,modifiedTime,md5Checksum',
+          },
+          timeout: 90000,
+          maxBodyLength: Infinity,
+          maxContentLength: Infinity,
+        }
+      );
+    } catch (error) {
+      const status = error?.response?.status;
+      const googleMessage = driveTextoSeguroUai(
+        error?.response?.data?.error?.message || error?.message,
+        500
+      );
+      console.error('❌ Google Drive upload backend:', status, googleMessage);
+      throw new HttpsError(
+        status === 401 || status === 403 ? 'permission-denied' : 'internal',
+        googleMessage || 'Não foi possível enviar o arquivo ao Google Drive.'
+      );
+    }
+
+    const file = response?.data || {};
+    if (!file.id) throw new HttpsError('internal', 'Google Drive não retornou o ID do arquivo enviado.');
+
+    if (publico) {
+      try {
+        await axios.post(
+          `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}/permissions`,
+          { type: 'anyone', role: 'reader', allowFileDiscovery: false },
+          {
+            headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+            params: { supportsAllDrives: true },
+            timeout: 30000,
+          }
+        );
+      } catch (error) {
+        console.error('❌ Google Drive compartilhamento público:', error?.response?.status, error?.response?.data || error?.message || error);
+        try {
+          await axios.delete(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}`, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+            params: { supportsAllDrives: true },
+            timeout: 20000,
+          });
+        } catch (_) {}
+        throw new HttpsError('internal', 'O arquivo não pôde ser publicado no Google Drive. O envio foi cancelado para evitar um arquivo duplicado ou com acesso incorreto.');
+      }
+    }
+
+    return {
+      id: file.id,
+      name: file.name || fileName,
+      mimeType: file.mimeType || mimeType,
+      size: Number(file.size || bytes.length),
+      webViewLink: file.webViewLink || `https://drive.google.com/file/d/${file.id}/view`,
+      webContentLink: file.webContentLink || '',
+      parentFolderId: destino.id,
+      parentFolderUrl: destino.webViewLink || `https://drive.google.com/drive/folders/${destino.id}`,
+      parentFolderPath: `UAI CAPOEIRA / ARQUIVOS ÚTEIS / ${categoria}${pacoteNome ? ` / ${pacoteNome}` : ''}`,
+      createdTime: file.createdTime || '',
+      modifiedTime: file.modifiedTime || '',
+      md5Checksum: file.md5Checksum || '',
+      publico,
+    };
+  }
+);
+
+
+async function driveObterArquivoMetadadosUai(accessToken, fileId) {
+  const response = await axios.get(
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}`,
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      params: {
+        fields: 'id,name,mimeType,size,webViewLink,webContentLink,parents,createdTime,modifiedTime,md5Checksum,trashed',
+        supportsAllDrives: true,
+      },
+      timeout: 20000,
+    }
+  );
+  return response.data || {};
+}
+
+async function driveCaminhoPastaUai(accessToken, folderId, bibliotecaId) {
+  if (!folderId) return 'UAI CAPOEIRA / ARQUIVOS ÚTEIS';
+  const nomes = [];
+  let atual = folderId;
+  for (let i = 0; i < 12 && atual; i++) {
+    if (atual === bibliotecaId) break;
+    try {
+      const response = await axios.get(
+        `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(atual)}`,
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          params: { fields: 'id,name,parents', supportsAllDrives: true },
+          timeout: 15000,
+        }
+      );
+      const pasta = response.data || {};
+      if (pasta.name) nomes.unshift(pasta.name);
+      atual = Array.isArray(pasta.parents) && pasta.parents.length ? pasta.parents[0] : '';
+    } catch (_) { break; }
+  }
+  return ['UAI CAPOEIRA', 'ARQUIVOS ÚTEIS', ...nomes].join(' / ');
+}
+
+exports.googleDriveSincronizarMetadadosArquivosUteis = onCall(
+  {
+    region: 'us-central1', timeoutSeconds: 180, memory: '512MiB',
+    secrets: [GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET],
+  },
+  async (request) => {
+    const uid = request.auth?.uid;
+    await driveExigirPermissaoUai(uid, 'pode_gerenciar_arquivos_associacao');
+    const { accessToken, config } = await driveAccessTokenUai();
+    const estrutura = await driveGarantirEstruturaUai(accessToken, config);
+    const snap = await db.collection('associacao_arquivos_uteis').get();
+    let atualizados = 0;
+    let ignorados = 0;
+
+    for (const doc of snap.docs) {
+      const data = doc.data() || {};
+      const temDrive = !!String(data.driveFileId || '').trim() ||
+        (Array.isArray(data.arquivos) && data.arquivos.some((a) => String(a?.driveFileId || '').trim()));
+      if (!temDrive) { ignorados++; continue; }
+      if (data.driveMetadadosSincronizadosEm) { ignorados++; continue; }
+
+      const arquivos = Array.isArray(data.arquivos) ? data.arquivos.map((a) => ({ ...(a || {}) })) : [];
+      let topo = null;
+      let caminho = String(data.driveCaminhoPasta || '').trim();
+      let total = 0;
+
+      try {
+        const topId = String(data.driveFileId || '').trim();
+        if (topId) {
+          topo = await driveObterArquivoMetadadosUai(accessToken, topId);
+          total += Number(topo.size || 0);
+          const parentId = Array.isArray(topo.parents) && topo.parents.length ? topo.parents[0] : String(data.driveFolderId || '');
+          caminho = await driveCaminhoPastaUai(accessToken, parentId, estrutura.biblioteca.id);
+        }
+
+        for (let i = 0; i < arquivos.length; i++) {
+          const fileId = String(arquivos[i].driveFileId || '').trim();
+          if (!fileId) continue;
+          const f = await driveObterArquivoMetadadosUai(accessToken, fileId);
+          total += Number(f.size || 0);
+          const parentId = Array.isArray(f.parents) && f.parents.length ? f.parents[0] : String(arquivos[i].driveFolderId || data.driveFolderId || '');
+          const path = await driveCaminhoPastaUai(accessToken, parentId, estrutura.biblioteca.id);
+          if (!caminho) caminho = path;
+          arquivos[i] = {
+            ...arquivos[i],
+            nome: arquivos[i].nome || f.name || 'Arquivo',
+            url: arquivos[i].url || f.webViewLink || '',
+            mimeType: f.mimeType || arquivos[i].mimeType || '',
+            tamanhoBytes: Number(f.size || arquivos[i].tamanhoBytes || 0),
+            driveNomeArquivo: f.name || '',
+            driveCaminhoPasta: path,
+            driveCriadoEm: f.createdTime || '',
+            driveModificadoEm: f.modifiedTime || '',
+            driveMd5Checksum: f.md5Checksum || '',
+          };
+        }
+
+        const update = {
+          arquivos,
+          driveCaminhoPasta: caminho,
+          driveTamanhoTotalBytes: total || Number(data.driveTamanhoBytes || 0),
+          driveMetadadosSincronizadosEm: admin.firestore.FieldValue.serverTimestamp(),
+          driveMetadadosSincronizadosPorUid: uid,
+        };
+        if (topo) {
+          update.driveNomeArquivo = topo.name || '';
+          update.driveMimeType = topo.mimeType || data.driveMimeType || '';
+          update.driveTamanhoBytes = Number(topo.size || data.driveTamanhoBytes || 0);
+          update.driveCriadoEm = topo.createdTime || '';
+          update.driveModificadoEm = topo.modifiedTime || '';
+          update.driveMd5Checksum = topo.md5Checksum || '';
+          update.url = data.url || topo.webViewLink || '';
+        }
+        await doc.ref.set(update, { merge: true });
+        atualizados++;
+      } catch (error) {
+        console.warn('Drive metadata sync ignorou item', doc.id, error?.response?.status || '', error?.message || error);
+        ignorados++;
+      }
+    }
+    return { ok: true, atualizados, ignorados };
+  }
+);
+
+
+exports.googleDriveAlterarVisibilidade = onCall(
+  {
+    region: 'us-central1', timeoutSeconds: 60, memory: '256MiB',
+    secrets: [GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET],
+  },
+  async (request) => {
+    const uid = request.auth?.uid;
+    await driveExigirPermissaoUai(uid, 'pode_compartilhar_arquivos_associacao');
+    const data = request.data && typeof request.data === 'object' ? request.data : {};
+    const fileId = driveTextoSeguroUai(data.fileId, 300);
+    const publico = data.publico === true;
+    if (!fileId) throw new HttpsError('invalid-argument', 'Arquivo do Google Drive não informado.');
+
+    const { accessToken } = await driveAccessTokenUai();
+    try {
+      const permissions = await axios.get(
+        `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/permissions`,
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          params: { fields: 'permissions(id,type,role)', supportsAllDrives: true },
+          timeout: 30000,
+        }
+      );
+      const list = Array.isArray(permissions?.data?.permissions) ? permissions.data.permissions : [];
+      const anyone = list.filter((p) => p?.type === 'anyone');
+
+      if (publico && anyone.length === 0) {
+        await axios.post(
+          `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/permissions`,
+          { type: 'anyone', role: 'reader', allowFileDiscovery: false },
+          {
+            headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+            params: { supportsAllDrives: true },
+            timeout: 30000,
+          }
+        );
+      }
+
+      if (!publico) {
+        for (const permission of anyone) {
+          if (!permission?.id) continue;
+          await axios.delete(
+            `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/permissions/${encodeURIComponent(permission.id)}`,
+            {
+              headers: { Authorization: `Bearer ${accessToken}` },
+              params: { supportsAllDrives: true },
+              timeout: 30000,
+            }
+          );
+        }
+      }
+      return { ok: true, fileId, publico };
+    } catch (error) {
+      const status = error?.response?.status;
+      const googleMessage = driveTextoSeguroUai(error?.response?.data?.error?.message || error?.message, 500);
+      console.error('❌ Google Drive alterar visibilidade:', status, googleMessage);
+      throw new HttpsError(
+        status === 401 || status === 403 ? 'permission-denied' : 'internal',
+        googleMessage || 'Não foi possível alterar o compartilhamento do arquivo no Google Drive.'
+      );
+    }
+  }
+);
+
+async function driveListarFilhosUai(accessToken, parentId) {
+  const files = [];
+  let pageToken = '';
+  do {
+    const response = await axios.get('https://www.googleapis.com/drive/v3/files', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      params: {
+        q: `'${driveEscapeQueryUai(parentId)}' in parents and trashed = false`,
+        fields: 'nextPageToken,files(id,name,mimeType,size,webViewLink,parents,createdTime,modifiedTime,appProperties)',
+        pageSize: 1000,
+        pageToken: pageToken || undefined,
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+      },
+      timeout: 30000,
+    });
+    files.push(...(Array.isArray(response?.data?.files) ? response.data.files : []));
+    pageToken = driveTextoSeguroUai(response?.data?.nextPageToken, 500);
+  } while (pageToken);
+  return files;
+}
+
+exports.googleDriveAuditarArquivosUteis = onCall(
+  {
+    region: 'us-central1', timeoutSeconds: 90, memory: '256MiB',
+    secrets: [GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET],
+  },
+  async (request) => {
+    const uid = request.auth?.uid;
+    await driveExigirPermissaoUai(uid, 'pode_limpar_drive_arquivos_associacao');
+    const { accessToken, config } = await driveAccessTokenUai();
+    const estrutura = await driveGarantirEstruturaUai(accessToken, config);
+
+    const todos = [];
+    const fila = [{ id: estrutura.biblioteca.id, nome: estrutura.biblioteca.name || 'ARQUIVOS ÚTEIS' }];
+    const visitados = new Set();
+    while (fila.length && todos.length < 5000) {
+      const pasta = fila.shift();
+      if (!pasta?.id || visitados.has(pasta.id)) continue;
+      visitados.add(pasta.id);
+      const filhos = await driveListarFilhosUai(accessToken, pasta.id);
+      for (const file of filhos) {
+        if (file?.mimeType === DRIVE_FOLDER_MIME_UAI) {
+          fila.push({ id: file.id, nome: file.name || 'Pasta' });
+        } else if (file?.id) {
+          todos.push({ ...file, pastaNome: pasta.nome || 'ARQUIVOS ÚTEIS' });
+        }
+      }
+    }
+
+    const catalogSnap = await db.collection('associacao_arquivos_uteis').get();
+    const vinculados = new Set();
+    for (const doc of catalogSnap.docs) {
+      const data = doc.data() || {};
+      const id = driveTextoSeguroUai(data.driveFileId, 300);
+      if (id) vinculados.add(id);
+      const versoes = Array.isArray(data.arquivos) ? data.arquivos : [];
+      for (const v of versoes) {
+        const vid = driveTextoSeguroUai(v?.driveFileId, 300);
+        if (vid) vinculados.add(vid);
+      }
+    }
+
+    const chave = (f) => `${String(f.name || '').trim().toLowerCase()}|${Number(f.size || 0)}|${String(f.mimeType || '')}`;
+    const contagem = new Map();
+    for (const f of todos) contagem.set(chave(f), (contagem.get(chave(f)) || 0) + 1);
+
+    const semVinculo = todos
+      .filter((f) => !vinculados.has(String(f.id || '')))
+      .map((f) => ({
+        id: String(f.id || ''),
+        nome: driveTextoSeguroUai(f.name, 260),
+        mimeType: driveTextoSeguroUai(f.mimeType, 180),
+        tamanhoBytes: Number(f.size || 0),
+        webViewLink: driveTextoSeguroUai(f.webViewLink, 1000) || `https://drive.google.com/file/d/${f.id}/view`,
+        pastaNome: driveTextoSeguroUai(f.pastaNome, 180),
+        possivelDuplicado: (contagem.get(chave(f)) || 0) > 1,
+      }))
+      .sort((a, b) => Number(b.possivelDuplicado) - Number(a.possivelDuplicado) || a.nome.localeCompare(b.nome));
+
+    return {
+      totalDrive: todos.length,
+      totalVinculados: vinculados.size,
+      totalSemVinculo: semVinculo.length,
+      arquivos: semVinculo,
+    };
+  }
+);
+
+exports.googleDriveExcluirArquivos = onCall(
+  {
+    region: 'us-central1', timeoutSeconds: 90, memory: '256MiB',
+    secrets: [GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET],
+  },
+  async (request) => {
+    const uid = request.auth?.uid;
+    const data = request.data && typeof request.data === 'object' ? request.data : {};
+    const limpeza = data.limpeza === true;
+    await driveExigirPermissaoUai(
+      uid,
+      limpeza ? 'pode_limpar_drive_arquivos_associacao' : 'pode_excluir_arquivos_associacao'
+    );
+    const raw = Array.isArray(data.fileIds) ? data.fileIds : [];
+    const ids = [...new Set(raw.map((v) => driveTextoSeguroUai(v, 300)).filter(Boolean))].slice(0, 100);
+    const catalogId = driveTextoSeguroUai(data.catalogId, 300);
+    if (!ids.length && !catalogId) throw new HttpsError('invalid-argument', 'Nenhum arquivo foi informado.');
+
+    const removidos = [];
+    const falhas = [];
+    let accessToken = '';
+    if (ids.length) {
+      ({ accessToken } = await driveAccessTokenUai());
+    }
+    for (const fileId of ids) {
+      try {
+        await axios.patch(
+          `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}`,
+          { trashed: true },
+          {
+            headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+            params: { supportsAllDrives: true },
+            timeout: 30000,
+          }
+        );
+        removidos.push(fileId);
+      } catch (error) {
+        falhas.push({
+          fileId,
+          status: Number(error?.response?.status || 0),
+          message: driveTextoSeguroUai(error?.response?.data?.error?.message || error?.message, 300),
+        });
+      }
+    }
+    if (!removidos.length && falhas.length) {
+      console.error('❌ Google Drive excluir arquivos:', falhas);
+      throw new HttpsError('internal', falhas[0]?.message || 'Não foi possível mover os arquivos para a lixeira do Google Drive.');
+    }
+    if (catalogId && !limpeza) {
+      await db.collection('associacao_arquivos_uteis').doc(catalogId).delete();
+    }
+    return { ok: true, removidos, falhas, catalogId };
+  }
+);
+
+exports.googleDrivePrepararUpload = onCall(
+  {
+    region: 'us-central1', timeoutSeconds: 60, memory: '256MiB',
+    secrets: [GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET],
+  },
+  async (request) => {
+    const uid = request.auth?.uid;
+    await driveExigirPermissaoUai(uid, 'pode_gerenciar_arquivos_associacao');
+    const data = request.data && typeof request.data === 'object' ? request.data : {};
+    const fileName = driveTextoSeguroUai(data.fileName, 220);
+    const mimeType = driveTextoSeguroUai(data.mimeType, 180) || 'application/octet-stream';
+    const categoria = driveTextoSeguroUai(data.categoria, 120) || 'Outros';
+    const pacoteNome = driveTextoSeguroUai(data.pacoteNome, 180);
+    const preferredFolderId = driveTextoSeguroUai(data.parentFolderId, 300);
+    const size = Math.max(0, Math.floor(Number(data.size || 0)));
+    if (!fileName) throw new HttpsError('invalid-argument', 'Nome do arquivo ausente.');
+    if (size <= 0) throw new HttpsError('invalid-argument', 'Arquivo vazio.');
+
+    const { accessToken, config } = await driveAccessTokenUai();
+    const estrutura = await driveGarantirEstruturaUai(accessToken, config);
+    const categoriaFolder = await driveGarantirPastaUai(accessToken, categoria, estrutura.biblioteca.id, '');
+    let destino = categoriaFolder;
+    if (pacoteNome) {
+      destino = await driveGarantirPastaUai(accessToken, pacoteNome, categoriaFolder.id, preferredFolderId);
+    } else if (preferredFolderId) {
+      const preferred = await driveFolderValidaUai(accessToken, preferredFolderId);
+      if (preferred) destino = preferred;
+    }
+
+    const metadata = {
+      name: fileName,
+      parents: [destino.id],
+      appProperties: {
+        uaiModulo: 'arquivos_uteis',
+        uaiCategoria: categoria.slice(0, 120),
+        uaiCriadoPorUid: String(uid).slice(0, 120),
+      },
+    };
+    const response = await axios.post(
+      'https://www.googleapis.com/upload/drive/v3/files',
+      metadata,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json; charset=UTF-8',
+          'X-Upload-Content-Type': mimeType,
+          'X-Upload-Content-Length': String(size),
+        },
+        params: {
+          uploadType: 'resumable',
+          fields: 'id,name,mimeType,size,webViewLink,webContentLink,parents',
+        },
+        timeout: 30000,
+        maxBodyLength: Infinity,
+      }
+    );
+    const uploadUrl = driveTextoSeguroUai(response.headers?.location, 6000);
+    if (!uploadUrl) throw new HttpsError('internal', 'Google Drive não retornou a sessão de upload.');
+    return {
+      uploadUrl,
+      parentFolderId: destino.id,
+      parentFolderUrl: destino.webViewLink || `https://drive.google.com/drive/folders/${destino.id}`,
+      categoriaFolderId: categoriaFolder.id,
+    };
+  }
+);
+
+exports.googleDriveConfirmarUpload = onCall(
+  {
+    region: 'us-central1', timeoutSeconds: 60, memory: '256MiB',
+    secrets: [GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET],
+  },
+  async (request) => {
+    const uid = request.auth?.uid;
+    await driveExigirPermissaoUai(uid, 'pode_gerenciar_arquivos_associacao');
+    const fileId = driveTextoSeguroUai(request.data?.fileId, 300);
+    if (!fileId) throw new HttpsError('invalid-argument', 'ID do arquivo ausente.');
+    const { accessToken } = await driveAccessTokenUai();
+    const file = await driveGetFileUai(accessToken, fileId);
+    if (!file?.id || file.trashed === true) throw new HttpsError('not-found', 'Arquivo não encontrado no Google Drive.');
+    return {
+      id: file.id,
+      name: file.name || '',
+      mimeType: file.mimeType || '',
+      size: Number(file.size || 0),
+      webViewLink: file.webViewLink || `https://drive.google.com/file/d/${file.id}/view`,
+      webContentLink: file.webContentLink || '',
+      parents: Array.isArray(file.parents) ? file.parents : [],
+    };
+  }
+);
+
+// =============================================================
+// PATCH SITE 13 - GOOGLE SHEETS SEGURO NO BACKEND
+// =============================================================
+// Antes, a conta de serviço era lida de assets/credentials.json.
+// Em Flutter Web isso tornava a chave privada publicamente baixável.
+// Agora o cliente envia somente os dados e o backend usa Application
+// Default Credentials (identidade da própria Cloud Function).
+//
+// IMPORTANTE: a planilha deve estar compartilhada com a conta de serviço
+// de runtime da Function. Em caso de 403, a mensagem retorna o e-mail
+// detectado para facilitar a configuração.
+// =============================================================
+const UAI_SHEETS_SPREADSHEET_ID = '1twmPps17joiGtsCxzi3NYmMN0ql0gyti5J-PsaVd6ng';
+const UAI_SHEETS_SHEET_NAME = 'BASE_NOMES';
+
+async function validarAdminGoogleSheets(request) {
+    if (!request.auth?.uid) {
+        throw new HttpsError('unauthenticated', 'Você precisa estar logado.');
+    }
+
+    const userDoc = await db.collection('usuarios').doc(request.auth.uid).get();
+    if (!userDoc.exists) {
+        throw new HttpsError('permission-denied', 'Usuário administrativo não encontrado.');
+    }
+
+    const data = userDoc.data() || {};
+    const status = String(data.status_conta || '').trim().toLowerCase();
+    const tipo = String(data.tipo || '').trim().toLowerCase();
+    const peso = Number(data.peso_permissao || 0);
+    const ativo = !['bloqueada', 'bloqueado', 'inativa', 'inativo', 'rejeitada', 'rejeitado'].includes(status);
+    const permitido = ativo && (
+        peso >= 90 ||
+        ['admin', 'administrador', 'super_admin', 'superadmin'].includes(tipo)
+    );
+
+    if (!permitido) {
+        throw new HttpsError(
+            'permission-denied',
+            'Apenas administradores autorizados podem enviar dados ao Google Sheets.'
+        );
+    }
+
+    return { uid: request.auth.uid };
+}
+
+async function criarSheetsBackendClient() {
+    const auth = new GoogleAuth({
+        scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+    });
+    const client = await auth.getClient();
+    const headers = await client.getRequestHeaders();
+    const credentials = await auth.getCredentials().catch(() => ({}));
+
+    return {
+        headers,
+        serviceAccountEmail: String(credentials?.client_email || '').trim(),
+    };
+}
+
+function sheetsApiUrl(range) {
+    return `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(UAI_SHEETS_SPREADSHEET_ID)}/values/${encodeURIComponent(range)}`;
+}
+
+function normalizarParticipantesSheets(raw) {
+    if (!Array.isArray(raw) || raw.length === 0) {
+        throw new HttpsError('invalid-argument', 'Selecione pelo menos um participante.');
+    }
+    if (raw.length > 500) {
+        throw new HttpsError('invalid-argument', 'Limite de 500 participantes por envio.');
+    }
+
+    return raw.map((item) => {
+        const alunoNome = String(item?.aluno_nome || '').trim().slice(0, 160);
+        const cpf = String(item?.cpf || '0').trim().slice(0, 32);
+        const graduacao = String(item?.graduacao_nova || '').trim().slice(0, 120);
+
+        if (!alunoNome) {
+            throw new HttpsError('invalid-argument', 'Existe participante sem nome.');
+        }
+
+        return {
+            aluno_nome: alunoNome,
+            cpf: cpf || '0',
+            graduacao_nova: graduacao || 'SEM GRADUAÇÃO',
+        };
+    });
+}
+
+function mensagemErroSheets(error, serviceAccountEmail) {
+    const status = Number(error?.response?.status || 0);
+    const apiMessage = String(error?.response?.data?.error?.message || '').trim();
+
+    if (status === 403) {
+        const conta = serviceAccountEmail
+            ? ` Compartilhe a planilha com: ${serviceAccountEmail}`
+            : '';
+        return `O servidor ainda não tem acesso à planilha.${conta}`;
+    }
+    if (status === 404) {
+        return `Planilha ou aba "${UAI_SHEETS_SHEET_NAME}" não encontrada.`;
+    }
+    return apiMessage || 'Não foi possível acessar o Google Sheets.';
+}
+
+exports.testarConexaoGoogleSheets = onCall(
+    { region: 'us-central1', timeoutSeconds: 30 },
+    async (request) => {
+        await validarAdminGoogleSheets(request);
+
+        let backend;
+        try {
+            backend = await criarSheetsBackendClient();
+            const url = `${sheetsApiUrl(`${UAI_SHEETS_SHEET_NAME}!A1:A1`)}?majorDimension=ROWS`;
+            const response = await axios.get(url, { headers: backend.headers });
+
+            return {
+                sucesso: true,
+                mensagem: '✅ API funcionando!',
+                possuiCabecalho: Array.isArray(response.data?.values) && response.data.values.length > 0,
+            };
+        } catch (error) {
+            console.error('Google Sheets - teste falhou:', error?.response?.data || error);
+            throw new HttpsError(
+                'failed-precondition',
+                mensagemErroSheets(error, backend?.serviceAccountEmail)
+            );
+        }
+    }
+);
+
+exports.adicionarParticipantesGoogleSheets = onCall(
+    { region: 'us-central1', timeoutSeconds: 60 },
+    async (request) => {
+        await validarAdminGoogleSheets(request);
+        const participantes = normalizarParticipantesSheets(request.data?.participantes);
+
+        let backend;
+        try {
+            backend = await criarSheetsBackendClient();
+
+            // Confere/corrige cabeçalho.
+            const a1Url = `${sheetsApiUrl(`${UAI_SHEETS_SHEET_NAME}!A1:C1`)}?majorDimension=ROWS`;
+            const a1 = await axios.get(a1Url, { headers: backend.headers });
+            const possuiCabecalho = Array.isArray(a1.data?.values) && a1.data.values.length > 0;
+
+            if (!possuiCabecalho) {
+                const headerUrl = `${sheetsApiUrl(`${UAI_SHEETS_SHEET_NAME}!A1:C1`)}?valueInputOption=USER_ENTERED`;
+                await axios.put(
+                    headerUrl,
+                    { values: [['aluno_nome', 'cpf', 'graduacao_nova']] },
+                    { headers: { ...backend.headers, 'Content-Type': 'application/json' } }
+                );
+            }
+
+            // Append é atômico e elimina a leitura manual da última linha.
+            const appendUrl =
+                `${sheetsApiUrl(`${UAI_SHEETS_SHEET_NAME}!A:C`)}:append` +
+                `?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+
+            const values = participantes.map((p) => [
+                p.aluno_nome,
+                p.cpf,
+                p.graduacao_nova,
+            ]);
+
+            const result = await axios.post(
+                appendUrl,
+                { values },
+                { headers: { ...backend.headers, 'Content-Type': 'application/json' } }
+            );
+
+            const updatedRows = Number(result.data?.updates?.updatedRows || values.length);
+
+            return {
+                sucesso: true,
+                mensagem: `✅ ${updatedRows} participante(s) enviado(s)!`,
+                total: updatedRows,
+            };
+        } catch (error) {
+            console.error('Google Sheets - envio falhou:', error?.response?.data || error);
+            throw new HttpsError(
+                'failed-precondition',
+                mensagemErroSheets(error, backend?.serviceAccountEmail)
+            );
+        }
+    }
+);
+
+// =============================================================
+// TRACKING PATCH 05 - CACHE ESTATISTICO DO DASHBOARD
+// =============================================================
+// Regra de custo:
+// - abrir Dashboard: valida admin + 1 leitura do cache;
+// - abas Visao Geral/Paginas/Inscricoes: ZERO varredura de sessoes brutas;
+// - aba Sessoes: cliente pagina 30 documentos por vez;
+// - reconstruir cache: SOMENTE por acao explicita (pull-to-refresh/botao),
+//   quando esta callable le as sessoes e regrava um unico documento agregado.
+// =============================================================
+const TRACKING_DASHBOARD_CACHE_REF = db
+    .collection('tracking_dashboard_cache')
+    .doc('principal_v3');
+
+function tracking05Map(value) {
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+function tracking05Int(value) {
+    const n = Number(value);
+    return Number.isFinite(n) ? Math.round(n) : 0;
+}
+
+function tracking05EventoMetadata(evento) {
+    return tracking05Map(evento?.metadata);
+}
+
+function tracking05NovoPeriodo() {
+    return {
+        total_visitas: 0,
+        acessos_por_hora: {},
+        acessos_por_dia: {
+            Seg: 0,
+            Ter: 0,
+            Qua: 0,
+            Qui: 0,
+            Sex: 0,
+            Sab: 0,
+            Dom: 0,
+        },
+        paginas: {},
+        funil_inscricao: {
+            visualizou: 0,
+            iniciou: 0,
+            revisao: 0,
+            envio: 0,
+            concluiu: 0,
+            abandonou: 0,
+            erros: 0,
+            conversao: 0,
+            media_tempo: 0,
+            etapas: {},
+            abandonos_etapa: {},
+            maior_abandono: null,
+            maior_abandono_qtd: 0,
+            _soma_tempo: 0,
+            _tempos: 0,
+        },
+    };
+}
+
+function tracking05NormalizarEtapa(value) {
+    const raw = String(value || '').trim().toLowerCase();
+    if (!raw) return '';
+    return raw
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+}
+
+function tracking05SessaoResumo(data) {
+    const eventos = Array.isArray(data?.eventos)
+        ? data.eventos.filter((e) => e && typeof e === 'object')
+        : [];
+
+    const paginas = new Set();
+    const duracoesPagina = {};
+    const etapas = new Set();
+    const abandonosEtapa = {};
+
+    let visualizouInscricao = false;
+    let iniciou = false;
+    let revisao = false;
+    let envio = false;
+    let concluiu = false;
+    let abandonou = false;
+    let erros = 0;
+    let tempoConclusao = 0;
+
+    for (const evento of eventos) {
+        const tipo = String(evento.tipo || '').trim();
+        const nome = String(evento.nome || '').trim();
+        const origem = String(evento.origem || '').trim();
+        const metadata = tracking05EventoMetadata(evento);
+        const formulario = String(metadata.formulario || '').trim();
+
+        if ((tipo === 'pagina' || tipo === 'tela') && nome) {
+            paginas.add(nome);
+        }
+
+        if (tipo === 'tela' && nome) {
+            const duracao = tracking05Int(metadata.duracao_segundos);
+            if (duracao > 0) {
+                duracoesPagina[nome] = (duracoesPagina[nome] || 0) + duracao;
+            }
+        }
+
+        const relacionadoInscricao =
+            tipo === 'funil_inscricao' ||
+            nome.includes('inscricao_publica') ||
+            String(evento.pagina_origem || '').includes('inscricao_publica') ||
+            formulario === 'inscricao_publica';
+
+        if (!relacionadoInscricao) continue;
+
+        if (
+            ((tipo === 'pagina' || tipo === 'tela') && nome === 'inscricao_publica') ||
+            tipo === 'funil_inscricao'
+        ) {
+            visualizouInscricao = true;
+        }
+
+        if (tipo === 'funil_inscricao') {
+            if (nome === 'inicio_formulario') iniciou = true;
+            if (nome === 'envio_iniciado') envio = true;
+            if (nome === 'concluiu_inscricao') concluiu = true;
+            if (nome === 'abandono') abandonou = true;
+
+            if (nome === 'etapa_visualizada' || nome === 'etapa_concluida') {
+                const etapa = tracking05NormalizarEtapa(
+                    metadata.etapa_nome || metadata.nome_etapa
+                );
+                if (etapa) {
+                    etapas.add(etapa);
+                    if (etapa === 'revisao') revisao = true;
+                }
+            }
+
+            if (nome === 'abandono') {
+                const etapa = tracking05NormalizarEtapa(
+                    metadata.etapa_nome || metadata.nome_etapa_atual
+                );
+                if (etapa) abandonosEtapa[etapa] = 1;
+            }
+
+            if (concluiu) {
+                const t = tracking05Int(
+                    metadata.duracao_total_segundos ||
+                    metadata.tempo_total_inscricao_segundos
+                );
+                if (t > tempoConclusao) tempoConclusao = t;
+            }
+        }
+
+        if (tipo === 'etapa_formulario') {
+            iniciou = true;
+            const etapa = tracking05NormalizarEtapa(
+                metadata.nome_etapa || metadata.etapa || nome
+            );
+            if (etapa && String(metadata.acao || origem) === 'entrou') {
+                etapas.add(etapa);
+                if (etapa === 'revisao') revisao = true;
+            }
+        }
+
+        if (tipo === 'formulario') {
+            const acao = String(metadata.acao || origem || '').trim();
+            if (acao === 'tentou_enviar_inscricao') envio = true;
+            if (acao === 'abandonou_inscricao') {
+                abandonou = true;
+                const etapa = tracking05NormalizarEtapa(
+                    metadata.etapa_nome_atual ||
+                    metadata.nome_etapa_atual ||
+                    metadata.etapa
+                );
+                if (etapa) abandonosEtapa[etapa] = 1;
+            }
+            if (
+                acao === 'iniciou' ||
+                acao === 'inicio' ||
+                acao === 'iniciou_inscricao'
+            ) {
+                iniciou = true;
+            }
+        }
+
+        if (tipo === 'erro_formulario') erros += 1;
+
+        if (
+            tipo === 'conversao' &&
+            (nome === 'inscricao_publica_enviada' ||
+             formulario === 'inscricao_publica')
+        ) {
+            concluiu = true;
+            const t = tracking05Int(
+                metadata.tempo_total_inscricao_segundos ||
+                metadata.duracao_total_segundos
+            );
+            if (t > tempoConclusao) tempoConclusao = t;
+        }
+    }
+
+    if (etapas.has('revisao')) revisao = true;
+    if (concluiu) abandonou = false;
+
+    return {
+        paginas,
+        duracoesPagina,
+        funil: {
+            visualizou: visualizouInscricao,
+            iniciou,
+            revisao,
+            envio,
+            concluiu,
+            abandonou,
+            erros,
+            tempoConclusao,
+            etapas,
+            abandonosEtapa,
+        },
+    };
+}
+
+function tracking05AdicionarSessao(periodo, data, dataAcesso) {
+    periodo.total_visitas += 1;
+
+    const dt = DateTime
+        .fromJSDate(dataAcesso)
+        .setZone('America/Sao_Paulo');
+
+    const hora = `${String(dt.hour).padStart(2, '0')}:00`;
+    periodo.acessos_por_hora[hora] =
+        (periodo.acessos_por_hora[hora] || 0) + 1;
+
+    const dias = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab', 'Dom'];
+    const dia = dias[Math.max(0, Math.min(6, dt.weekday - 1))];
+    periodo.acessos_por_dia[dia] =
+        (periodo.acessos_por_dia[dia] || 0) + 1;
+
+    const resumo = tracking05SessaoResumo(data);
+
+    for (const pagina of resumo.paginas) {
+        if (!periodo.paginas[pagina]) {
+            periodo.paginas[pagina] = { sessoes: 0, duracao: 0 };
+        }
+        periodo.paginas[pagina].sessoes += 1;
+        periodo.paginas[pagina].duracao +=
+            tracking05Int(resumo.duracoesPagina[pagina]);
+    }
+
+    const f = periodo.funil_inscricao;
+    const sf = resumo.funil;
+
+    if (sf.visualizou) f.visualizou += 1;
+    if (sf.iniciou) f.iniciou += 1;
+    if (sf.revisao) f.revisao += 1;
+    if (sf.envio) f.envio += 1;
+    if (sf.concluiu) {
+        f.concluiu += 1;
+        if (sf.tempoConclusao > 0) {
+            f._soma_tempo += sf.tempoConclusao;
+            f._tempos += 1;
+        }
+    }
+    if (sf.abandonou) f.abandonou += 1;
+    f.erros += sf.erros;
+
+    for (const etapa of sf.etapas) {
+        f.etapas[etapa] = (f.etapas[etapa] || 0) + 1;
+    }
+
+    for (const etapa of Object.keys(sf.abandonosEtapa || {})) {
+        f.abandonos_etapa[etapa] =
+            (f.abandonos_etapa[etapa] || 0) + 1;
+    }
+}
+
+function tracking05FinalizarPeriodo(periodo) {
+    const f = periodo.funil_inscricao;
+    f.conversao = f.visualizou > 0
+        ? Number(((f.concluiu / f.visualizou) * 100).toFixed(2))
+        : 0;
+    f.media_tempo = f._tempos > 0
+        ? Math.round(f._soma_tempo / f._tempos)
+        : 0;
+
+    let maior = null;
+    let maiorQtd = 0;
+    for (const [etapa, qtdRaw] of Object.entries(f.abandonos_etapa || {})) {
+        const qtd = tracking05Int(qtdRaw);
+        if (qtd > maiorQtd) {
+            maior = etapa;
+            maiorQtd = qtd;
+        }
+    }
+
+    f.maior_abandono = maior;
+    f.maior_abandono_qtd = maiorQtd;
+    delete f._soma_tempo;
+    delete f._tempos;
+
+    // Mantem somente paginas relevantes e impede crescimento acidental do doc.
+    const paginasOrdenadas = Object.entries(periodo.paginas)
+        .sort((a, b) => tracking05Int(b[1]?.sessoes) - tracking05Int(a[1]?.sessoes))
+        .slice(0, 80);
+    periodo.paginas = Object.fromEntries(paginasOrdenadas);
+
+    return periodo;
+}
+
+async function tracking05LerTodasSessoes() {
+    const docs = [];
+    let lastDoc = null;
+
+    while (true) {
+        let query = db
+            .collection('estatisticas_acessos')
+            .orderBy('data_acesso', 'asc')
+            .limit(500);
+
+        if (lastDoc) query = query.startAfter(lastDoc);
+
+        const snapshot = await query.get();
+        if (snapshot.empty) break;
+
+        for (const doc of snapshot.docs) {
+            docs.push(doc);
+        }
+
+        lastDoc = snapshot.docs[snapshot.docs.length - 1];
+        if (snapshot.size < 500) break;
+    }
+
+    return docs;
+}
+
+async function tracking05ConstruirCache() {
+    const agora = DateTime.now().setZone('America/Sao_Paulo');
+    const inicioHoje = agora.startOf('day').toJSDate();
+    const inicioSemana = agora.startOf('week').toJSDate();
+    const inicioMes = agora.startOf('month').toJSDate();
+
+    const periodos = {
+        todos: tracking05NovoPeriodo(),
+        hoje: tracking05NovoPeriodo(),
+        semana: tracking05NovoPeriodo(),
+        mes: tracking05NovoPeriodo(),
+    };
+
+    const docs = await tracking05LerTodasSessoes();
+
+    for (const doc of docs) {
+        const data = doc.data() || {};
+        const ts = data.data_acesso;
+        const dataAcesso =
+            ts && typeof ts.toDate === 'function' ? ts.toDate() : null;
+        if (!dataAcesso || Number.isNaN(dataAcesso.getTime())) continue;
+
+        tracking05AdicionarSessao(periodos.todos, data, dataAcesso);
+        if (dataAcesso >= inicioHoje) {
+            tracking05AdicionarSessao(periodos.hoje, data, dataAcesso);
+        }
+        if (dataAcesso >= inicioSemana) {
+            tracking05AdicionarSessao(periodos.semana, data, dataAcesso);
+        }
+        if (dataAcesso >= inicioMes) {
+            tracking05AdicionarSessao(periodos.mes, data, dataAcesso);
+        }
+    }
+
+    for (const key of Object.keys(periodos)) {
+        tracking05FinalizarPeriodo(periodos[key]);
+    }
+
+    // Reaproveita o agregado de localizacao ja existente sem reler sessoes
+    // outra vez. Ele custa somente uma leitura durante o rebuild manual.
+    let localizacaoLegacy = {};
+    try {
+        const statsDoc = await db
+            .collection('estatisticas')
+            .doc('contadores_agregados')
+            .get();
+        if (statsDoc.exists) {
+            localizacaoLegacy = { ...(statsDoc.data() || {}) };
+            // Timestamp do agregado antigo nao precisa viajar no cache/callable.
+            delete localizacaoLegacy.ultima_atualizacao;
+        }
+    } catch (_) {
+        localizacaoLegacy = {};
+    }
+
+    const cache = {
+        versao: 3,
+        gerado_em_iso: agora.toISO(),
+        gerado_em: admin.firestore.FieldValue.serverTimestamp(),
+        sessoes_processadas: docs.length,
+        periodos,
+        localizacao_legacy: localizacaoLegacy,
+        politica_cache: {
+            abertura_dashboard: 'cache_only',
+            rebuild: 'manual_pull_to_refresh',
+            sessoes: 'lazy_30_por_pagina',
+        },
+    };
+
+    await TRACKING_DASHBOARD_CACHE_REF.set(cache, { merge: false });
+
+    // FieldValue.serverTimestamp nao pode ser devolvido ao cliente.
+    return {
+        ...cache,
+        gerado_em: null,
+    };
+}
+
+exports.obterCacheDashboardTracking = onCall(
+    {
+        region: 'us-central1',
+        timeoutSeconds: 30,
+    },
+    async (request) => {
+        await validarAdminAreaAluno(request);
+
+        const doc = await TRACKING_DASHBOARD_CACHE_REF.get();
+        if (!doc.exists) {
+            return {
+                success: true,
+                cacheExiste: false,
+                cache: null,
+            };
+        }
+
+        const data = doc.data() || {};
+        return {
+            success: true,
+            cacheExiste: true,
+            cache: {
+                ...data,
+                gerado_em: null,
+            },
+        };
+    }
+);
+
+exports.reconstruirCacheDashboardTracking = onCall(
+    {
+        region: 'us-central1',
+        timeoutSeconds: 120,
+        memory: '512MiB',
+    },
+    async (request) => {
+        const adminAtual = await validarAdminAreaAluno(request);
+        const inicio = Date.now();
+
+        try {
+            const cache = await tracking05ConstruirCache();
+
+            return {
+                success: true,
+                cache,
+                sessoesLidas: tracking05Int(cache.sessoes_processadas),
+                duracaoMs: Date.now() - inicio,
+                atualizadoPor: adminAtual.uid,
+            };
+        } catch (error) {
+            console.error(
+                'Falha ao reconstruir cache do Dashboard Tracking:',
+                error
+            );
+            throw new HttpsError(
+                'internal',
+                'Não foi possível reconstruir o cache das estatísticas.'
+            );
+        }
+    }
+);
+
+// =============================================================
+// ÁREA DO ALUNO — PEDIDOS / UNIFORMES / REMESSAS
+// =============================================================
+// A tela do aluno NÃO consulta as coleções administrativas diretamente.
+// A Function confirma o vínculo do Firebase Auth com o aluno e devolve
+// somente dados sanitizados daquele aluno.
+function uniformesNumeroSeguro(value) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : 0;
+}
+
+function uniformesTextoSeguro(value, max = 180) {
+    return String(value == null ? '' : value).trim().slice(0, max);
+}
+
+function uniformesTimestampMs(value) {
+    if (!value) return 0;
+    if (typeof value.toMillis === 'function') return value.toMillis();
+    if (value instanceof Date) return value.getTime();
+    if (typeof value === 'number') return value;
+    return 0;
+}
+
+function uniformesItensSeguros(raw) {
+    if (!Array.isArray(raw)) return [];
+    return raw.slice(0, 50).map((item) => ({
+        nome: uniformesTextoSeguro(item?.nome || item?.produto_nome || item?.produtoNome || 'Item', 120),
+        tamanho: uniformesTextoSeguro(item?.tamanho || '', 40),
+        quantidade: Math.max(1, Math.floor(uniformesNumeroSeguro(item?.quantidade) || 1)),
+        valor_unitario: uniformesNumeroSeguro(item?.valor_unitario ?? item?.preco_unitario),
+        valor_total: uniformesNumeroSeguro(item?.valor_total),
+        status_entrega: uniformesTextoSeguro(item?.status_entrega || '', 40),
+    }));
+}
+
+exports.obterPedidosUniformesAreaAluno = onCall(
+    {
+        region: 'us-central1',
+        timeoutSeconds: 45,
+        memory: '256MiB',
+    },
+    async (request) => {
+        if (!request.auth?.uid) {
+            throw new HttpsError(
+                'unauthenticated',
+                'Entre com a conta vinculada para consultar seus pedidos.'
+            );
+        }
+
+        const alunoId = uniformesTextoSeguro(
+            request.data?.alunoId || request.data?.aluno_id || '',
+            120
+        );
+        if (!alunoId) {
+            throw new HttpsError('invalid-argument', 'Aluno não informado.');
+        }
+
+        const alunoDoc = await db.collection('alunos').doc(alunoId).get();
+        if (!alunoDoc.exists) {
+            throw new HttpsError('not-found', 'Aluno não encontrado.');
+        }
+
+        const aluno = alunoDoc.data() || {};
+        const permitido = await estudosAlunoPertenceAoUsuarioAutenticado(
+            alunoId,
+            aluno,
+            request.auth.uid
+        );
+
+        if (!permitido) {
+            throw new HttpsError(
+                'permission-denied',
+                'Esta conta não está vinculada a este aluno.'
+            );
+        }
+
+        const [pedidosSnap, vendasSnap] = await Promise.all([
+            db.collection('pedidos_uniformes')
+                .where('aluno_id', '==', alunoId)
+                .get(),
+            db.collection('vendas_uniformes')
+                .where('aluno_id', '==', alunoId)
+                .get(),
+        ]);
+
+        const remessaIds = new Set();
+        for (const doc of pedidosSnap.docs) {
+            const id = uniformesTextoSeguro((doc.data() || {}).remessa_id || '', 120);
+            if (id) remessaIds.add(id);
+        }
+
+        const remessas = new Map();
+        await Promise.all(
+            Array.from(remessaIds).map(async (id) => {
+                const doc = await db.collection('remessas').doc(id).get();
+                if (!doc.exists) return;
+                const d = doc.data() || {};
+                remessas.set(id, {
+                    id,
+                    nome: uniformesTextoSeguro(d.nome || 'Remessa de uniformes', 120),
+                    status: uniformesTextoSeguro(d.status || 'pendente', 40),
+                    data_prevista_ms: uniformesTimestampMs(d.data_prevista),
+                    data_envio_ms: uniformesTimestampMs(d.data_envio),
+                });
+            })
+        );
+
+        const pedidos = pedidosSnap.docs
+            .map((doc) => {
+                const d = doc.data() || {};
+                const remessaId = uniformesTextoSeguro(d.remessa_id || '', 120);
+                return {
+                    id: doc.id,
+                    tipo: 'pedido',
+                    id_pedido: uniformesTextoSeguro(d.id_pedido || `Pedido ${doc.id.slice(0, 6)}`, 120),
+                    status: uniformesTextoSeguro(d.status || 'pendente', 40),
+                    status_pagamento: uniformesTextoSeguro(d.status_pagamento || 'pendente', 40),
+                    valor_total: uniformesNumeroSeguro(d.valor_total),
+                    valor_pago: uniformesNumeroSeguro(d.valor_pago),
+                    data_pedido_ms: uniformesTimestampMs(d.data_pedido),
+                    itens: uniformesItensSeguros(d.itens),
+                    remessa_id: remessaId,
+                    remessa: remessaId ? (remessas.get(remessaId) || {}) : {},
+                };
+            })
+            .filter((d) => !['excluido', 'excluida'].includes(String(d.status).toLowerCase()))
+            .sort((a, b) => b.data_pedido_ms - a.data_pedido_ms);
+
+        const vendas = vendasSnap.docs
+            .map((doc) => {
+                const d = doc.data() || {};
+                return {
+                    id: doc.id,
+                    tipo: 'venda',
+                    status: uniformesTextoSeguro(d.status || 'ativa', 40),
+                    status_pagamento: uniformesTextoSeguro(d.status_pagamento || 'pendente', 40),
+                    status_entrega: uniformesTextoSeguro(d.status_entrega || 'aguardando', 40),
+                    valor_total: uniformesNumeroSeguro(d.valor_total),
+                    valor_pago: uniformesNumeroSeguro(d.valor_pago),
+                    data_venda_ms: uniformesTimestampMs(d.data_venda),
+                    itens: uniformesItensSeguros(d.itens),
+                };
+            })
+            .filter((d) => String(d.status).toLowerCase() !== 'cancelada')
+            .sort((a, b) => b.data_venda_ms - a.data_venda_ms);
+
+        return {
+            success: true,
+            alunoId,
+            pedidos,
+            vendas,
+            total_pedidos_ativos: pedidos.filter(
+                (p) => !['finalizado', 'cancelado', 'cancelada'].includes(
+                    String(p.status).toLowerCase()
+                )
+            ).length,
+        };
+    }
+);
+
+// =============================================================
+// ÁREA DO ALUNO — PRÉVIA ADMINISTRATIVA
+// =============================================================
+// Não troca FirebaseAuth, não cria sessão de aluno e não impersona UID.
+// Usa a MESMA config efetiva e o MESMO sanitizador do acesso real.
+exports.obterPreviewAdminAreaAluno = onCall(
+    {
+        region: 'us-central1',
+        cors: true,
+        invoker: 'public',
+        timeoutSeconds: 30,
+        memory: '256MiB',
+    },
+    async (request) => {
+        const adminUser = await validarAdminAreaAluno(request);
+
+        const alunoId = String(request.data?.alunoId || '').trim();
+        if (!alunoId) {
+            throw new HttpsError('invalid-argument', 'Aluno não informado.');
+        }
+
+        const alunoDoc = await db.collection('alunos').doc(alunoId).get();
+        if (!alunoDoc.exists) {
+            throw new HttpsError('not-found', 'Aluno não encontrado.');
+        }
+
+        const alunoData = alunoDoc.data() || {};
+        const googleVinculado =
+            alunoData.areaAlunoGoogleVinculado === true &&
+            String(alunoData.areaAlunoGoogleUid || '').trim() !== '';
+        const contaUaiVinculada =
+            String(alunoData.conta_uai_uid || '').trim() !== '' &&
+            String(alunoData.email_conta_uai || '').trim() !== '';
+
+        let modoAcesso = 'basico';
+        if (googleVinculado) {
+            modoAcesso = 'google';
+        } else if (contaUaiVinculada) {
+            modoAcesso = 'conta_uai';
+        }
+
+        const configBase = await carregarConfigAreaAluno();
+        const configEfetiva = configEfetivaAreaAluno(
+            configBase,
+            modoAcesso,
+            alunoData
+        );
+        const alunoLiberado = await montarDadosAlunoLiberados(
+            alunoId,
+            alunoData,
+            configEfetiva
+        );
+
+        const metodoVinculo = googleVinculado
+            ? 'google'
+            : (contaUaiVinculada ? 'email' : 'basico');
+
+        await db.collection('area_aluno_admin_preview_logs').add({
+            admin_uid: adminUser.uid,
+            admin_nome: adminUser.nome,
+            aluno_id: alunoId,
+            aluno_nome: String(alunoData.nome || ''),
+            modo_acesso_simulado: modoAcesso,
+            metodo_vinculo: metodoVinculo,
+            criado_em: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        return {
+            success: true,
+            aluno: alunoLiberado,
+            config: {
+                ...configEfetiva,
+                modo_acesso: modoAcesso,
+                admin_preview: true,
+            },
+            authPayload: {
+                modo_acesso: modoAcesso,
+                aluno_id: alunoId,
+                aluno_id_login: alunoId,
+                alunoSelecionadoId: alunoId,
+                admin_preview: true,
+                metodo_vinculo: metodoVinculo,
+                acesso_identidade_completa: modoAcesso !== 'basico',
+            },
+            preview: {
+                somente_leitura: true,
+                metodo_vinculo: metodoVinculo,
+                modo_acesso: modoAcesso,
+            },
+        };
+    }
+);
+
+
+// Ficha complementar restrita / Inscrições públicas.
+exports.consultarParentescoInscricao = contaUaiV4.consultarParentescoInscricao;
+exports.gerenciarFichaInscricao = contaUaiV4.gerenciarFichaInscricao;
+
+// Rede de parentesco administrativa — V5
+const redeParentescoUai = require('./inscricoes/rede_parentesco')({ onCall, HttpsError, db, admin, onDocumentWritten });
+exports.gerenciarRedeParentesco = redeParentescoUai.gerenciarRedeParentesco;
+exports.registrarFichaConvertida = redeParentescoUai.registrarFichaConvertida;
+
+// =============================================================
+// SITE / GRADUAÇÕES — ALUNOS VISÍVEIS PARA USUÁRIO AUTENTICADO
+// =============================================================
+async function validarAcessoGraduacoesLogadas(uid) {
+    const userDocPromise = db.collection('usuarios').doc(uid).get();
+    const contaDocPromise = db.collection('contas_acesso').doc(uid).get();
+    const googleAlunoPromise = db.collection('alunos')
+        .where('areaAlunoGoogleUid', '==', uid)
+        .limit(1)
+        .get();
+    const emailAlunoPromise = db.collection('alunos')
+        .where('conta_uai_uid', '==', uid)
+        .limit(1)
+        .get();
+
+    const [userDoc, contaDoc, googleAluno, emailAluno] = await Promise.all([
+        userDocPromise,
+        contaDocPromise,
+        googleAlunoPromise,
+        emailAlunoPromise,
+    ]);
+
+    if (userDoc.exists) {
+        const user = userDoc.data() || {};
+        const status = String(user.status_conta || '').trim().toLowerCase();
+        if (status === 'ativa') return true;
+    }
+
+    if (!googleAluno.empty || !emailAluno.empty) return true;
+
+    if (contaDoc.exists) {
+        const vinculoSnap = await contaDoc.ref
+            .collection('vinculos')
+            .where('estado', '==', 'aluno')
+            .limit(1)
+            .get();
+        if (!vinculoSnap.empty) return true;
+    }
+
+    return false;
+}
+
+function textoGraduacaoSeguro(value, max = 180) {
+    const text = String(value == null ? '' : value).trim();
+    return text.slice(0, max);
+}
+
+function dataGraduacaoAlunoMillis(aluno) {
+    return extrairMillis(aluno.data_graduacao_atual) ||
+        extrairMillis(aluno.data_ultima_graduacao) ||
+        0;
+}
+
+function participacaoEhFinalizada(data) {
+    const status = String(data.status || '').trim().toLowerCase();
+    return data.finalizado === true ||
+        data.participacao_finalizada === true ||
+        status === 'finalizado';
+}
+
+exports.buscarAlunosPorGraduacaoLogada = onCall(
+    {
+        region: 'us-central1',
+        timeoutSeconds: 45,
+        memory: '256MiB',
+    },
+    async (request) => {
+        const uid = request.auth?.uid;
+        if (!uid) {
+            throw new HttpsError(
+                'unauthenticated',
+                'Entre na sua conta para visualizar os alunos desta graduação.'
+            );
+        }
+
+        if (!(await validarAcessoGraduacoesLogadas(uid))) {
+            throw new HttpsError(
+                'permission-denied',
+                'Sua conta não possui acesso à Gestão nem à Área do Aluno.'
+            );
+        }
+
+        const graduacaoId = textoGraduacaoSeguro(request.data?.graduacaoId, 160);
+        if (!graduacaoId) {
+            throw new HttpsError('invalid-argument', 'Graduação não informada.');
+        }
+
+        const graduacaoDoc = await db.collection('graduacoes').doc(graduacaoId).get();
+        if (!graduacaoDoc.exists) {
+            throw new HttpsError('not-found', 'Graduação não encontrada.');
+        }
+
+        const [porIdAtual, porIdCompat] = await Promise.all([
+            db.collection('alunos')
+                .where('graduacao_id', '==', graduacaoId)
+                .get(),
+            db.collection('alunos')
+                .where('graduacao_atual_id', '==', graduacaoId)
+                .get(),
+        ]);
+
+        const alunosMap = new Map();
+        for (const doc of [...porIdAtual.docs, ...porIdCompat.docs]) {
+            const data = doc.data() || {};
+            if (!incluirAlunoNaListaGraduacao(data)) continue;
+            alunosMap.set(doc.id, { id: doc.id, ...data });
+        }
+
+        if (alunosMap.size === 0) {
+            const graduacao = graduacaoDoc.data() || {};
+            return {
+                success: true,
+                graduacaoId,
+                graduacaoNome: textoGraduacaoSeguro(
+                    graduacao.nome_graduacao || graduacao.corda || 'Graduação'
+                ),
+                total: 0,
+                alunos: [],
+            };
+        }
+
+        const alunoIds = new Set(alunosMap.keys());
+
+        const historicoQueries = await Promise.all([
+            db.collection('participacoes_eventos')
+                .where('graduacao_nova_id', '==', graduacaoId)
+                .get(),
+            db.collection('participacoes_eventos')
+                .where('graduacao_final_id', '==', graduacaoId)
+                .get(),
+            db.collection('participacoes_eventos')
+                .where('graduacao_id', '==', graduacaoId)
+                .get(),
+        ]);
+
+        const historicoPorAluno = new Map();
+        const historicosVisitados = new Set();
+
+        for (const snap of historicoQueries) {
+            for (const doc of snap.docs) {
+                if (historicosVisitados.has(doc.id)) continue;
+                historicosVisitados.add(doc.id);
+
+                const data = doc.data() || {};
+                const alunoId = textoGraduacaoSeguro(data.aluno_id, 160);
+                if (!alunoIds.has(alunoId) || !participacaoEhFinalizada(data)) {
+                    continue;
+                }
+
+                const atual = historicoPorAluno.get(alunoId);
+                historicoPorAluno.set(
+                    alunoId,
+                    escolherHistoricoMaisRecente(atual, data)
+                );
+            }
+        }
+
+        const eventosIds = new Set();
+        for (const aluno of alunosMap.values()) {
+            const historico = historicoPorAluno.get(aluno.id);
+            const historicoEventoId = textoGraduacaoSeguro(historico?.evento_id, 160);
+            const fallbackEventoId = textoGraduacaoSeguro(
+                aluno.ultimo_evento_graduacao,
+                160
+            );
+            const id = historicoEventoId || fallbackEventoId;
+            if (id) eventosIds.add(id);
+        }
+
+        const eventosPorId = new Map();
+        const refs = Array.from(eventosIds).map((id) => db.collection('eventos').doc(id));
+        if (refs.length > 0) {
+            const docs = await db.getAll(...refs);
+            for (const doc of docs) {
+                if (!doc.exists) continue;
+                const data = doc.data() || {};
+                eventosPorId.set(
+                    doc.id,
+                    textoGraduacaoSeguro(
+                        data.nome || data.nome_evento || data.titulo || 'Evento'
+                    )
+                );
+            }
+        }
+
+        // Fallback para cadastros antigos: quando a participação/histórico não
+        // guarda o evento, tenta descobrir pela data da graduação. A mesma data
+        // é considerada forte; em até 2 dias só aceitamos eventos claramente
+        // relacionados a graduação/batizado/troca de cordas.
+        const precisaFallbackPorData = Array.from(alunosMap.values()).some((aluno) => {
+            const historico = historicoPorAluno.get(aluno.id) || {};
+            const eventoId = textoGraduacaoSeguro(
+                historico.evento_id || aluno.ultimo_evento_graduacao,
+                160
+            );
+            const eventoNomeDireto = textoGraduacaoSeguro(historico.evento_nome, 180);
+            const eventoNomeResolvido = eventoNomeDireto ||
+                (eventoId ? (eventosPorId.get(eventoId) || '') : '');
+            const dataGraduacao =
+                extrairMillis(historico.data_evento) ||
+                extrairMillis(historico.finalizado_em) ||
+                dataGraduacaoAlunoMillis(aluno);
+            return !eventoNomeResolvido && dataGraduacao > 0;
+        });
+
+        let eventosFallbackPorData = [];
+        if (precisaFallbackPorData) {
+            const eventosSnap = await db.collection('eventos').limit(500).get();
+            eventosFallbackPorData = eventosSnap.docs.map((doc) => {
+                const data = doc.data() || {};
+                return {
+                    id: doc.id,
+                    nome: textoGraduacaoSeguro(
+                        data.nome || data.nome_evento || data.titulo || 'Evento',
+                        180
+                    ),
+                    titulo: textoGraduacaoSeguro(data.titulo || '', 180),
+                    tipo: textoGraduacaoSeguro(
+                        data.tipo || data.tipo_evento || data.categoria || '',
+                        120
+                    ),
+                    categoria: textoGraduacaoSeguro(data.categoria || '', 120),
+                    status: textoGraduacaoSeguro(data.status || '', 80),
+                    data: data.data || data.data_evento || data.inicio_em ||
+                        data.data_inicio || data.dataEvento || data.inicio || null,
+                };
+            });
+        }
+
+        const alunos = Array.from(alunosMap.values()).map((aluno) => {
+            const historico = historicoPorAluno.get(aluno.id) || {};
+            const eventoId = textoGraduacaoSeguro(
+                historico.evento_id || aluno.ultimo_evento_graduacao,
+                160
+            );
+            const eventoNomeDireto = textoGraduacaoSeguro(
+                historico.evento_nome,
+                180
+            );
+            const dataGraduacaoMs =
+                extrairMillis(historico.data_evento) ||
+                extrairMillis(historico.finalizado_em) ||
+                dataGraduacaoAlunoMillis(aluno);
+
+            let eventoNome = eventoNomeDireto ||
+                (eventoId ? (eventosPorId.get(eventoId) || '') : '');
+            let eventoIdFinal = eventoId;
+            let eventoInferidoPorData = false;
+
+            if (!eventoNome && dataGraduacaoMs > 0 && eventosFallbackPorData.length > 0) {
+                const inferido = escolherEventoPorDataGraduacao(
+                    dataGraduacaoMs,
+                    eventosFallbackPorData,
+                    2
+                );
+                if (inferido) {
+                    eventoIdFinal = textoGraduacaoSeguro(inferido.id, 160);
+                    eventoNome = textoGraduacaoSeguro(
+                        inferido.nome || inferido.titulo || 'Evento',
+                        180
+                    );
+                    eventoInferidoPorData = true;
+                }
+            }
+
+            return {
+                id: aluno.id,
+                nome: textoGraduacaoSeguro(
+                    aluno.nome || aluno.nome_completo || 'Aluno',
+                    180
+                ),
+                foto: textoGraduacaoSeguro(
+                    aluno.foto_perfil_aluno || aluno.foto || '',
+                    1000
+                ),
+                data_graduacao_ms: dataGraduacaoMs,
+                evento_id: eventoIdFinal,
+                evento_nome: eventoNome,
+                evento_inferido_por_data: eventoInferidoPorData,
+                status_atividade: textoGraduacaoSeguro(
+                    aluno.status_atividade || 'SEM STATUS',
+                    60
+                ),
+            };
+        });
+
+        alunos.sort((a, b) =>
+            a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' })
+        );
+
+        const graduacao = graduacaoDoc.data() || {};
+
+        return {
+            success: true,
+            graduacaoId,
+            graduacaoNome: textoGraduacaoSeguro(
+                graduacao.nome_graduacao || graduacao.corda || 'Graduação'
+            ),
+            total: alunos.length,
+            alunos,
+        };
+    }
+);
+
+
+// ============================================================
+// ALUNOS • ARQUIVO FOTOGRÁFICO HISTÓRICO • GOOGLE DRIVE
+// Firebase Storage = foto ativa | Drive = histórico | Firestore = índice
+// ============================================================
+async function driveExigirPermissaoFotoAlunoUai(uid, { write = false } = {}) {
+  if (!uid) throw new HttpsError('unauthenticated', 'Usuário não autenticado.');
+  const userRef = db.collection('usuarios').doc(uid);
+  const [userSnap, permSnap] = await Promise.all([
+    userRef.get(),
+    userRef.collection('permissoes_usuario').doc('configuracoes').get(),
+  ]);
+  const user = userSnap.data() || {};
+  if (!userSnap.exists || !driveStatusUsuarioAtivoUai(user)) {
+    throw new HttpsError('permission-denied', 'Conta sem acesso ao módulo de alunos.');
+  }
+  if (driveUsuarioAdminUai(user)) return user;
+  const perms = permSnap.data() || {};
+  const allowed = write
+    ? (perms.pode_editar_aluno === true || perms.pode_gerenciar_usuarios === true)
+    : (perms.pode_visualizar_alunos === true || perms.pode_editar_aluno === true);
+  if (allowed) return user;
+  throw new HttpsError('permission-denied', write
+    ? 'Você não tem permissão para arquivar fotos de alunos.'
+    : 'Você não tem permissão para visualizar o histórico fotográfico.');
+}
+
+function driveNomePastaAlunoFotoUai(alunoId, alunoNome) {
+  const nome = driveTextoSeguroUai(alunoNome, 100).replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'ALUNO';
+  const id = driveTextoSeguroUai(alunoId, 80).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 42);
+  return `${id || 'aluno'} - ${nome}`.slice(0, 150);
+}
+
+async function driveGarantirEstruturaFotosAlunoUai(accessToken, cfg, { alunoId, alunoNome, ano, versaoNome }) {
+  const alunoMetaRef = db.collection('alunos').doc(alunoId).collection('integracoes').doc('google_drive_fotos');
+  const folderLease = crypto.randomUUID();
+  await db.runTransaction(async (tx) => {
+    const meta = (await tx.get(alunoMetaRef)).data() || {};
+    if (meta.folderLeaseUntil?.toMillis() > Date.now()) {
+      throw new HttpsError('aborted', 'A pasta do aluno está sendo preparada.');
+    }
+    tx.set(alunoMetaRef, { folderLease, folderLeaseUntil: admin.firestore.Timestamp.fromMillis(Date.now() + 5 * 60000) }, { merge: true });
+  });
+  try {
+  const raiz = await driveGarantirPastaUai(accessToken, 'UAI CAPOEIRA', null, cfg.driveRootFolderId || '');
+  const alunos = await driveGarantirPastaUai(accessToken, 'ALUNOS', raiz.id, cfg.alunosFolderId || '');
+
+  // O ID da pasta do aluno é persistido separadamente do nome. Assim uma
+  // correção de nome/apelido no cadastro não cria outra árvore no Drive.
+
+  const alunoMetaSnap = await alunoMetaRef.get();
+  const alunoMeta = alunoMetaSnap.data() || {};
+  const aluno = await driveGarantirPastaUai(
+    accessToken,
+    driveNomePastaAlunoFotoUai(alunoId, alunoNome),
+    alunos.id,
+    driveTextoSeguroUai(alunoMeta.alunoFolderId, 300)
+  );
+  const fotos = await driveGarantirPastaUai(
+    accessToken,
+    'FOTOS',
+    aluno.id,
+    driveTextoSeguroUai(alunoMeta.fotosFolderId, 300)
+  );
+  const anoFolder = await driveGarantirPastaUai(accessToken, String(ano), fotos.id, '');
+  const versao = await driveGarantirPastaUai(accessToken, versaoNome, anoFolder.id, '');
+
+  await Promise.all([
+    DRIVE_INTEGRACAO_REF_UAI.set({
+      driveRootFolderId: raiz.id,
+      driveRootFolderUrl: raiz.webViewLink || `https://drive.google.com/drive/folders/${raiz.id}`,
+      alunosFolderId: alunos.id,
+      alunosFolderUrl: alunos.webViewLink || `https://drive.google.com/drive/folders/${alunos.id}`,
+      estruturaFotosAlunosAtualizadaEm: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true }),
+    alunoMetaRef.set({
+      alunoFolderId: aluno.id,
+      alunoFolderUrl: aluno.webViewLink || `https://drive.google.com/drive/folders/${aluno.id}`,
+      fotosFolderId: fotos.id,
+      fotosFolderUrl: fotos.webViewLink || `https://drive.google.com/drive/folders/${fotos.id}`,
+      atualizadoEm: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true }),
+  ]);
+  return { raiz, alunos, aluno, fotos, anoFolder, versao };
+  } finally {
+    await db.runTransaction(async (tx) => {
+      const meta = (await tx.get(alunoMetaRef)).data() || {};
+      if (meta.folderLease === folderLease) tx.set(alunoMetaRef, {
+        folderLease: admin.firestore.FieldValue.delete(), folderLeaseUntil: admin.firestore.FieldValue.delete(),
+      }, { merge: true });
+    });
+  }
+}
+
+async function driveUploadBufferFotoAlunoUai(accessToken, { bytes, fileName, mimeType, parentId, alunoId, fotoId, papel }) {
+  const found = await axios.get('https://www.googleapis.com/drive/v3/files', {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    params: { q: `trashed=false and '${driveEscapeQueryUai(parentId)}' in parents and appProperties has { key='uaiFotoId' and value='${driveEscapeQueryUai(fotoId)}' } and appProperties has { key='uaiPapel' and value='${driveEscapeQueryUai(papel)}' }`,
+      fields: 'files(id,name,mimeType,size,webViewLink)', pageSize: 1 }, timeout: 20000,
+  });
+  if (found.data?.files?.length) return found.data.files[0];
+  const boundary = `uai_aluno_foto_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  const metadata = {
+    name: driveTextoSeguroUai(fileName, 220) || 'foto.jpg',
+    parents: [parentId],
+    appProperties: {
+      uaiModulo: 'alunos_fotos',
+      uaiAlunoId: String(alunoId).slice(0, 120),
+      uaiFotoId: String(fotoId).slice(0, 120),
+      uaiPapel: String(papel).slice(0, 40),
+    },
+  };
+  const preamble = Buffer.from(
+    `--${boundary}\r\n` +
+    'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+    JSON.stringify(metadata) + '\r\n' +
+    `--${boundary}\r\n` +
+    `Content-Type: ${mimeType}\r\n\r\n`,
+    'utf8'
+  );
+  const ending = Buffer.from(`\r\n--${boundary}--\r\n`, 'utf8');
+  const body = Buffer.concat([preamble, bytes, ending]);
+  const response = await axios.post(
+    'https://www.googleapis.com/upload/drive/v3/files',
+    body,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': `multipart/related; boundary=${boundary}`,
+        'Content-Length': String(body.length),
+      },
+      params: {
+        uploadType: 'multipart',
+        fields: 'id,name,mimeType,size,webViewLink,webContentLink,parents,createdTime,modifiedTime,md5Checksum',
+      },
+      timeout: 90000,
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity,
+    }
+  );
+  return response.data || {};
+}
+
+exports.googleDriveAlunoFotosStatus = onCall(
+  {
+    region: 'us-central1', timeoutSeconds: 60, memory: '256MiB',
+    secrets: [GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET],
+  },
+  async (request) => {
+    const uid = request.auth?.uid;
+    await driveExigirPermissaoFotoAlunoUai(uid, { write: false });
+    const snap = await DRIVE_INTEGRACAO_REF_UAI.get();
+    const cfg = snap.data() || {};
+    return {
+      conectado: cfg.conectado === true && !!cfg.refreshToken,
+      contaEmail: driveTextoSeguroUai(cfg.contaEmail, 240),
+      pastaId: driveTextoSeguroUai(cfg.alunosFolderId, 300),
+      pastaUrl: driveTextoSeguroUai(cfg.alunosFolderUrl, 1200),
+      pastaNome: 'UAI CAPOEIRA / ALUNOS',
+    };
+  }
+);
+
+const driveArquivarFotoAlunoUai = require('./inscricoes/aluno_foto_arquivo')({
+  db, admin, crypto, sharp, HttpsError, driveTextoSeguroUai, driveAccessTokenUai, driveGarantirEstruturaFotosAlunoUai, driveUploadBufferFotoAlunoUai, driveNomePastaAlunoFotoUai
+});
+
+exports.googleDriveAlunoFotoBackup = onCall(
+  { region: 'us-central1', timeoutSeconds: 120, memory: '512MiB',
+    secrets: [GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET] },
+  async (request) => {
+    await driveExigirPermissaoFotoAlunoUai(request.auth?.uid, { write: true });
+    return driveArquivarFotoAlunoUai(request.data || {}, request.auth.uid);
+  }
+);
+
+// Studio 2.0: valida staging e agenda backup Drive no worker já existente.
+// Nunca recebe bytes/Base64: só paths de objetos autenticados do Storage.
+exports.enfileirarBackupFotoStudioUai = onCall(
+  { region: 'us-central1', timeoutSeconds: 60, memory: '256MiB' },
+  async (request) => {
+    const uid = request.auth?.uid;
+    await driveExigirPermissaoFotoAlunoUai(uid, { write: true });
+    const input = request.data || {};
+    const alunoId = driveTextoSeguroUai(input.alunoId, 160);
+    if (!/^[a-zA-Z0-9_-]{4,160}$/.test(alunoId)) {
+      throw new HttpsError('invalid-argument', 'Aluno inválido.');
+    }
+    const alunoRef = db.collection('alunos').doc(alunoId);
+    const aluno = await alunoRef.get();
+    if (!aluno.exists) throw new HttpsError('not-found', 'Aluno não encontrado.');
+    const prefix = `foto_alunos/studio_${alunoId}_${uid}_`;
+    const verify = async (value, suffix) => {
+      const path = String(value || '');
+      if (!path.startsWith(prefix) || !path.endsWith(suffix) || path.includes('/') && path.lastIndexOf('/') !== 'foto_alunos'.length) {
+        throw new HttpsError('permission-denied', 'Staging fora do aluno/sessão.');
+      }
+      const [meta] = await storage.bucket(bucketName).file(path).getMetadata();
+      const size = Number(meta.size || 0);
+      if (!size || size > 12 * 1024 * 1024 ||
+          meta.metadata?.uaiUploaderUid !== uid ||
+          meta.metadata?.uaiAlunoId !== alunoId ||
+          meta.metadata?.uaiPhotoStaging !== '2' ||
+          !['image/jpeg', 'image/png', 'image/webp'].includes(meta.contentType)) {
+        throw new HttpsError('failed-precondition', 'Arquivo de staging inválido.');
+      }
+      return path;
+    };
+    // Cada caminho possui um sufixo fixo e um token de operação não reutilizado.
+    const matches = (s, role) => /_/.test(s) && new RegExp(`_${role}\\.(jpg|png|webp)$`).test(s);
+    const finalPath = String(input.finalStoragePath || '');
+    const originalPath = String(input.originalStoragePath || '');
+    const oldPath = String(input.previousStoragePath || '');
+    if (!matches(finalPath, 'final') || !matches(originalPath, 'original') ||
+        (oldPath && !matches(oldPath, 'anterior'))) {
+      throw new HttpsError('invalid-argument', 'Nomes dos arquivos de staging inválidos.');
+    }
+    // FINAL, ORIGINAL e ANTERIOR precisam pertencer à MESMA operação.
+    const operation = finalPath.match(/^foto_alunos\/studio_[a-zA-Z0-9_-]+_[a-zA-Z0-9_-]+_(\d+)_final\.(jpg|png|webp)$/)?.[1];
+    if (!operation || !originalPath.startsWith(`${prefix}${operation}_original.`) ||
+        (oldPath && !oldPath.startsWith(`${prefix}${operation}_anterior.`))) {
+      throw new HttpsError('invalid-argument', 'Arquivos de operações diferentes.');
+    }
+    await Promise.all([
+      verify(finalPath, finalPath.slice(finalPath.lastIndexOf('_'))),
+      verify(originalPath, originalPath.slice(originalPath.lastIndexOf('_'))),
+      ...(oldPath ? [verify(oldPath, oldPath.slice(oldPath.lastIndexOf('_')))] : []),
+    ]);
+    const now = Date.now();
+    const idadeNaFoto = (Number.isFinite(Number(input.dataNascimentoMs)) && Number(input.dataNascimentoMs) > 0)
+      ? require('./inscricoes/aluno_foto_automatico').idadeNaData(
+        admin.firestore.Timestamp.fromMillis(Number(input.dataNascimentoMs)), now)
+      : null;
+    const jobs = db.collection('aluno_foto_backup_jobs');
+    const jobList = [
+      { path: finalPath, original: originalPath, origem: driveTextoSeguroUai(input.origem, 80) || 'studio',
+        captured: Number(input.capturadoEmMs) || now },
+      ...(oldPath ? [{ path: oldPath, original: oldPath, origem: 'foto_anterior',
+        captured: Number(input.previousCapturedAtMs) || now }] : []),
+    ];
+    const ids = [];
+    const operations = [];
+    for (const item of jobList) {
+      const id = crypto.createHash('sha256').update(`${alunoId}:${item.path}`).digest('hex');
+      ids.push(id);
+      operations.push({ ref: jobs.doc(id), item });
+    }
+    await db.runTransaction(async (tx) => {
+      const snapshots = await Promise.all(operations.map((x) => tx.get(x.ref)));
+      for (let i = 0; i < operations.length; i++) {
+        if (snapshots[i].exists) continue; // retry idempotente: não reinicia job concluído.
+        const { ref, item } = operations[i];
+        tx.set(ref, {
+        alunoId, alunoNome: driveTextoSeguroUai(input.alunoNome, 180) || aluno.data().nome || 'Aluno',
+        storagePath: item.path, originalStoragePath: item.original,
+        origem: item.origem, capturadoEmMs: item.captured,
+        idadeNaFoto: item.origem === 'foto_anterior' ? null : idadeNaFoto,
+        dataReferenciaTipo: item.origem === 'foto_anterior' ? 'historico' : 'edicao_studio',
+        criadoEm: admin.firestore.FieldValue.serverTimestamp(),
+        status: 'pendente', tentativas: 0,
+        proximaTentativaEm: admin.firestore.Timestamp.fromMillis(now),
+        pipelineVersion: 2,
+        });
+      }
+    });
+    return { ok: true, jobIds: ids };
+  }
+);
+
+exports.googleDriveAlunoFotoDownload = onCall(
+  {
+    region: 'us-central1', timeoutSeconds: 120, memory: '512MiB',
+    secrets: [GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET],
+  },
+  async (request) => {
+    const uid = request.auth?.uid;
+    await driveExigirPermissaoFotoAlunoUai(uid, { write: false });
+    const data = request.data && typeof request.data === 'object' ? request.data : {};
+    const alunoId = driveTextoSeguroUai(data.alunoId, 160);
+    const fotoId = driveTextoSeguroUai(data.fotoId, 160);
+    const asset = data.asset === 'original' ? 'original' : 'final';
+    if (!alunoId || !fotoId) throw new HttpsError('invalid-argument', 'Foto histórica não informada.');
+
+    const historySnap = await db.collection('alunos').doc(alunoId).collection('fotos_historico').doc(fotoId).get();
+    if (!historySnap.exists) throw new HttpsError('not-found', 'Versão fotográfica não encontrada.');
+    const item = historySnap.data() || {};
+    const fileId = driveTextoSeguroUai(asset === 'original' ? item.originalDriveFileId : item.finalDriveFileId, 300);
+    const mimeType = driveTextoSeguroUai(asset === 'original' ? item.originalMimeType : item.finalMimeType, 120) || 'image/jpeg';
+    if (!fileId && item.storagePath) {
+      const { storagePathSeguro } = require('./inscricoes/aluno_foto_automatico');
+      const path = storagePathSeguro(`gs://${bucketName}/${item.storagePath}`, bucketName);
+      const bytes = await baixarFotoCadastroUai(path);
+      return { ok: true, base64: bytes.toString('base64'), mimeType, fotoId, asset, backupPendente: true };
+    }
+    if (!fileId) throw new HttpsError('not-found', `Esta versão não possui arquivo ${asset}.`);
+
+    const { accessToken } = await driveAccessTokenUai();
+    try {
+      const response = await axios.get(
+        `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}`,
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          params: { alt: 'media', supportsAllDrives: true },
+          responseType: 'arraybuffer',
+          timeout: 90000,
+          maxContentLength: 15 * 1024 * 1024,
+        }
+      );
+      const bytes = Buffer.from(response.data);
+      return {
+        fotoId,
+        asset,
+        mimeType,
+        size: bytes.length,
+        base64: bytes.toString('base64'),
+      };
+    } catch (error) {
+      console.error('googleDriveAlunoFotoDownload:', error?.response?.status, error?.message || error);
+      throw new HttpsError('unavailable', 'Não foi possível baixar a foto histórica do Google Drive.');
+    }
+  }
+);
+
+
+// Fila durável de fotos do cadastro: não depende de abrir o Studio.
+async function baixarFotoCadastroUai(path) {
+  const file = storage.bucket(bucketName).file(path);
+  const [metadata] = await file.getMetadata();
+  if (!Number(metadata.size) || Number(metadata.size) > 12 * 1024 * 1024) {
+    throw new HttpsError('invalid-argument', 'Foto vazia ou maior que 12 MB.');
+  }
+  const [bytes] = await file.download();
+  return bytes;
+}
+const filaFotosCadastroUai = require('./inscricoes/aluno_foto_automatico').criarFilaFotos({
+  db, admin, bucketName, download: baixarFotoCadastroUai,
+  archive: (data, options) => driveArquivarFotoAlunoUai(data, 'sistema_cadastro', options),
+  onArchived: async (paths) => {
+    for (const path of paths) {
+      if (!/^foto_alunos\/studio_[^/]+\.(jpg|png|webp)$/.test(path)) continue;
+      await storage.bucket(bucketName).file(path).delete({ ignoreNotFound: true });
+    }
+  },
+});
+exports.registrarFotosCadastroAluno = onDocumentWritten(
+  { document: 'alunos/{alunoId}', region: 'us-central1', timeoutSeconds: 120, memory: '256MiB', retry: true },
+  async (event) => {
+    if (!event.data?.after.exists) return;
+    const after = event.data.after.data(); const before = event.data.before.data() || {};
+    if (event.data.before.exists && after.foto_cadastro_versao === before.foto_cadastro_versao) return;
+    await filaFotosCadastroUai.enfileirar(event.params.alunoId, after);
+  }
+);
+exports.processarFotoCadastroAluno = onDocumentWritten(
+  { document: 'aluno_foto_backup_jobs/{jobId}', region: 'us-central1', timeoutSeconds: 300,
+    memory: '512MiB', maxInstances: 3, retry: true,
+    secrets: [GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET] },
+  async (event) => {
+    if (!event.data?.after.exists || event.data.after.data().status !== 'pendente') return;
+    await filaFotosCadastroUai.processar(event.params.jobId);
+  }
+);
+exports.reprocessarFotosCadastroAluno = onSchedule(
+  { schedule: 'every 15 minutes', region: 'us-central1', timeoutSeconds: 540,
+    memory: '512MiB', maxInstances: 1,
+    secrets: [GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET] },
+  async () => {
+    const snap = await db.collection('aluno_foto_backup_jobs')
+      .where('proximaTentativaEm', '<=', admin.firestore.Timestamp.now())
+      .orderBy('proximaTentativaEm').limit(6).get();
+    // Limite de dois trabalhos concorrentes para conter uso de memória/Drive.
+    for (let i = 0; i < snap.docs.length; i += 2) {
+      await Promise.all(snap.docs.slice(i, i + 2).map(doc => filaFotosCadastroUai.processar(doc.id)));
+    }
+  }
+);
+
+
+// =============================================================
+// INSCRIÇÕES -> CHAMADA DO DIA
+// Ao converter uma inscrição em aluno, inclui o novo aluno em uma chamada
+// já existente da mesma turma/data. Idempotente e compatível com contadores.
+// =============================================================
+exports.incluirAlunoConvertidoNaChamadaDoDia = onDocumentWritten(
+  { document: 'inscricoes_aprovadas/{inscricaoId}', region: 'us-central1', timeoutSeconds: 120, memory: '256MiB', retry: true },
+  async (event) => {
+    if (!event.data?.after?.exists) return;
+    const after = event.data.after.data() || {};
+    const alunoId = String(after.aluno_id || '').trim();
+    const turmaId = String(after.turma_id || '').trim();
+    if (!alunoId || !turmaId) return;
+
+    const configDoc = await db.collection('configuracoes').doc('inscricoes').get();
+    const integracao = configDoc.data()?.integracao_chamada_conversao || {};
+    if (integracao.ativo === false) return;
+
+    const aprovadoEm = after.aprovado_em?.toDate ? after.aprovado_em.toDate() : new Date();
+    const dataBrasilia = DateTime.fromJSDate(aprovadoEm).setZone('America/Sao_Paulo');
+    const dataFormatada = dataBrasilia.toFormat('yyyy-MM-dd');
+    const mesAno = dataFormatada.substring(0, 7);
+
+    const chamadaQuery = await db.collection('chamadas')
+      .where('turma_id', '==', turmaId)
+      .where('data_formatada', '==', dataFormatada)
+      .limit(1)
+      .get();
+    if (chamadaQuery.empty) return;
+
+    const chamadaRef = chamadaQuery.docs[0].ref;
+    const alunoRef = db.collection('alunos').doc(alunoId);
+    const logRef = db.collection('log_presenca_alunos').doc(`log_${turmaId}_${alunoId}_${dataFormatada}`);
+    const contadorDashboardRef = alunoRef.collection('contadores').doc('frequencia_dashboard');
+    const contadorGeralRef = db.collection('contador_presencas_alunos').doc(alunoId);
+    const historicoRef = alunoRef.collection('historico_edicoes').doc(`inscricao_chamada_${event.params.inscricaoId}_${dataFormatada}`);
+
+    const resultado = after.resultado_aula_experimental || {};
+    const presente = String(resultado.presenca || '').toLowerCase() === 'compareceu';
+
+    const alunoDoc = await alunoRef.get();
+    if (!alunoDoc.exists) return;
+    const aluno = alunoDoc.data() || {};
+    const nome = String(aluno.nome || after.nome || after.aluno_nome || 'Aluno').trim();
+    const foto = String(aluno.foto_url || aluno.foto_perfil || aluno.foto || '').trim();
+
+    let inseriu = false;
+    await db.runTransaction(async (tx) => {
+      const [chamadaSnap, logSnap] = await Promise.all([tx.get(chamadaRef), tx.get(logRef)]);
+      if (!chamadaSnap.exists) return;
+      const chamada = chamadaSnap.data() || {};
+      const alunos = Array.isArray(chamada.alunos) ? [...chamada.alunos] : [];
+      const jaExiste = alunos.some((a) => String(a?.aluno_id || a?.id || '') === alunoId);
+      if (jaExiste) return;
+
+      const novo = {
+        aluno_id: alunoId,
+        id: alunoId,
+        aluno_nome: nome,
+        nome,
+        apelido: String(aluno.apelido || ''),
+        presente,
+        observacao: 'Incluído automaticamente após conversão da inscrição.',
+        foto_perfil_aluno: foto,
+        foto,
+        graduacao_id: aluno.graduacao_id || null,
+        graduacao_nome: String(aluno.graduacao_nome || aluno.graduacao_atual || ''),
+        ultimo_dia_presente: aluno.ultimo_dia_presente || null,
+        origem: 'conversao_inscricao',
+      };
+      alunos.push(novo);
+      const presentes = alunos.filter((a) => a?.presente === true).length;
+      const total = alunos.length;
+      const ausentes = total - presentes;
+      const percentual = total > 0 ? Math.round((presentes / total) * 100) : 0;
+      const timestampAula = chamada.data_chamada || admin.firestore.Timestamp.fromDate(dataBrasilia.toJSDate());
+      const diaSemanaAbrev = chamada.dia_semana_abrev || normalizarDiaSemanaAbrev(dataBrasilia.setLocale('pt-BR').toFormat('ccc'));
+      const professorId = chamada.professor_id || null;
+      const professorNome = chamada.professor_nome || 'Sistema';
+
+      tx.set(chamadaRef, {
+        alunos,
+        total_alunos: total,
+        presentes,
+        ausentes,
+        porcentagem_frequencia: percentual,
+        atualizado_em: admin.firestore.FieldValue.serverTimestamp(),
+        ultima_inclusao_conversao: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+
+      tx.set(logRef, {
+        log_id: logRef.id,
+        chamada_id: chamadaRef.id,
+        aluno_id: alunoId,
+        aluno_nome: nome,
+        turma_id: turmaId,
+        turma_nome: chamada.turma_nome || after.turma_nome || '',
+        academia_id: chamada.academia_id || after.academia_id || '',
+        academia_nome: chamada.academia_nome || after.academia_nome || '',
+        data_aula: timestampAula,
+        data_formatada: dataFormatada,
+        dia_semana_abrev: diaSemanaAbrev,
+        presente,
+        tipo_aula: chamada.tipo_aula || 'OBJETIVA',
+        observacao: 'Incluído automaticamente após conversão da inscrição.',
+        foto_perfil_aluno: foto,
+        apelido: String(aluno.apelido || ''),
+        graduacao_id: aluno.graduacao_id || null,
+        graduacao_nome: String(aluno.graduacao_nome || aluno.graduacao_atual || ''),
+        professor_id: professorId,
+        professor_nome: professorNome,
+        registrado_em: logSnap.exists ? (logSnap.data()?.registrado_em || admin.firestore.FieldValue.serverTimestamp()) : admin.firestore.FieldValue.serverTimestamp(),
+        atualizado_em: admin.firestore.FieldValue.serverTimestamp(),
+        tipo_registro: 'conversao_inscricao_chamada',
+      }, { merge: true });
+
+      if (presente && !logSnap.exists) {
+        tx.set(alunoRef, {
+          [`contadores.${mesAno}`]: admin.firestore.FieldValue.increment(1),
+          ultima_presenca: timestampAula,
+          ultimo_dia_presente: dataFormatada,
+          ultima_chamada: admin.firestore.FieldValue.serverTimestamp(),
+          ultima_chamada_por: professorNome,
+          ultima_chamada_por_id: professorId,
+        }, { merge: true });
+      } else {
+        tx.set(alunoRef, {
+          ultima_chamada: admin.firestore.FieldValue.serverTimestamp(),
+          ultima_chamada_por: professorNome,
+          ultima_chamada_por_id: professorId,
+        }, { merge: true });
+      }
+
+      const contadorUpdates = montarUpdatesContadorFrequencia({
+        alunoId,
+        alunoNome: nome,
+        turmaId,
+        turmaNome: chamada.turma_nome || after.turma_nome || '',
+        academiaId: chamada.academia_id || after.academia_id || '',
+        academiaNome: chamada.academia_nome || after.academia_nome || '',
+        dataBrasilia,
+        timestampBrasilia: timestampAula,
+        presenteAntes: logSnap.exists && logSnap.data()?.presente === true,
+        presenteDepois: presente,
+        diaSemanaAbrev,
+        professorId,
+        professorNome,
+      });
+      tx.set(contadorDashboardRef, contadorUpdates, { merge: true });
+      tx.set(contadorGeralRef, {
+        turma_id: turmaId,
+        academia_id: chamada.academia_id || after.academia_id || '',
+        aluno_id: alunoId,
+        aluno_nome: nome,
+        atualizado_em: admin.firestore.FieldValue.serverTimestamp(),
+        ultima_chamada: admin.firestore.FieldValue.serverTimestamp(),
+        ultima_chamada_por: professorNome,
+        ultima_chamada_por_id: professorId,
+      }, { merge: true });
+      tx.set(historicoRef, {
+        tipo: 'inscricao_incluida_chamada',
+        titulo: 'Incluído na chamada do dia',
+        descricao: `${dataFormatada} • ${presente ? 'presente' : 'ausente'} • ${chamada.turma_nome || after.turma_nome || ''}`,
+        origem: 'automacao_conversao_inscricao',
+        chamada_id: chamadaRef.id,
+        inscricao_id: event.params.inscricaoId,
+        presente,
+        criado_em: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+      inseriu = true;
+    });
+
+    if (inseriu) {
+      await db.collection('inscricoes_auditoria').add({
+        tipo: 'conversao_incluida_chamada',
+        titulo: 'Aluno incluído automaticamente na chamada',
+        inscricao_id: event.params.inscricaoId,
+        aluno_id: alunoId,
+        aluno_nome: nome,
+        turma_id: turmaId,
+        chamada_id: chamadaRef.id,
+        data_chamada: dataFormatada,
+        presente,
+        origem: 'automacao_conversao_inscricao',
+        status: 'ok',
+        executado_por: 'robo_conversao_chamada',
+        data: admin.firestore.FieldValue.serverTimestamp(),
+        criado_em: admin.firestore.FieldValue.serverTimestamp(),
+      }).catch(() => {});
+      await reconstruirDashboardTurmaCacheInterno(turmaId, { force: true, origem: 'conversao_inscricao_chamada' }).catch(() => {});
+    }
+  }
+);
+
+// Jornada de inscrições: recibo automático e convite por e-mail.
+const emailsJornadaInscricao = require('./inscricoes/emails_jornada')({
+  onCall, onDocumentCreated: require('firebase-functions/v2/firestore').onDocumentCreated,
+  onSchedule, HttpsError, db, admin,
+});
+exports.registrarEmailInscricaoRecebida = emailsJornadaInscricao.registrarEmailInscricaoRecebida;
+exports.enviarConviteAulaExperimentalEmail = emailsJornadaInscricao.enviarConviteAulaExperimentalEmail;
+exports.reprocessarEmailsInscricao = emailsJornadaInscricao.reprocessarEmailsInscricao;
+/** Robô diário: às 12h (America/Sao_Paulo), envia o e-mail da aula experimental para quem tem aula no dia. */
+exports.roboLembreteAulaExperimental = emailsJornadaInscricao.roboLembreteAulaExperimental;
+/** Execução manual do mesmo robô para teste/auditoria por usuário autorizado. */
+exports.executarRoboAulaExperimentalAgora = emailsJornadaInscricao.executarRoboAulaExperimentalAgora;
+
+// Auditoria administrativa de inscrições: criação, agendamento, aprovação, arquivamento e configurações.
+const auditoriaInscricoes = require('./inscricoes/auditoria_inscricoes')({onDocumentWritten, db, admin});
+exports.auditarInscricaoAtiva = auditoriaInscricoes.auditarInscricaoAtiva;
+exports.auditarInscricaoAprovada = auditoriaInscricoes.auditarInscricaoAprovada;
+exports.auditarInscricaoArquivada = auditoriaInscricoes.auditarInscricaoArquivada;
+exports.auditarConfiguracaoInscricoes = auditoriaInscricoes.auditarConfiguracaoInscricoes;
+
+// Suporte público e avaliação opcional: dados privados, acesso por callable.
+const experienciaInscricao = require('./inscricoes/experiencia_inscricao')({onCall, HttpsError, db});
+exports.registrarProblemaInscricao = experienciaInscricao.registrarProblemaInscricao;
+exports.avaliarExperienciaInscricao = experienciaInscricao.avaliarExperienciaInscricao;
+exports.listarExperienciaInscricao = experienciaInscricao.listarExperienciaInscricao;
+exports.atualizarSuporteInscricao = experienciaInscricao.atualizarSuporteInscricao;
+exports.painelExperienciaInscricao = experienciaInscricao.painelExperienciaInscricao;
+
+// Aplicar uma inscrição a um aluno existente sem recriar sua identidade.
+const renovacaoInscricao = require('./inscricoes/renovacao_inscricao')({onCall, HttpsError, db, admin, bucketName});
+exports.listarAlunosParaAtualizarInscricao = renovacaoInscricao.listarAlunosParaAtualizarInscricao;
+exports.prepararAtualizacaoAlunoInscricao = renovacaoInscricao.prepararAtualizacaoAlunoInscricao;
+exports.aplicarInscricaoAlunoExistente = renovacaoInscricao.aplicarInscricaoAlunoExistente;
+
+// =============================================================
+// UAI RELEASE STORAGE ROBOT - inventario, retencao e auditoria
+// =============================================================
+const createReleaseStorageRobot = require('./atualizacoes/release_storage_robot');
+const releaseStorageRobot = createReleaseStorageRobot({
+    admin,
+    db,
+    storage,
+    bucketName,
+    onCall,
+    onSchedule,
+    HttpsError,
+});
+exports.listarStorageReleases = releaseStorageRobot.listar;
+exports.salvarConfigLimpezaReleases = releaseStorageRobot.salvarConfig;
+exports.excluirReleaseStorageManual = releaseStorageRobot.excluirManual;
+exports.executarLimpezaReleasesAgora = releaseStorageRobot.executarAgora;
+exports.limpezaAutomaticaReleases = releaseStorageRobot.scheduler;
+exports.registrarEventoAtualizacao = releaseStorageRobot.registrarEventoAtualizacao;
+exports.obterTelemetriaVersao = releaseStorageRobot.obterTelemetriaVersao;
+exports.excluirVersaoCompleta = releaseStorageRobot.excluirVersaoCompleta;
+
+
+
+// =============================================================
+// USUARIOS - CENTRAL DE IDENTIDADES FIREBASE AUTH x FIRESTORE
+// =============================================================
+const buildIdentidadesAdmin = require('./usuarios/identidades_admin');
+const identidadesAdmin = buildIdentidadesAdmin({ admin, db });
+exports.listarIdentidadesFirebase = identidadesAdmin.listarIdentidadesFirebase;
+exports.excluirIdentidadeFirebase = identidadesAdmin.excluirIdentidadeFirebase;
+
+// =============================================================
+// CENTRAL DE ATUALIZACOES V3 - canais, beta, adocao e rollout
+// =============================================================
+const createReleaseV3 = require('./atualizacoes/release_v3');
+const releaseV3 = createReleaseV3({ admin, db, onCall, HttpsError });
+exports.resolverAtualizacaoDisponivelV3 = releaseV3.resolverAtualizacaoDisponivelV3;
+exports.listarUsuariosReleaseV3 = releaseV3.listarUsuariosReleaseV3;
+exports.salvarAudienciaReleaseV3 = releaseV3.salvarAudienciaReleaseV3;
+exports.listarGruposReleaseV3 = releaseV3.listarGruposReleaseV3;
+exports.salvarGrupoReleaseV3 = releaseV3.salvarGrupoReleaseV3;
+exports.salvarCompatibilidadeReleaseV3 = releaseV3.salvarCompatibilidadeReleaseV3;
+exports.healthCheckReleaseV3 = releaseV3.healthCheckReleaseV3;
+exports.registrarPresencaVersaoV3 = releaseV3.registrarPresencaVersaoV3;
+exports.dashboardReleaseV3 = releaseV3.dashboardReleaseV3;
+exports.rollbackReleaseV3 = releaseV3.rollbackReleaseV3;
+exports.compararReleasesV3 = releaseV3.compararReleasesV3;
+exports.salvarPoliticaRetencaoV3 = releaseV3.salvarPoliticaRetencaoV3;
+exports.exportarAuditoriaReleaseV3 = releaseV3.exportarAuditoriaReleaseV3;
+
+// =============================================================
+// PORTFÓLIO V3 — feed projetado / CMS editorial
+// =============================================================
+const portfolioProjection = require('./portfolio/portfolio_projection');
+exports.portfolioSyncPublicacao = portfolioProjection.portfolioSyncPublicacao;
+exports.portfolioSyncEvento = portfolioProjection.portfolioSyncEvento;
+exports.portfolioRebuildFeed = portfolioProjection.portfolioRebuildFeed;
+
+// Robô de inatividade: regra gerenciada na tela Indicadores de Ausência.
+const roboInatividade = require('./inscricoes/robo_inatividade')({onSchedule,onCall,onRequest,HttpsError,admin,db});
+exports.roboInatividadeDiario = roboInatividade.diario;
+exports.simularRoboInatividade = roboInatividade.simular;
+exports.simularRoboInatividadeHttp = roboInatividade.http;
+exports.auditoriaRoboInatividadeHttp = roboInatividade.auditoriaHttp;

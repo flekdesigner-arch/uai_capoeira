@@ -435,7 +435,7 @@ class _AreaAlunoEventoDetalheScreenState
       padding: EdgeInsets.all(isMobile ? 15 : 18),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [accent, accent.withOpacity(0.82)],
+          colors: [accent, accent.withAlpha(209)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -447,7 +447,7 @@ class _AreaAlunoEventoDetalheScreenState
           _buildLogoEvento(
             context,
             size: isMobile ? 62 : 72,
-            background: onAccent.withOpacity(0.16),
+            background: onAccent.withAlpha(41),
             foreground: onAccent,
             radius: 21,
           ),
@@ -459,7 +459,7 @@ class _AreaAlunoEventoDetalheScreenState
                 Text(
                   'Você está participando deste evento',
                   style: TextStyle(
-                    color: onAccent.withOpacity(0.82),
+                    color: onAccent.withAlpha(209),
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                   ),
@@ -603,14 +603,14 @@ class _AreaAlunoEventoDetalheScreenState
       decoration: BoxDecoration(
         color: background,
         borderRadius: BorderRadius.circular(radius),
-        border: Border.all(color: foreground.withOpacity(0.15)),
+        border: Border.all(color: foreground.withAlpha(38)),
       ),
       clipBehavior: Clip.antiAlias,
       child: logo.isNotEmpty
           ? Image.network(
               logo,
               fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) {
+              errorBuilder: (_, _, _) {
                 return Icon(
                   Icons.emoji_events_rounded,
                   color: foreground,
@@ -641,7 +641,7 @@ class _AreaAlunoEventoDetalheScreenState
       decoration: BoxDecoration(
         color: visible,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: foreground.withOpacity(0.12)),
+        border: Border.all(color: foreground.withAlpha(31)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -674,9 +674,9 @@ class _AreaAlunoEventoDetalheScreenState
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.09), t.cardAlt),
+        color: Color.alphaBlend(accent.withAlpha(23), t.cardAlt),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: accent.withOpacity(0.14)),
+        border: Border.all(color: accent.withAlpha(36)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -711,7 +711,7 @@ class _AreaAlunoEventoDetalheScreenState
         decoration: BoxDecoration(
           color: t.card,
           borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: accent.withOpacity(0.14)),
+          border: Border.all(color: accent.withAlpha(36)),
           boxShadow: t.softShadow,
         ),
         child: Row(
@@ -720,7 +720,7 @@ class _AreaAlunoEventoDetalheScreenState
               width: 53,
               height: 53,
               decoration: BoxDecoration(
-                color: Color.alphaBlend(accent.withOpacity(0.10), t.cardAlt),
+                color: Color.alphaBlend(accent.withAlpha(26), t.cardAlt),
                 borderRadius: BorderRadius.circular(18),
               ),
               child: Icon(
@@ -768,7 +768,7 @@ class _AreaAlunoEventoDetalheScreenState
       decoration: BoxDecoration(
         color: t.card,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: accent.withOpacity(0.14)),
+        border: Border.all(color: accent.withAlpha(36)),
         boxShadow: t.softShadow,
       ),
       child: Column(
@@ -780,7 +780,7 @@ class _AreaAlunoEventoDetalheScreenState
                 width: 53,
                 height: 53,
                 decoration: BoxDecoration(
-                  color: Color.alphaBlend(accent.withOpacity(0.10), t.cardAlt),
+                  color: Color.alphaBlend(accent.withAlpha(26), t.cardAlt),
                   borderRadius: BorderRadius.circular(18),
                 ),
                 child: Icon(
@@ -921,9 +921,9 @@ class _AreaAlunoEventoDetalheScreenState
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), t.cardAlt),
+        color: Color.alphaBlend(accent.withAlpha(20), t.cardAlt),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: accent.withOpacity(0.14)),
+        border: Border.all(color: accent.withAlpha(36)),
       ),
       child: Row(
         children: [
@@ -931,7 +931,7 @@ class _AreaAlunoEventoDetalheScreenState
             width: 38,
             height: 38,
             decoration: BoxDecoration(
-              color: accent.withOpacity(0.12),
+              color: accent.withAlpha(31),
               borderRadius: BorderRadius.circular(13),
             ),
             child: Icon(icon, color: accent, size: 21),
@@ -976,7 +976,7 @@ class _AreaAlunoEventoDetalheScreenState
         decoration: BoxDecoration(
           color: t.card,
           borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: accent.withOpacity(0.14)),
+          border: Border.all(color: accent.withAlpha(36)),
           boxShadow: t.softShadow,
         ),
         child: Row(
@@ -985,7 +985,7 @@ class _AreaAlunoEventoDetalheScreenState
               width: 53,
               height: 53,
               decoration: BoxDecoration(
-                color: Color.alphaBlend(accent.withOpacity(0.10), t.cardAlt),
+                color: Color.alphaBlend(accent.withAlpha(26), t.cardAlt),
                 borderRadius: BorderRadius.circular(18),
               ),
               child: Icon(Icons.auto_awesome_rounded, color: accent, size: 29),
@@ -1017,7 +1017,7 @@ class _AreaAlunoEventoDetalheScreenState
       decoration: BoxDecoration(
         color: t.card,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: accent.withOpacity(0.14)),
+        border: Border.all(color: accent.withAlpha(36)),
         boxShadow: t.softShadow,
       ),
       child: Row(
@@ -1026,7 +1026,7 @@ class _AreaAlunoEventoDetalheScreenState
             width: 53,
             height: 53,
             decoration: BoxDecoration(
-              color: Color.alphaBlend(accent.withOpacity(0.10), t.cardAlt),
+              color: Color.alphaBlend(accent.withAlpha(26), t.cardAlt),
               borderRadius: BorderRadius.circular(18),
             ),
             child: Icon(
@@ -1196,7 +1196,7 @@ class _AreaAlunoEventoDetalheScreenState
                 width: 39,
                 height: 39,
                 decoration: BoxDecoration(
-                  color: Color.alphaBlend(accent.withOpacity(0.09), t.cardAlt),
+                  color: Color.alphaBlend(accent.withAlpha(23), t.cardAlt),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Icon(icon, color: accent, size: 21),
@@ -1280,11 +1280,11 @@ class _AreaAlunoEventoDetalheScreenState
       padding: const EdgeInsets.all(11),
       decoration: BoxDecoration(
         color: Color.alphaBlend(
-          visible.withOpacity(emphasize ? 0.10 : 0.06),
+          visible.withAlpha(emphasize ? 26 : 15),
           t.cardAlt,
         ),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: visible.withOpacity(0.14)),
+        border: Border.all(color: visible.withAlpha(36)),
       ),
       child: Row(
         children: [
@@ -1328,7 +1328,7 @@ class _AreaAlunoEventoDetalheScreenState
       decoration: BoxDecoration(
         color: t.card,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: accent.withOpacity(0.14)),
+        border: Border.all(color: accent.withAlpha(36)),
         boxShadow: t.softShadow,
       ),
       child: Column(
@@ -1339,7 +1339,7 @@ class _AreaAlunoEventoDetalheScreenState
                 width: 49,
                 height: 49,
                 decoration: BoxDecoration(
-                  color: Color.alphaBlend(accent.withOpacity(0.10), t.cardAlt),
+                  color: Color.alphaBlend(accent.withAlpha(26), t.cardAlt),
                   borderRadius: BorderRadius.circular(17),
                 ),
                 child: Icon(
@@ -1432,9 +1432,9 @@ class _AreaAlunoEventoDetalheScreenState
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), t.card),
+        color: Color.alphaBlend(accent.withAlpha(20), t.card),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: accent.withOpacity(0.14)),
+        border: Border.all(color: accent.withAlpha(36)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,

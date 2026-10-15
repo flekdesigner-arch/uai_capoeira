@@ -553,7 +553,7 @@ Assinatura do Responsável: _____________________________
                       ),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<String>(
-                        value: sexoSelecionado,
+                        initialValue: sexoSelecionado,
                         dropdownColor: t.surface,
                         style: TextStyle(color: t.textPrimary),
                         items: const [
@@ -572,7 +572,7 @@ Assinatura do Responsável: _____________________________
                         ],
                         onChanged: (v) {
                           if (v != null)
-                            setDialogState(() => sexoSelecionado = v);
+                            { setDialogState(() => sexoSelecionado = v); }
                         },
                         decoration: _inputDecoration('Sexo', Icons.wc_rounded),
                       ),
@@ -627,7 +627,7 @@ Assinatura do Responsável: _____________________________
                           style: TextStyle(color: t.textSecondary),
                         ),
                         value: ativo,
-                        activeColor: t.success,
+                        activeThumbColor: t.success,
                         onChanged: (v) => setDialogState(() => ativo = v),
                       ),
                       const SizedBox(height: 14),
@@ -642,7 +642,7 @@ Assinatura do Responsável: _____________________________
                                 style: OutlinedButton.styleFrom(
                                   foregroundColor: t.error,
                                   side: BorderSide(
-                                    color: t.error.withOpacity(0.34),
+                                    color: t.error.withAlpha(87),
                                   ),
                                 ),
                               ),
@@ -899,9 +899,9 @@ Assinatura do Responsável: _____________________________
             width: 62,
             height: 62,
             decoration: BoxDecoration(
-              color: onPrimary.withOpacity(0.14),
+              color: onPrimary.withAlpha(36),
               borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: onPrimary.withOpacity(0.16)),
+              border: Border.all(color: onPrimary.withAlpha(41)),
             ),
             child: Icon(Icons.emoji_events_rounded, color: onPrimary, size: 34),
           );
@@ -926,7 +926,7 @@ Assinatura do Responsável: _____________________________
                 'Configure evento, inscrições, categorias, vagas, termos, pagamento e regulamento.',
                 textAlign: narrow ? TextAlign.center : TextAlign.left,
                 style: TextStyle(
-                  color: onPrimary.withOpacity(0.82),
+                  color: onPrimary.withAlpha(209),
                   fontSize: 13,
                   height: 1.35,
                 ),
@@ -979,9 +979,9 @@ Assinatura do Responsável: _____________________________
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: onPrimary.withOpacity(0.14),
+        color: onPrimary.withAlpha(36),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: onPrimary.withOpacity(0.16)),
+        border: Border.all(color: onPrimary.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1047,7 +1047,7 @@ Assinatura do Responsável: _____________________________
     return Container(
       constraints: const BoxConstraints(minHeight: 104),
       padding: const EdgeInsets.all(12),
-      decoration: _cardDecoration(borderColor: accent.withOpacity(0.16)),
+      decoration: _cardDecoration(borderColor: accent.withAlpha(41)),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -1104,7 +1104,7 @@ Assinatura do Responsável: _____________________________
           style: TextStyle(color: t.textSecondary, height: 1.25),
         ),
         value: _campeonatoAtivo,
-        activeColor: color,
+        activeThumbColor: color,
         onChanged: (value) => setState(() => _campeonatoAtivo = value),
       ),
     );
@@ -1161,7 +1161,7 @@ Assinatura do Responsável: _____________________________
               style: TextStyle(color: t.textSecondary),
             ),
             value: _recebendoInscricoes,
-            activeColor: t.success,
+            activeThumbColor: t.success,
             onChanged: (value) => setState(() => _recebendoInscricoes = value),
           ),
           Divider(color: t.border, height: 22),
@@ -1323,7 +1323,7 @@ Assinatura do Responsável: _____________________________
                   padding: const EdgeInsets.only(bottom: 8),
                   child: Material(
                     color: ativo
-                        ? Color.alphaBlend(accent.withOpacity(0.08), t.cardAlt)
+                        ? Color.alphaBlend(accent.withAlpha(20), t.cardAlt)
                         : t.cardAlt,
                     borderRadius: BorderRadius.circular(18),
                     child: InkWell(
@@ -1334,13 +1334,13 @@ Assinatura do Responsável: _____________________________
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(18),
                           border: Border.all(
-                            color: ativo ? accent.withOpacity(0.18) : t.border,
+                            color: ativo ? accent.withAlpha(46) : t.border,
                           ),
                         ),
                         child: Row(
                           children: [
                             CircleAvatar(
-                              backgroundColor: accent.withOpacity(0.16),
+                              backgroundColor: accent.withAlpha(41),
                               child: Text(
                                 nome.isNotEmpty ? nome.substring(0, 1) : '?',
                                 style: TextStyle(
@@ -1497,9 +1497,9 @@ Assinatura do Responsável: _____________________________
       constraints: const BoxConstraints(minWidth: 120),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(t.info.withOpacity(0.10), t.cardAlt),
+        color: Color.alphaBlend(t.info.withAlpha(26), t.cardAlt),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: t.info.withOpacity(0.18)),
+        border: Border.all(color: t.info.withAlpha(46)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1554,7 +1554,7 @@ Assinatura do Responsável: _____________________________
               style: TextStyle(color: t.textSecondary),
             ),
             value: _recolherAssinatura,
-            activeColor: t.success,
+            activeThumbColor: t.success,
             onChanged: (v) => setState(() => _recolherAssinatura = v),
           ),
           SwitchListTile(
@@ -1571,7 +1571,7 @@ Assinatura do Responsável: _____________________________
               style: TextStyle(color: t.textSecondary),
             ),
             value: _exigirTermoAssinado,
-            activeColor: t.success,
+            activeThumbColor: t.success,
             onChanged: (v) => setState(() => _exigirTermoAssinado = v),
           ),
           Divider(color: t.border, height: 24),
@@ -1816,9 +1816,9 @@ Assinatura do Responsável: _____________________________
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: accent.withOpacity(0.12),
+                  color: accent.withAlpha(31),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: accent.withOpacity(0.16)),
+                  border: Border.all(color: accent.withAlpha(41)),
                 ),
                 child: Text(
                   valor,
@@ -2010,9 +2010,9 @@ Assinatura do Responsável: _____________________________
       width: 46,
       height: 46,
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.12),
+        color: accent.withAlpha(31),
         borderRadius: BorderRadius.circular(t.buttonRadius),
-        border: Border.all(color: accent.withOpacity(0.16)),
+        border: Border.all(color: accent.withAlpha(41)),
       ),
       child: Icon(icon, color: accent, size: 24),
     );
@@ -2029,9 +2029,9 @@ Assinatura do Responsável: _____________________________
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.10), t.cardAlt),
+        color: Color.alphaBlend(accent.withAlpha(26), t.cardAlt),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: accent.withOpacity(0.16)),
+        border: Border.all(color: accent.withAlpha(41)),
       ),
       child: Row(
         children: [
@@ -2058,9 +2058,9 @@ Assinatura do Responsável: _____________________________
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.12),
+        color: accent.withAlpha(31),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: accent.withOpacity(0.16)),
+        border: Border.all(color: accent.withAlpha(41)),
       ),
       child: Text(
         label,
@@ -2122,7 +2122,7 @@ Assinatura do Responsável: _____________________________
     final t = context.uai;
     final border = color == null
         ? t.border
-        : _ensureVisible(color, t.card).withOpacity(0.16);
+        : _ensureVisible(color, t.card).withAlpha(41);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),

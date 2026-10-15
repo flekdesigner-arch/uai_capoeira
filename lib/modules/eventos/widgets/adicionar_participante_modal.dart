@@ -1,20 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uai_capoeira/modules/eventos/models/evento_model.dart';
 import 'package:uai_capoeira/modules/graduacoes/services/graduacao_service.dart';
+import 'package:uai_capoeira/shared/services/svg_service.dart';
 
 class AdicionarParticipanteModal extends StatefulWidget {
   final Map<String, dynamic> aluno;
   final EventoModel evento;
   final bool isBatizado;
+  final bool historicoSomenteGraduacao;
 
   const AdicionarParticipanteModal({
-    Key? key,
+    super.key,
     required this.aluno,
     required this.evento,
     required this.isBatizado,
-  }) : super(key: key);
+    this.historicoSomenteGraduacao = false,
+  });
 
   @override
   State<AdicionarParticipanteModal> createState() =>
@@ -44,7 +48,7 @@ class _AdicionarParticipanteModalState
   }
 
   Color _onCard() => _readableOn(context.uai.card);
-  Color _onCardMuted() => _onCard().withOpacity(0.68);
+  Color _onCardMuted() => _onCard().withAlpha(173);
   Color _appBarBg() =>
       Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
   Color _appBarFg() =>
@@ -101,10 +105,10 @@ class _AdicionarParticipanteModalState
   void initState() {
     super.initState();
 
-    valorInscricao = widget.evento.valorInscricao;
-    valorCamisa = widget.evento.temCamisa
-        ? (widget.evento.valorCamisa ?? 0)
-        : 0;
+    valorInscricao = widget.historicoSomenteGraduacao ? 0 : widget.evento.valorInscricao;
+    valorCamisa = widget.historicoSomenteGraduacao
+        ? 0
+        : (widget.evento.temCamisa ? (widget.evento.valorCamisa ?? 0) : 0);
     valorTotal = valorInscricao + valorCamisa;
 
     debugPrint('🎯 Modal aberto para: ${widget.aluno['nome']}');
@@ -123,8 +127,10 @@ class _AdicionarParticipanteModalState
       _tipoCamisaSelecionado = tipos.first;
     }
 
-    valorCamisa = _valorCamisaPorTipo(_tipoCamisaSelecionado);
-    valorTotal = valorInscricao + valorCamisa;
+    if (!widget.historicoSomenteGraduacao) {
+      valorCamisa = _valorCamisaPorTipo(_tipoCamisaSelecionado);
+      valorTotal = valorInscricao + valorCamisa;
+    }
   }
 
   String _normalizarModelagemCamisa(dynamic value) {
@@ -485,7 +491,7 @@ class _AdicionarParticipanteModalState
 
     final String tipoAtual =
         graduacaoAtualObj?['tipo_publico'] ??
-        (graduacaoAtual?.contains('INFANTIL') == true ? 'INFANTIL' : 'ADULTO');
+        (graduacaoAtual.contains('INFANTIL') == true ? 'INFANTIL' : 'ADULTO');
 
     debugPrint('📌 Tipo da graduação atual: $tipoAtual');
 
@@ -517,7 +523,7 @@ class _AdicionarParticipanteModalState
 
       // 1. Próximas graduações INFANTIS
       final proximasInfantis = graduacoesInfantis
-          .where((g) => (g['nivel_graduacao'] ?? 0) > (nivelAtual ?? 0))
+          .where((g) => (g['nivel_graduacao'] ?? 0) > nivelAtual)
           .toList();
       resultados.addAll(proximasInfantis);
       debugPrint('   • Próximas INFANTIS: ${proximasInfantis.length}');
@@ -533,7 +539,7 @@ class _AdicionarParticipanteModalState
       }
 
       // Verifica se pode mudar para adulto
-      bool podeMostrarAdultas = _podeMudarParaAdulto(nivelAtual ?? 0, idade);
+      bool podeMostrarAdultas = _podeMudarParaAdulto(nivelAtual, idade);
 
       if (podeMostrarAdultas) {
         debugPrint('   ✅ Pode mostrar ADULTAS');
@@ -547,7 +553,7 @@ class _AdicionarParticipanteModalState
     else {
       debugPrint('📌 Aluno ADULTO - só pode ir para níveis maiores');
       final proximasAdultas = graduacoesAdultas
-          .where((g) => (g['nivel_graduacao'] ?? 0) > (nivelAtual ?? 0))
+          .where((g) => (g['nivel_graduacao'] ?? 0) > nivelAtual)
           .toList();
       resultados.addAll(proximasAdultas);
       debugPrint('   • Próximas ADULTAS: ${proximasAdultas.length}');
@@ -570,106 +576,187 @@ class _AdicionarParticipanteModalState
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.all(16),
-      height: MediaQuery.of(context).size.height * 0.85,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: context.uai.border,
-                borderRadius: BorderRadius.circular(2),
-              ),
+    final t = context.uai;
+    final keyboard = MediaQuery.of(context).viewInsets.bottom;
+    return SafeArea(
+      top: false,
+      child: AnimatedPadding(
+        duration: const Duration(milliseconds: 180),
+        padding: EdgeInsets.only(bottom: keyboard),
+        child: FractionallySizedBox(
+          heightFactor: .94,
+          child: Material(
+            color: t.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                const SizedBox(height: 10),
+                Container(
+                  width: 42,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: t.border,
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 14, 10, 12),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 46,
+                        height: 46,
+                        decoration: BoxDecoration(
+                          color: t.primary.withAlpha(26),
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                        child: Icon(Icons.how_to_reg_rounded, color: t.primary),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.historicoSomenteGraduacao
+                                  ? (widget.isBatizado
+                                      ? 'Inserir graduação no evento'
+                                      : 'Inserir participação no evento')
+                                  : 'Configurar participação',
+                              style: TextStyle(color: t.textPrimary, fontSize: 19, fontWeight: FontWeight.w900),
+                            ),
+                            Text(
+                              widget.evento.nome,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(color: t.textSecondary, fontSize: 11.5, fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Fechar',
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                    ],
+                  ),
+                ),
+                Divider(height: 1, color: t.border),
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildAlunoInfo(),
+                        if (!widget.historicoSomenteGraduacao && widget.evento.temCamisa) ...[
+                          const SizedBox(height: 18),
+                          _buildCamisaSection(),
+                        ],
+                        if (!widget.historicoSomenteGraduacao) ...[
+                          const SizedBox(height: 18),
+                          _buildValoresSection(),
+                        ],
+                        if (widget.isBatizado) ...[
+                          const SizedBox(height: 20),
+                          _buildGraduacaoSection(),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
+                  decoration: BoxDecoration(
+                    color: t.surface,
+                    border: Border(top: BorderSide(color: t.border)),
+                  ),
+                  child: SafeArea(top: false, child: _buildBotoes()),
+                ),
+              ],
             ),
           ),
-          SizedBox(height: 16),
-
-          Text(
-            'Adicionar ${widget.aluno['nome']}',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: context.uai.error,
-            ),
-          ),
-          const SizedBox(height: 8),
-
-          Expanded(
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildAlunoInfo(),
-                  const SizedBox(height: 16),
-
-                  if (widget.evento.temCamisa) ...[
-                    _buildCamisaSection(),
-                    const SizedBox(height: 16),
-                  ],
-
-                  _buildValoresSection(),
-                  const SizedBox(height: 16),
-
-                  if (widget.isBatizado) ...[_buildGraduacaoSection()],
-                ],
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 16),
-          _buildBotoes(),
-        ],
+        ),
       ),
     );
   }
 
   Widget _buildAlunoInfo() {
-    String graduacaoText = widget.aluno['graduacao'] ?? 'Não possui';
-    if (graduacaoText == 'SEM GRADUÇÃO') graduacaoText = 'Não possui';
+    final t = context.uai;
+    String graduacaoText = (widget.aluno['graduacao'] ?? 'SEM GRADUAÇÃO').toString();
+    if (graduacaoText.trim().isEmpty) graduacaoText = 'SEM GRADUAÇÃO';
+    final nome = (widget.aluno['nome'] ?? 'Aluno').toString();
+    final foto = (widget.aluno['foto'] ?? widget.aluno['foto_perfil_aluno'] ?? widget.aluno['foto_url'])?.toString();
 
+    return SizedBox(
+      height: 86,
+      child: Material(
+        color: t.card,
+        borderRadius: BorderRadius.circular(18),
+        clipBehavior: Clip.antiAlias,
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: t.border),
+            boxShadow: t.softShadow,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(
+                width: 86,
+                child: foto != null && foto.isNotEmpty
+                    ? Image.network(
+                        foto,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => _buildAlunoInfoFallback(nome),
+                      )
+                    : _buildAlunoInfoFallback(nome),
+              ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        nome.toUpperCase(),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: t.textPrimary, fontSize: 14, height: 1.06, fontWeight: FontWeight.w900),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        graduacaoText,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: t.textSecondary, fontSize: 11, fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: Icon(Icons.verified_user_rounded, color: t.primary, size: 24),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAlunoInfoFallback(String nome) {
+    final t = context.uai;
+    final initial = nome.trim().isEmpty ? '?' : nome.trim()[0].toUpperCase();
     return Container(
-      padding: EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: context.uai.error.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: context.uai.error.withOpacity(0.24)),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            backgroundColor: context.uai.error.withOpacity(0.14),
-            backgroundImage: widget.aluno['foto'] != null
-                ? NetworkImage(widget.aluno['foto'])
-                : null,
-            child: widget.aluno['foto'] == null
-                ? Text(
-                    widget.aluno['nome'][0].toUpperCase(),
-                    style: TextStyle(color: context.uai.error),
-                  )
-                : null,
-          ),
-          SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.aluno['nome'],
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                ),
-                Text(
-                  'Graduação: $graduacaoText',
-                  style: TextStyle(fontSize: 13, color: context.uai.error),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+      color: t.cardAlt,
+      alignment: Alignment.center,
+      child: Text(initial, style: TextStyle(color: t.textPrimary, fontSize: 20, fontWeight: FontWeight.w900)),
     );
   }
 
@@ -692,7 +779,7 @@ class _AdicionarParticipanteModalState
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '👕 Camisa',
+          'Camisa do evento',
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.bold,
@@ -710,7 +797,7 @@ class _AdicionarParticipanteModalState
           child: Column(
             children: [
               DropdownButtonFormField<String>(
-                value: _modelagemCamisaSelecionada,
+                initialValue: _modelagemCamisaSelecionada,
                 decoration: _uaiInputDecoration(
                   label: 'Modelagem',
                   icon: Icons.style_rounded,
@@ -733,7 +820,7 @@ class _AdicionarParticipanteModalState
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                value: _tipoCamisaSelecionado,
+                initialValue: _tipoCamisaSelecionado,
                 decoration: _uaiInputDecoration(
                   label: 'Tipo de camisa',
                   icon: Icons.design_services_rounded,
@@ -753,7 +840,7 @@ class _AdicionarParticipanteModalState
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                value: _tamanhoCamisaSelecionado,
+                initialValue: _tamanhoCamisaSelecionado,
                 decoration: _uaiInputDecoration(
                   label: 'Tamanho',
                   icon: Icons.straighten_rounded,
@@ -773,9 +860,9 @@ class _AdicionarParticipanteModalState
                 width: double.infinity,
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: context.uai.info.withOpacity(0.08),
+                  color: context.uai.info.withAlpha(20),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: context.uai.info.withOpacity(0.18)),
+                  border: Border.all(color: context.uai.info.withAlpha(46)),
                 ),
                 child: Text(
                   'Selecionado: '
@@ -805,7 +892,7 @@ class _AdicionarParticipanteModalState
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '💰 Valores',
+          'Valores da participação',
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
         SizedBox(height: 8),
@@ -818,7 +905,7 @@ class _AdicionarParticipanteModalState
           child: Container(
             padding: EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: context.uai.info.withOpacity(0.08),
+              color: context.uai.info.withAlpha(20),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Column(
@@ -851,15 +938,44 @@ class _AdicionarParticipanteModalState
   }
 
   Widget _buildGraduacaoSection() {
+    final t = context.uai;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          '🎓 Graduação',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: t.primary.withAlpha(26),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(Icons.military_tech_rounded, color: t.primary),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Nova graduação',
+                    style: TextStyle(
+                      color: t.textPrimary,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  Text(
+                    'Escolha visualmente a corda que o aluno receberá.',
+                    style: TextStyle(color: t.textSecondary, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 8),
-
+        const SizedBox(height: 12),
         FutureBuilder<List<Map<String, dynamic>>>(
           future: _carregarGraduacoesParaAluno(),
           builder: (context, snapshot) {
@@ -871,227 +987,171 @@ class _AdicionarParticipanteModalState
                 ),
               );
             }
-
-            if (snapshot.hasError) {
+            if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
               return Container(
-                padding: EdgeInsets.all(12),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: context.uai.error.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(8),
+                  color: t.cardAlt,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: t.border),
                 ),
                 child: Text(
-                  'Erro ao carregar graduações',
-                  style: TextStyle(color: context.uai.primary),
+                  snapshot.hasError ? 'Erro ao carregar graduações.' : _calcularMensagemSemGraduacao(),
+                  style: TextStyle(color: t.textSecondary),
                 ),
               );
             }
-
-            if (!snapshot.hasData || snapshot.data!.isEmpty) {
-              return Container(
-                padding: EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: context.uai.warning.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  _calcularMensagemSemGraduacao(),
-                  style: TextStyle(color: context.uai.warning),
-                ),
-              );
-            }
-
-            final graduacoes = snapshot.data!;
-            return _buildDropdownGraduacao(graduacoes);
+            return _buildGraduacaoCards(snapshot.data!);
           },
         ),
       ],
     );
   }
 
-  Widget _buildDropdownGraduacao(List<Map<String, dynamic>> graduacoes) {
-    // Agrupa por tipo
-    final infantil = graduacoes
-        .where((g) => g['tipo_publico'] == 'INFANTIL')
-        .toList();
-    final adulto = graduacoes
-        .where((g) => g['tipo_publico'] == 'ADULTO')
-        .toList();
-
-    List<DropdownMenuItem<String>> items = [];
-
-    if (infantil.isNotEmpty) {
-      items.add(
-        DropdownMenuItem(
-          value: null,
-          enabled: false,
-          child: Padding(
-            padding: EdgeInsets.only(top: 4, bottom: 2),
-            child: Text(
-              '👶 GRADUAÇÕES INFANTIS',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: context.uai.info,
-                fontSize: 13,
+  Widget _buildGraduacaoCards(List<Map<String, dynamic>> graduacoes) {
+    final t = context.uai;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = constraints.maxWidth >= 1180 ? 3 : constraints.maxWidth >= 760 ? 2 : 1;
+        final width = (constraints.maxWidth - ((columns - 1) * 10)) / columns;
+        return Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: graduacoes.map((grad) {
+            final id = grad['id']?.toString() ?? '';
+            final selected = _graduacaoSelecionadaId == id;
+            final nome = grad['nome_graduacao']?.toString() ?? 'Graduação';
+            final tipo = grad['tipo_publico']?.toString() ?? '';
+            final nivel = grad['nivel_graduacao']?.toString() ?? '';
+            final cor = selected ? t.primary : t.border;
+            return SizedBox(
+              width: width,
+              child: Material(
+                color: selected ? t.primary.withAlpha(20) : t.card,
+                borderRadius: BorderRadius.circular(16),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: () {
+                    setState(() {
+                      _graduacaoSelecionadaId = id;
+                      _graduacaoSelecionada = grad;
+                    });
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: cor, width: selected ? 1.8 : 1),
+                    ),
+                    child: Row(
+                      children: [
+                        SizedBox(width: 72, height: 54, child: _buildGraduacaoCordaPreview(grad)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                nome,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: t.textPrimary,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 12.5,
+                                  height: 1.05,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                [if (tipo.isNotEmpty) tipo, if (nivel.isNotEmpty) 'Nível $nivel'].join(' • '),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(color: t.textSecondary, fontSize: 10.5),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (selected)
+                          Icon(Icons.check_circle_rounded, color: t.primary, size: 20),
+                      ],
+                    ),
+                  ),
+                ),
               ),
-            ),
-          ),
-        ),
-      );
-      items.addAll(infantil.map((grad) => _buildMenuItem(grad)));
-    }
-
-    if (adulto.isNotEmpty) {
-      if (infantil.isNotEmpty) {
-        items.add(
-          const DropdownMenuItem(enabled: false, child: Divider(height: 16)),
+            );
+          }).toList(),
         );
-      }
-
-      items.add(
-        DropdownMenuItem(
-          value: null,
-          enabled: false,
-          child: Padding(
-            padding: EdgeInsets.only(top: 4, bottom: 2),
-            child: Text(
-              '👨 GRADUAÇÕES ADULTAS',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: context.uai.associacao,
-                fontSize: 13,
-              ),
-            ),
-          ),
-        ),
-      );
-      items.addAll(adulto.map((grad) => _buildMenuItem(grad)));
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // 🔥 ALTURA FIXA PARA O DROPDOWN
-        Container(
-          height: 56, // Altura fixa para o campo de seleção
-          child: DropdownButtonFormField<String>(
-            value: _graduacaoSelecionadaId,
-            decoration: const InputDecoration(
-              labelText: 'Selecione a nova graduação',
-              border: OutlineInputBorder(),
-              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            ),
-            items: items,
-            onChanged: (String? selectedId) {
-              if (selectedId != null) {
-                setState(() {
-                  _graduacaoSelecionadaId = selectedId;
-                  _graduacaoSelecionada = graduacoes.firstWhere(
-                    (g) => g['id'] == selectedId,
-                    orElse: () => <String, dynamic>{},
-                  );
-                });
-              }
-            },
-          ),
-        ),
-        if (_graduacaoSelecionadaId != null)
-          Padding(
-            padding: EdgeInsets.only(top: 8),
-            child: Text(
-              'Nível: ${_graduacaoSelecionada?['nivel_graduacao'] ?? ''}',
-              style: TextStyle(fontSize: 12, color: context.uai.success),
-            ),
-          ),
-      ],
+      },
     );
   }
 
-  DropdownMenuItem<String> _buildMenuItem(Map<String, dynamic> grad) {
-    return DropdownMenuItem<String>(
-      value: grad['id'],
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 280),
-        child: Row(
-          children: [
-            // Círculo colorido da graduação
-            Container(
-              width: 24,
-              height: 24,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  colors: [
-                    Color(
-                      int.parse(grad['hex_cor1'].replaceFirst('#', '0xff')),
-                    ),
-                    Color(
-                      int.parse(
-                        grad['hex_cor2']?.replaceFirst('#', '0xff') ??
-                            grad['hex_cor1'].replaceFirst('#', '0xff'),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            SizedBox(width: 8),
+  Color _hexColor(dynamic value, Color fallback) {
+    final raw = value?.toString().trim();
+    if (raw == null || raw.isEmpty) return fallback;
+    var hex = raw.replaceAll('#', '');
+    if (hex.length == 6) hex = 'FF$hex';
+    final parsed = int.tryParse(hex, radix: 16);
+    return parsed == null ? fallback : Color(parsed);
+  }
 
-            // 🔥 TEXTO EM UMA ÚNICA LINHA (SEM COLUMN)
-            Expanded(
-              child: RichText(
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
-                text: TextSpan(
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: context.uai.textPrimary.withOpacity(0.87),
-                  ),
-                  children: [
-                    TextSpan(
-                      text: grad['nome_graduacao'],
-                      style: TextStyle(fontWeight: FontWeight.w500),
-                    ),
-                    TextSpan(
-                      text:
-                          ' • Nv ${grad['nivel_graduacao']} • Id ${grad['idade_minima']}+',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: context.uai.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+  Widget _buildGraduacaoCordaPreview(Map<String, dynamic> grad) {
+    final cor1 = _hexColor(grad['hex_cor1'], context.uai.warning);
+    final cor2 = _hexColor(grad['hex_cor2'], cor1);
+    final ponta1 = _hexColor(grad['hex_ponta1'], cor1);
+    final ponta2 = _hexColor(grad['hex_ponta2'], cor2);
+    return FutureBuilder<String?>(
+      future: SvgService.getSvgContent(context),
+      builder: (_, snap) {
+        final svg = SvgService.getModifiedSvg(
+          svgContent: snap.data,
+          cor1: cor1,
+          cor2: cor2,
+          ponta1: ponta1,
+          ponta2: ponta2,
+        );
+        if (svg == null) {
+          return Icon(Icons.military_tech_rounded, color: cor1);
+        }
+        final sanitized = svg.replaceAll(
+          RegExp(r'<style\b[^>]*>[\s\S]*?</style\s*>', caseSensitive: false),
+          '',
+        );
+        return SvgPicture.string(sanitized, fit: BoxFit.contain);
+      },
     );
   }
 
   Widget _buildBotoes() {
+    final t = context.uai;
     return Row(
       children: [
         Expanded(
-          child: TextButton(
+          child: OutlinedButton.icon(
             onPressed: () => Navigator.pop(context),
-            style: TextButton.styleFrom(
-              foregroundColor: context.uai.error,
-              padding: EdgeInsets.symmetric(vertical: 12),
+            icon: const Icon(Icons.close_rounded, size: 18),
+            label: const Text('CANCELAR'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: t.textPrimary,
+              side: BorderSide(color: t.border),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              textStyle: const TextStyle(fontWeight: FontWeight.w900),
             ),
-            child: Text('CANCELAR'),
           ),
         ),
-        SizedBox(width: 12),
+        const SizedBox(width: 10),
         Expanded(
-          child: ElevatedButton(
+          child: ElevatedButton.icon(
             onPressed: _confirmar,
+            icon: const Icon(Icons.check_rounded, size: 19),
+            label: const Text('CONFIRMAR'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: context.uai.error,
-              foregroundColor: _appBarFg(),
-              padding: const EdgeInsets.symmetric(vertical: 12),
+              backgroundColor: t.primary,
+              foregroundColor: _readableOn(t.primary),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              textStyle: const TextStyle(fontWeight: FontWeight.w900),
             ),
-            child: const Text('CONFIRMAR'),
           ),
         ),
       ],
@@ -1099,7 +1159,9 @@ class _AdicionarParticipanteModalState
   }
 
   void _confirmar() {
-    if (widget.evento.camisaObrigatoria && _tamanhoCamisaSelecionado == null) {
+    if (!widget.historicoSomenteGraduacao &&
+        widget.evento.camisaObrigatoria &&
+        _tamanhoCamisaSelecionado == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Selecione o tamanho da camisa'),
@@ -1120,7 +1182,7 @@ class _AdicionarParticipanteModalState
     }
 
     Navigator.pop(context, {
-      'tamanhoCamisa': _tamanhoCamisaSelecionado,
+      'tamanhoCamisa': widget.historicoSomenteGraduacao ? null : _tamanhoCamisaSelecionado,
       'modelagemCamisa': _normalizarModelagemCamisa(
         _modelagemCamisaSelecionada,
       ),
@@ -1129,10 +1191,10 @@ class _AdicionarParticipanteModalState
         _modelagemCamisaSelecionada,
       ),
       'tipo_camisa': _normalizarTipoCamisa(_tipoCamisaSelecionado),
-      'valorCamisa': valorCamisa,
-      'valor_camisa': valorCamisa,
-      'graduacaoId': _graduacaoSelecionadaId,
-      'graduacao': _graduacaoSelecionada,
+      'valorCamisa': widget.historicoSomenteGraduacao ? 0.0 : valorCamisa,
+      'valor_camisa': widget.historicoSomenteGraduacao ? 0.0 : valorCamisa,
+      'graduacaoId': widget.isBatizado ? _graduacaoSelecionadaId : null,
+      'graduacao': widget.isBatizado ? _graduacaoSelecionada : null,
     });
   }
 }

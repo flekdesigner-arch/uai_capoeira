@@ -99,9 +99,9 @@ class _PagamentoDialogState extends State<PagamentoDialog> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: success.withOpacity(0.1),
+                color: success.withAlpha(26),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: success.withOpacity(0.2)),
+                border: Border.all(color: success.withAlpha(51)),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -212,35 +212,35 @@ class _PagamentoDialogState extends State<PagamentoDialog> {
               ),
             ),
             const SizedBox(height: 8),
-            ..._formasPagamento.map((forma) {
-              return RadioListTile<String>(
-                title: Row(
-                  children: [
-                    Icon(forma['icone'], size: 20, color: success),
-                    const SizedBox(width: 8),
-                    Text(forma['label'], style: TextStyle(color: textPrimary)),
-                  ],
-                ),
-                value: forma['valor'],
-                groupValue: _formaPagamento,
-                onChanged: (value) {
-                  setState(() {
-                    _formaPagamento = value;
-                  });
-                },
-                activeColor: success,
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-              );
-            }).toList(),
+            RadioGroup<String>(
+              groupValue: _formaPagamento,
+              onChanged: (value) => setState(() => _formaPagamento = value),
+              child: Column(
+                children: _formasPagamento.map((forma) {
+                  return RadioListTile<String>(
+                    title: Row(
+                      children: [
+                        Icon(forma['icone'], size: 20, color: success),
+                        const SizedBox(width: 8),
+                        Text(forma['label'], style: TextStyle(color: textPrimary)),
+                      ],
+                    ),
+                    value: forma['valor'],
+                    activeColor: success,
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                  );
+                }).toList(),
+              ),
+            ),
 
             if (widget.valorRestante <= 0)
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: warning.withOpacity(0.1),
+                  color: warning.withAlpha(26),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: warning.withOpacity(0.2)),
+                  border: Border.all(color: warning.withAlpha(51)),
                 ),
                 child: Row(
                   children: [

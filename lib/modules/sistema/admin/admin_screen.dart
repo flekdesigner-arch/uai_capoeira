@@ -1,9 +1,9 @@
 // lib/modules/sistema/admin/admin_screen.dart
 
 import 'package:flutter/material.dart';
-import 'package:googleapis/shared.dart';
 
 import 'package:uai_capoeira/core/permissions/permissao_service.dart';
+import 'package:uai_capoeira/dev_tools/creative_mode/creative_mode_launcher.dart';
 import 'package:uai_capoeira/core/permissions/permission_catalog.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/core/theme/app_theme_tokens.dart';
@@ -14,12 +14,12 @@ import 'package:uai_capoeira/modules/turmas/admin/gerenciar_academias_screen.dar
 import 'package:uai_capoeira/modules/sistema/migrations/migracao_chamadas_screen.dart';
 import 'package:uai_capoeira/modules/sistema/migrations/migracao_eventos_screen.dart';
 import 'package:uai_capoeira/modules/eventos/admin/gerenciar_eventos_screen.dart';
+import 'package:uai_capoeira/modules/transportes/admin/configurar_transportes_screen.dart';
 import 'package:uai_capoeira/modules/sistema/migrations/migracao_participacoes_screen.dart';
-import 'package:uai_capoeira/modules/eventos/admin/gerenciar_participacoes_screen.dart';
 import 'package:uai_capoeira/modules/sistema/migrations/migracao_graduacoes_screen.dart';
 import 'package:uai_capoeira/modules/site/admin/gerenciar_site_screen.dart';
 import 'package:uai_capoeira/modules/site/admin/gerenciar_logo_screen.dart';
-import 'package:uai_capoeira/modules/certificados/screens/certificado_preview_teste_screen.dart';
+import 'package:uai_capoeira/modules/certificados/screens/certificados_admin_screen.dart';
 import 'package:uai_capoeira/modules/sistema/atualizacoes/admin/controle_atualizacoes_screen.dart';
 import 'package:uai_capoeira/modules/sistema/admin/indicadores_ausencia_screen.dart';
 import 'package:uai_capoeira/modules/sistema/admin/central_temas_screen.dart';
@@ -27,6 +27,7 @@ import 'package:uai_capoeira/modules/sistema/firebase_saude/admin/firebase_saude
 import 'package:uai_capoeira/modules/sistema/admin/modo_troll_screen.dart';
 import 'package:uai_capoeira/modules/sistema/admin/caca_bug/caca_bug_screen.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/admin/gerenciar_estudos_fundamentos_screen.dart';
+import 'package:uai_capoeira/modules/rhythm_studio/studio/rhythm_studio_screen.dart';
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({super.key});
@@ -711,6 +712,15 @@ class _AdminScreenState extends State<AdminScreen> {
   List<_AdminCardData> _appCards(UaiThemeTokens t) {
     return [
       _AdminCardData(
+        icon: Icons.graphic_eq_rounded,
+        title: 'UAI Rhythm Studio',
+        subtitle: 'Crie beats, partituras e treinos musicais de capoeira',
+        color: t.success,
+        tela: const RhythmStudioScreen(),
+        permissions: const [],
+        adminOnly: true,
+      ),
+      _AdminCardData(
         icon: Icons.manage_accounts_rounded,
         title: 'Gerenciar Usuários',
         subtitle: 'Usuários, cargos e permissões do sistema',
@@ -807,18 +817,12 @@ class _AdminScreenState extends State<AdminScreen> {
         ],
       ),
       _AdminCardData(
-        icon: Icons.emoji_events_rounded,
-        title: 'Gerenciar Participações',
-        subtitle: 'Participações, pagamentos e certificados',
+        icon: Icons.directions_bus_filled_rounded,
+        title: 'Configurar Transportes',
+        subtitle: 'Tipos de veículo e capacidade padrão',
         color: t.warning,
-        tela: const GerenciarParticipacoesScreen(),
-        permissions: const [
-          'pode_gerenciar_participantes_evento',
-          'pode_adicionar_participante_evento',
-          'pode_editar_participacao_evento',
-          'pode_remover_participante_evento',
-          'pode_concluir_participacao_evento',
-        ],
+        tela: const ConfigurarTransportesScreen(),
+        permissions: const ['pode_configurar_transportes'],
       ),
       _AdminCardData(
         icon: Icons.history_edu_rounded,
@@ -830,11 +834,16 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
       _AdminCardData(
         icon: Icons.history_edu_rounded,
-        title: 'Configurar Certificados',
-        subtitle: 'Templates, prévias e geração automática por SVG',
+        title: 'Central de Certificados',
+        subtitle: 'Studio, templates, emissão, QR e autenticidade',
         color: t.inscricoes,
-        tela: const CertificadoPreviewTesteScreen(),
-        permissions: const ['pode_configurar_certificados'],
+        tela: const CertificadosAdminScreen(),
+        permissions: const [
+          'pode_acessar_certificados', 'pode_configurar_certificados',
+          'pode_configurar_certificados_evento', 'pode_gerar_certificados_evento',
+          'pode_emitir_certificados', 'pode_visualizar_templates_certificados',
+          'pode_configurar_qr_certificados',
+        ],
       ),
     ];
   }
@@ -892,6 +901,15 @@ class _AdminScreenState extends State<AdminScreen> {
           style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
         ),
         actions: [
+          if (CreativeModeLauncher.isAvailable)
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: FilledButton.tonalIcon(
+                onPressed: () => CreativeModeLauncher.open(context),
+                icon: const Icon(Icons.auto_awesome_rounded, size: 18),
+                label: const Text('Criativo'),
+              ),
+            ),
           if (_podeAbrirMigracoes(access))
             IconButton(
               tooltip: 'Migrações',
@@ -908,6 +926,10 @@ class _AdminScreenState extends State<AdminScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _buildHeaderResumo(context, access),
+                if (CreativeModeLauncher.isAvailable) ...[
+                  const SizedBox(height: 12),
+                  _buildCreativeModeCard(context),
+                ],
                 const SizedBox(height: 16),
                 if (visibleCount == 0) ...[
                   _buildEmptyAdminState(context),
@@ -937,6 +959,90 @@ class _AdminScreenState extends State<AdminScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildCreativeModeCard(BuildContext context) {
+    final t = context.uai;
+    final accent = _ensureVisible(t.warning, t.card);
+
+    return Material(
+      color: t.card,
+      borderRadius: BorderRadius.circular(t.cardRadius),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => CreativeModeLauncher.open(context),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+          decoration: BoxDecoration(
+            border: Border.all(color: accent.withValues(alpha: 0.24)),
+            borderRadius: BorderRadius.circular(t.cardRadius),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: _softFill(accent, t.cardAlt, 0.15),
+                  borderRadius: BorderRadius.circular(t.buttonRadius),
+                ),
+                child: Icon(Icons.auto_awesome_rounded, color: accent),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            'Modo Criativo',
+                            style: TextStyle(
+                              color: t.textPrimary,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 14.5,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: accent.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(99),
+                          ),
+                          child: Text(
+                            'WINDOWS • DEBUG',
+                            style: TextStyle(
+                              color: accent,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'Laboratório visual para redesenhar telas e exportar referências Flutter sem alterar a produção.',
+                      style: TextStyle(
+                        color: t.textSecondary,
+                        fontSize: 11.5,
+                        height: 1.25,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Icon(Icons.chevron_right_rounded, color: accent),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1291,7 +1397,6 @@ class _AdminScreenState extends State<AdminScreen> {
     required IconData icon,
     required String label,
   }) {
-    final t = context.uai;
     final onPrimary = _onGradient();
 
     return Container(

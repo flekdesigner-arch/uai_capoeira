@@ -743,6 +743,7 @@ class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {
       // 5. Voltar para tela anterior
       if (mounted) {
         await Future.delayed(const Duration(seconds: 2));
+        if (!mounted) return;
         Navigator.pop(context);
       }
     } catch (e) {
@@ -1100,7 +1101,7 @@ class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {
                       value: entry.key,
                       child: Text(entry.value),
                     );
-                  }).toList(),
+                  }),
                 ],
                 onChanged: _controller.isSaving
                     ? null
@@ -1167,7 +1168,7 @@ class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {
                             overflow: TextOverflow.ellipsis,
                           ),
                         );
-                      }).toList(),
+                      }),
                     ],
                     onChanged: _controller.isSaving
                         ? null
@@ -1188,7 +1189,7 @@ class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {
               if (_controller.carregandoTurmas)
                 Positioned.fill(
                   child: Container(
-                    color: Colors.white.withOpacity(0.7),
+                    color: Colors.white.withAlpha(179),
                     child: const Center(child: CircularProgressIndicator()),
                   ),
                 ),
@@ -1231,7 +1232,7 @@ class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: DropdownButtonFormField<String>(
-        value: _controller.selectedGraduacaoId,
+        initialValue: _controller.selectedGraduacaoId,
         items: [
           const DropdownMenuItem(
             value: null,
@@ -1240,7 +1241,7 @@ class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {
           ..._controller.graduacoesDocs.map((doc) {
             final nome = doc['nome_graduacao'] ?? 'Sem nome';
             return DropdownMenuItem(value: doc.id, child: Text(nome));
-          }).toList(),
+          }),
         ],
         onChanged: _controller.isSaving
             ? null
@@ -1273,7 +1274,7 @@ class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {
         ),
         subtitle: const Text('Permite que o aluno edite seus dados'),
         value: _controller.editavel,
-        activeColor: Colors.red.shade900,
+        activeThumbColor: Colors.red.shade900,
         onChanged: _controller.isSaving
             ? null
             : (v) {
@@ -1434,7 +1435,7 @@ class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: DropdownButtonFormField<String>(
-        value: items.contains(controller.text) ? controller.text : null,
+        initialValue: items.contains(controller.text) ? controller.text : null,
         items: items
             .map((e) => DropdownMenuItem(value: e, child: Text(e)))
             .toList(),

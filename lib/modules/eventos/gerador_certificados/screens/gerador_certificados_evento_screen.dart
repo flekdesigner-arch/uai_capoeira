@@ -1,11 +1,19 @@
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'certificado_pdf_importado_screen.dart';
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:printing/printing.dart';
 
 import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
 import 'package:uai_capoeira/core/permissions/permissao_service.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'package:uai_capoeira/modules/certificados/models/certificado_emissao_v2_model.dart';
+import 'package:uai_capoeira/modules/certificados/models/certificado_qr_config.dart';
+import 'package:uai_capoeira/modules/certificados/services/certificado_emissao_v2_service.dart';
+import 'package:uai_capoeira/modules/certificados/services/certificado_permission_guard.dart';
+import 'package:uai_capoeira/modules/certificados/services/certificado_permission_keys.dart';
+import 'package:uai_capoeira/modules/certificados/services/certificado_qr_config_repository.dart';
 import 'package:uai_capoeira/modules/certificados/services/certificado_svg_service.dart';
 import 'package:uai_capoeira/modules/certificados/widgets/certificado_preview_widget.dart';
 import 'package:uai_capoeira/modules/eventos/gerador_certificados/models/certificado_evento_data.dart';
@@ -45,6 +53,12 @@ class _GeradorCertificadosEventoScreenState
   final CertificadoPdfDiretoService _pdfDiretoService =
       CertificadoPdfDiretoService();
   final CertificadoSvgService _svgService = const CertificadoSvgService();
+  final CertificadoEmissaoV2Service _emissaoV2Service =
+      CertificadoEmissaoV2Service();
+  final CertificadoQrConfigRepository _qrConfigRepository =
+      CertificadoQrConfigRepository();
+  final CertificadoPermissionGuard _certificadoPermissionGuard =
+      CertificadoPermissionGuard();
   final CertificadoZipShareService _zipShareService =
       const CertificadoZipShareService();
   final PermissaoService _permissaoService = PermissaoService();
@@ -82,6 +96,9 @@ class _GeradorCertificadosEventoScreenState
   final Set<String> _selecionados = {};
   final Set<String> _processando = {};
 
+  bool _qrGlobalAtivo = false;
+  bool _qrGlobalCarregado = false;
+
   @override
   void initState() {
     super.initState();
@@ -91,9 +108,11 @@ class _GeradorCertificadosEventoScreenState
     _eventoData = CertificadoEventoData.fromEvento(widget.evento);
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final permitido = await _accessGuard.canAccess(
-        permission: 'pode_gerar_certificados_evento',
-      );
+      final permitido = await _accessGuard.canAny(const [
+        CertificadoPermissionKeys.legadoGerarEvento,
+        CertificadoPermissionKeys.emitir,
+        CertificadoPermissionKeys.gerarPrevia,
+      ]);
       if (!mounted) return;
 
       if (!permitido) {
@@ -113,6 +132,7 @@ class _GeradorCertificadosEventoScreenState
       if (!mounted) return;
 
       await _sincronizarEventoDoServidor();
+      await _carregarModoEmissao();
 
       if (mounted) {
         await _carregarParticipantes(forcarServidor: true);
@@ -292,8 +312,30 @@ class _GeradorCertificadosEventoScreenState
     return 'Atualizado há ${idade.inMinutes}min';
   }
 
+  bool get _templateQrAtivo => _eventoData.configuracoes.studio.qrCode.ativo;
+  bool get _modoV2Ativo => !_eventoData.exigePdfIndividual && _qrGlobalAtivo && _templateQrAtivo;
+
+  Future<void> _carregarModoEmissao() async {
+    try {
+      final config = await _qrConfigRepository.carregar();
+      if (!mounted) return;
+      setState(() {
+        _qrGlobalAtivo = config.ativo;
+        _qrGlobalCarregado = true;
+      });
+    } catch (e) {
+      debugPrint('⚠️ [GeradorCertificados] não foi possível carregar modo QR: $e');
+      if (!mounted) return;
+      setState(() {
+        _qrGlobalAtivo = false;
+        _qrGlobalCarregado = true;
+      });
+    }
+  }
+
   Future<void> _atualizarDoServidor() async {
     await _sincronizarEventoDoServidor();
+    await _carregarModoEmissao();
 
     if (!mounted) return;
 
@@ -312,6 +354,7 @@ class _GeradorCertificadosEventoScreenState
       return;
     }
 
+    if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => SelecionarParticipantesCsvScreen(
@@ -452,6 +495,172 @@ class _GeradorCertificadosEventoScreenState
     });
   }
 
+  Future<void> _emitirV2Participante(CertificadoParticipanteData participante) async {
+    if (_eventoData.exigePdfIndividual || participante.pdfImportado) { await _abrirPreview(participante); return; }
+    if (_processandoLote || _processando.contains(participante.participacaoId)) return;
+
+    if (!await _certificadoPermissionGuard.revalidarEmissao(context)) return;
+
+    late final CertificadoQrConfig qrGlobal;
+    try {
+      qrGlobal = await _qrConfigRepository.carregar();
+    } catch (e) {
+      _mostrarInfo('Não foi possível carregar a configuração do QR: $e');
+      return;
+    }
+
+    if (!qrGlobal.ativo) {
+      _mostrarInfo(
+        'A autenticação global está desligada. Ative em Central de Certificados > QR Code e Autenticidade.',
+      );
+      return;
+    }
+    if (!_eventoData.configuracoes.studio.qrCode.ativo) {
+      _mostrarInfo(
+        'O template deste evento não possui o bloco QR ativo. Abra o Studio do certificado e ative o QR.',
+      );
+      return;
+    }
+
+    final confirmar = await _confirmarAcao(
+      titulo: participante.temEmissaoOficialV2NoEvento(_eventoData)
+          ? 'Reemitir certificado oficial V2?'
+          : 'Emitir certificado oficial V2?',
+      mensagem: participante.temEmissaoOficialV2NoEvento(_eventoData)
+          ? 'O mesmo código e a mesma URL de autenticidade serão reutilizados.'
+          : 'O certificado atual será convertido em uma emissão oficial com código único, QR real e página pública de validação.',
+      confirmar: participante.temEmissaoOficialV2NoEvento(_eventoData) ? 'REEMITIR V2' : 'EMITIR V2',
+    );
+    if (confirmar != true) return;
+
+    setState(() => _processando.add(participante.participacaoId));
+    CertificadoEmissaoV2? emissao;
+    try {
+      emissao = await _emissaoV2Service.prepararOuReusar(
+        evento: _eventoData,
+        participante: participante,
+        qrGlobal: qrGlobal,
+      );
+
+      await _emissaoV2Service.marcarEtapa(
+        emissao: emissao,
+        participante: participante,
+        etapa: 'gerando',
+      );
+
+      final pdfBytes = await _pdfDiretoService.gerarPdfParticipante(
+        evento: _eventoData,
+        participante: participante,
+        qrData: emissao.urlPublica,
+      );
+
+      final link = await _geradorService.uploadPdfDiretoERegistrar(
+        pdfBytes: pdfBytes,
+        evento: _eventoData,
+        participante: participante,
+        emissaoV2Id: emissao.id,
+        emissaoKey: emissao.emissaoKey,
+        codigoPublico: emissao.codigoPublico,
+        codigoHumano: emissao.codigoHumano,
+        urlAutenticidade: emissao.urlPublica,
+      );
+
+      await _emissaoV2Service.marcarEtapa(
+        emissao: emissao,
+        participante: participante,
+        etapa: 'publicando',
+      );
+
+      await _emissaoV2Service.finalizar(
+        emissao: emissao,
+        evento: _eventoData,
+        participante: participante,
+        qrGlobal: qrGlobal,
+        pdfUrl: link,
+        storagePath: _geradorService.storagePathParticipante(
+          evento: _eventoData,
+          participante: participante,
+        ),
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Emissão oficial concluída • ${emissao.codigoHumano}'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      await _carregarParticipantes(forcarServidor: true);
+    } catch (e) {
+      if (emissao != null) {
+        try {
+          await _emissaoV2Service.registrarFalha(
+            emissao: emissao,
+            participante: participante,
+            erro: e,
+          );
+        } catch (_) {}
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Erro ao emitir certificado V2: $e'),
+          backgroundColor: context.uai.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _processando.remove(participante.participacaoId));
+      }
+    }
+  }
+
+  Future<void> _abrirValidador(CertificadoParticipanteData participante) async {
+    final raw = participante.urlAutenticidadeNoEvento(_eventoData);
+    if (raw.isEmpty) {
+      _mostrarInfo('Este participante ainda não possui uma emissão oficial V2.');
+      return;
+    }
+    final uri = Uri.tryParse(raw);
+    if (uri == null) {
+      _mostrarInfo('Link de validação inválido.');
+      return;
+    }
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok && mounted) _mostrarInfo('Não foi possível abrir o validador.');
+  }
+
+  Future<void> _copiarLinkValidador(CertificadoParticipanteData participante) async {
+    final raw = participante.urlAutenticidadeNoEvento(_eventoData);
+    if (raw.isEmpty) {
+      _mostrarInfo('Este participante ainda não possui uma emissão oficial V2.');
+      return;
+    }
+    await Clipboard.setData(ClipboardData(text: raw));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Link copiado • ${participante.codigoValidacaoNoEvento(_eventoData)}'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  bool _bloquearLoteImportado() {
+    if (!_eventoData.exigePdfIndividual && !_participantesSelecionados.any((p) => p.pdfImportado)) return false;
+    _mostrarInfo('Para PDFs individuais, use Enviar PDF, Prévia ou Imprimir no cartão de cada participante.');
+    return true;
+  }
+
+  Future<void> _abrirUploadPdf(CertificadoParticipanteData participante) async {
+    if (!await _revalidarGeracao() || !mounted) return;
+    await _sincronizarEventoDoServidor();
+    if (!mounted) return;
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => CertificadoPdfImportadoScreen(evento: _eventoData, participante: participante)));
+    if (mounted) await _carregarParticipantes(forcarServidor: true);
+  }
+
   Future<void> _abrirPreview(CertificadoParticipanteData participante) async {
     await _sincronizarEventoDoServidor();
 
@@ -471,13 +680,10 @@ class _GeradorCertificadosEventoScreenState
     if (!mounted) return;
 
     debugPrint(
-      '🧾 [GeradorCertificados] voltou da prévia mantendo cache local: ${_participantes.length} participantes',
+      '🧾 [GeradorCertificados] voltou da prévia; sincronizando vínculo/emissão V2 do participante.',
     );
 
-    setState(() {
-      _carregando = false;
-      _erro = null;
-    });
+    await _carregarParticipantes(forcarServidor: true);
   }
 
   Future<void> _marcarImpresso(CertificadoParticipanteData participante) async {
@@ -533,6 +739,9 @@ class _GeradorCertificadosEventoScreenState
     required bool incluirPdf,
     required double pixelRatio,
   }) async {
+    if (_eventoData.exigePdfIndividual || participante.pdfImportado) {
+      throw StateError('Use a prévia do PDF individual vinculado.');
+    }
     setState(() {
       _renderParticipante = participante;
     });
@@ -603,7 +812,7 @@ class _GeradorCertificadosEventoScreenState
       for (var i = 0; i < selecionados.length; i++) {
         final participante = selecionados[i];
 
-        if (!participante.estaProntoParaGerar) {
+        if (!participante.estaProntoParaGerarNoEvento(_eventoData)) {
           continue;
         }
 
@@ -633,22 +842,43 @@ class _GeradorCertificadosEventoScreenState
   }
 
   Future<void> _gerarSelecionadosEVincular() async {
-    if (!await _revalidarGeracao()) return;
+    if (_bloquearLoteImportado()) return;
     if (_processandoLote) return;
 
     final selecionados = _participantesSelecionados;
-
     if (selecionados.isEmpty) {
       _mostrarInfo('Selecione pelo menos um participante.');
       return;
     }
 
+    late final CertificadoQrConfig qrGlobal;
+    try {
+      qrGlobal = await _qrConfigRepository.carregar();
+    } catch (e) {
+      _mostrarInfo('Não foi possível carregar a configuração de autenticidade: $e');
+      return;
+    }
+
+    if (!mounted) return;
+    final usarV2 = qrGlobal.ativo == true &&
+        _eventoData.configuracoes.studio.qrCode.ativo;
+
+    if (usarV2) {
+      if (!await _certificadoPermissionGuard.revalidarEmissao(context)) return;
+    } else {
+      if (!await _revalidarGeracao()) return;
+    }
+
     final confirmar = await _confirmarAcao(
-      titulo: 'Gerar e vincular certificados?',
-      mensagem:
-          'O sistema vai gerar PDFs diretos, enviar para o Firebase Storage e vincular o novo link na participação. '
-          'Se já existir certificado antigo no Firebase Storage, ele será removido. Links externos, como Drive, serão apenas substituídos.',
-      confirmar: 'GERAR E VINCULAR',
+      titulo: usarV2
+          ? 'Emitir certificados oficiais V2?'
+          : 'Gerar e vincular certificados?',
+      mensagem: usarV2
+          ? 'Cada participante receberá uma identidade oficial estável, código público e QR real. '
+              'Reemissões reutilizam o mesmo código. O PDF será enviado ao Storage e vinculado à participação.'
+          : 'O sistema vai gerar PDFs diretos, enviar para o Firebase Storage e vincular o novo link na participação. '
+              'Se já existir certificado antigo no Firebase Storage, ele será removido. Links externos, como Drive, serão apenas substituídos.',
+      confirmar: usarV2 ? 'EMITIR OFICIALMENTE' : 'GERAR E VINCULAR',
     );
 
     if (confirmar != true) return;
@@ -657,16 +887,21 @@ class _GeradorCertificadosEventoScreenState
       _processandoLote = true;
       _progressoAtual = 0;
       _progressoTotal = selecionados.length;
-      _statusProcessamento = 'Gerando e vinculando certificados...';
+      _statusProcessamento = usarV2
+          ? 'Emitindo certificados oficiais...'
+          : 'Gerando e vinculando certificados...';
       _renderParticipante = null;
       _logsProcessamento.clear();
       _addLogProcessamentoSemSetState(
-        'Iniciando geração direta de ${selecionados.length} certificado(s).',
+        usarV2
+            ? 'Modo Certificado Oficial: ${selecionados.length} emissão(ões).'
+            : 'Motor legado: geração direta de ${selecionados.length} certificado(s).',
       );
     });
 
     var gerados = 0;
     var pulados = 0;
+    var emitidosV2 = 0;
 
     try {
       await Future<void>.delayed(const Duration(milliseconds: 160));
@@ -675,7 +910,7 @@ class _GeradorCertificadosEventoScreenState
       for (var i = 0; i < selecionados.length; i++) {
         final participante = selecionados[i];
 
-        if (!participante.estaProntoParaGerar) {
+        if (!participante.estaProntoParaGerarNoEvento(_eventoData)) {
           pulados++;
           _addLogProcessamentoSemSetState(
             'Ignorado: ${participante.alunoNome} sem dados suficientes.',
@@ -683,98 +918,160 @@ class _GeradorCertificadosEventoScreenState
           continue;
         }
 
-        if (!mounted) return;
-
-        setState(() {
-          _progressoAtual = i + 1;
-          _statusProcessamento =
-              'Gerando ${i + 1}/${selecionados.length}: ${participante.alunoNome}';
-          _renderParticipante = null;
-          _addLogProcessamentoSemSetState(
-            'Gerando PDF direto: ${participante.alunoNome}',
-          );
-          _addLogProcessamentoSemSetState(
-            'Preparando substituição inteligente do certificado antigo...',
-          );
-        });
-
-        final pdfBytes = await _pdfDiretoService.gerarPdfParticipante(
-          evento: _eventoData,
-          participante: participante,
-        );
-
-        await _geradorService.uploadPdfDiretoERegistrar(
-          pdfBytes: pdfBytes,
-          evento: _eventoData,
-          participante: participante,
-          onLog: (mensagem) {
+        CertificadoEmissaoV2? emissao;
+        try {
+          if (usarV2) {
             if (!mounted) return;
-
             setState(() {
+              _progressoAtual = i + 1;
+              _statusProcessamento =
+                  'Reservando identidade ${i + 1}/${selecionados.length}: ${participante.alunoNome}';
               _addLogProcessamentoSemSetState(
-                '${participante.alunoNome}: $mensagem',
+                'Preparando Certificado Oficial: ${participante.alunoNome}',
               );
             });
-          },
-        );
+            emissao = await _emissaoV2Service.prepararOuReusar(
+              evento: _eventoData,
+              participante: participante,
+              qrGlobal: qrGlobal,
+            );
+            _addLogProcessamentoSemSetState(
+              '${emissao.existente ? 'Reemissão' : 'Nova emissão'} • ${emissao.codigoHumano}',
+            );
+          }
 
-        gerados++;
+          if (!mounted) return;
+          setState(() {
+            _progressoAtual = i + 1;
+            _statusProcessamento =
+                '${usarV2 ? 'Emitindo' : 'Gerando'} ${i + 1}/${selecionados.length}: ${participante.alunoNome}';
+            _renderParticipante = null;
+            _addLogProcessamentoSemSetState(
+              'Gerando PDF direto: ${participante.alunoNome}',
+            );
+          });
 
-        if (!mounted) return;
+          if (emissao != null) {
+            await _emissaoV2Service.marcarEtapa(
+              emissao: emissao,
+              participante: participante,
+              etapa: 'gerando',
+            );
+          }
 
-        setState(() {
-          _statusProcessamento =
-              'Vinculado ${i + 1}/${selecionados.length}: ${participante.alunoNome}';
-          _addLogProcessamentoSemSetState(
-            'PDF enviado e link vinculado: ${participante.alunoNome}',
+          final pdfBytes = await _pdfDiretoService.gerarPdfParticipante(
+            evento: _eventoData,
+            participante: participante,
+            qrData: emissao?.urlPublica,
           );
-        });
+
+          final link = await _geradorService.uploadPdfDiretoERegistrar(
+            pdfBytes: pdfBytes,
+            evento: _eventoData,
+            participante: participante,
+            emissaoV2Id: emissao?.id,
+            emissaoKey: emissao?.emissaoKey,
+            codigoPublico: emissao?.codigoPublico,
+            codigoHumano: emissao?.codigoHumano,
+            urlAutenticidade: emissao?.urlPublica,
+            onLog: (mensagem) {
+              if (!mounted) return;
+              setState(() {
+                _addLogProcessamentoSemSetState(
+                  '${participante.alunoNome}: $mensagem',
+                );
+              });
+            },
+          );
+
+          if (emissao != null) {
+            await _emissaoV2Service.marcarEtapa(
+              emissao: emissao,
+              participante: participante,
+              etapa: 'publicando',
+            );
+            await _emissaoV2Service.finalizar(
+              emissao: emissao,
+              evento: _eventoData,
+              participante: participante,
+              qrGlobal: qrGlobal,
+              pdfUrl: link,
+              storagePath: _geradorService.storagePathParticipante(
+                evento: _eventoData,
+                participante: participante,
+              ),
+            );
+            emitidosV2++;
+            _addLogProcessamentoSemSetState(
+              '✅ Certificado Oficial emitido: ${emissao.codigoHumano}',
+            );
+          }
+
+          gerados++;
+          if (!mounted) return;
+          setState(() {
+            _statusProcessamento =
+                '${usarV2 ? 'Emitido' : 'Vinculado'} ${i + 1}/${selecionados.length}: ${participante.alunoNome}';
+          });
+        } catch (e) {
+          if (emissao != null) {
+            try {
+              await _emissaoV2Service.registrarFalha(
+            emissao: emissao,
+            participante: participante,
+            erro: e,
+          );
+            } catch (_) {}
+          }
+          _addLogProcessamentoSemSetState(
+            '❌ ${participante.alunoNome}: $e',
+          );
+          // Um participante com erro não cancela o restante do lote.
+        }
 
         await Future<void>.delayed(const Duration(milliseconds: 45));
       }
 
       if (!mounted) return;
-
       setState(() {
         _statusProcessamento = 'Atualizando lista do servidor...';
         _addLogProcessamentoSemSetState(
-          'Concluído. Gerados: $gerados • Ignorados: $pulados.',
+          usarV2
+              ? 'Concluído. PDFs: $gerados • Certificados Oficiais: $emitidosV2 • Ignorados: $pulados.'
+              : 'Concluído. Gerados: $gerados • Ignorados: $pulados.',
         );
       });
 
       _mostrarInfo(
-        'Certificados gerados e vinculados: $gerados. Ignorados: $pulados.',
+        usarV2
+            ? 'Certificados Oficiais emitidos: $emitidosV2. Ignorados: $pulados.'
+            : 'Certificados gerados e vinculados: $gerados. Ignorados: $pulados.',
       );
       _limparSelecao();
       await _carregarParticipantes(forcarServidor: true);
     } catch (e) {
       if (!mounted) return;
-
       setState(() {
-        _addLogProcessamentoSemSetState('Erro ao gerar/vincular: $e');
+        _addLogProcessamentoSemSetState('Erro geral no lote: $e');
       });
-
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Erro ao gerar certificados: $e'),
-          backgroundColor: context.uai.error,
-          behavior: SnackBarBehavior.floating,
-        ),
+        SnackBar(content: Text('Erro ao processar certificados: $e')),
       );
     } finally {
       if (mounted) {
         setState(() {
           _processandoLote = false;
           _statusProcessamento = null;
+          _renderParticipante = null;
           _progressoAtual = 0;
           _progressoTotal = 0;
-          _renderParticipante = null;
         });
       }
     }
   }
 
   Future<void> _criarLotesImpressao() async {
+    if (_bloquearLoteImportado()) return;
     if (!await _revalidarGeracao()) return;
     if (_processandoLote) return;
 
@@ -905,7 +1202,7 @@ class _GeradorCertificadosEventoScreenState
     final itens = <CertificadoPacoteGraficaItem>[];
 
     for (final participante in participantes) {
-      if (!participante.estaProntoParaGerar) continue;
+      if (!participante.estaProntoParaGerarNoEvento(_eventoData)) continue;
 
       itens.add(
         CertificadoPacoteGraficaItem(
@@ -1092,7 +1389,7 @@ class _GeradorCertificadosEventoScreenState
               label: const Text('VER'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: primary,
-                side: BorderSide(color: primary.withOpacity(0.30)),
+                side: BorderSide(color: primary.withAlpha(77)),
               ),
             ),
             ElevatedButton.icon(
@@ -1113,6 +1410,7 @@ class _GeradorCertificadosEventoScreenState
   }
 
   Future<void> _criarPacoteGrafica() async {
+    if (_bloquearLoteImportado()) return;
     if (!await _revalidarGeracao()) return;
     if (_processandoLote) return;
 
@@ -1646,9 +1944,9 @@ class _GeradorCertificadosEventoScreenState
                     width: 58,
                     height: 58,
                     decoration: BoxDecoration(
-                      color: primary.withOpacity(0.10),
+                      color: primary.withAlpha(26),
                       borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: primary.withOpacity(0.18)),
+                      border: Border.all(color: primary.withAlpha(46)),
                     ),
                     alignment: Alignment.center,
                     child: SizedBox(
@@ -1731,7 +2029,7 @@ class _GeradorCertificadosEventoScreenState
                       ),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: primary,
-                        side: BorderSide(color: primary.withOpacity(0.35)),
+                        side: BorderSide(color: primary.withAlpha(89)),
                         padding: const EdgeInsets.symmetric(vertical: 13),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(t.buttonRadius),
@@ -1746,9 +2044,9 @@ class _GeradorCertificadosEventoScreenState
                       vertical: 7,
                     ),
                     decoration: BoxDecoration(
-                      color: primary.withOpacity(0.08),
+                      color: primary.withAlpha(20),
                       borderRadius: BorderRadius.circular(99),
-                      border: Border.all(color: primary.withOpacity(0.14)),
+                      border: Border.all(color: primary.withAlpha(36)),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -1877,6 +2175,11 @@ class _GeradorCertificadosEventoScreenState
       selecionados: _selecionados.length,
       todosSelecionados: _todosFiltradosSelecionados,
       carregando: _processandoLote,
+      qrGlobalAtivo: _qrGlobalAtivo,
+      qrGlobalCarregado: _qrGlobalCarregado,
+      qrTemplateAtivo: _templateQrAtivo,
+      pdfIndividual: _eventoData.exigePdfIndividual,
+      modoV2Ativo: _modoV2Ativo,
       onRecarregar: _atualizarDoServidor,
       onSelecionarTodos: _selecionarTodosFiltrados,
       onLimparSelecao: _limparSelecao,
@@ -1903,9 +2206,9 @@ class _GeradorCertificadosEventoScreenState
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
-              color: accent.withOpacity(0.07),
+              color: accent.withAlpha(18),
               borderRadius: BorderRadius.circular(t.inputRadius),
-              border: Border.all(color: accent.withOpacity(0.18)),
+              border: Border.all(color: accent.withAlpha(46)),
             ),
             child: Row(
               children: [
@@ -2022,7 +2325,7 @@ class _GeradorCertificadosEventoScreenState
       child: AbsorbPointer(
         absorbing: true,
         child: Container(
-          color: Colors.black.withOpacity(0.58),
+          color: Colors.black.withAlpha(148),
           child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 520),
@@ -2084,10 +2387,10 @@ class _GeradorCertificadosEventoScreenState
                               vertical: 6,
                             ),
                             decoration: BoxDecoration(
-                              color: primary.withOpacity(0.10),
+                              color: primary.withAlpha(26),
                               borderRadius: BorderRadius.circular(99),
                               border: Border.all(
-                                color: primary.withOpacity(0.18),
+                                color: primary.withAlpha(46),
                               ),
                             ),
                             child: Text(
@@ -2110,7 +2413,7 @@ class _GeradorCertificadosEventoScreenState
                           value: progress,
                           minHeight: 9,
                           color: primary,
-                          backgroundColor: t.border.withOpacity(0.40),
+                          backgroundColor: t.border.withAlpha(102),
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -2234,9 +2537,9 @@ class _GeradorCertificadosEventoScreenState
             width: 56,
             height: 56,
             decoration: BoxDecoration(
-              color: onPrimary.withOpacity(0.14),
+              color: onPrimary.withAlpha(36),
               borderRadius: BorderRadius.circular(t.buttonRadius),
-              border: Border.all(color: onPrimary.withOpacity(0.16)),
+              border: Border.all(color: onPrimary.withAlpha(41)),
             ),
             child: Icon(
               Icons.workspace_premium_rounded,
@@ -2269,7 +2572,7 @@ class _GeradorCertificadosEventoScreenState
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: onPrimary.withOpacity(0.82),
+                  color: onPrimary.withAlpha(209),
                   fontSize: 12.5,
                   fontWeight: FontWeight.w700,
                   height: 1.3,
@@ -2287,8 +2590,8 @@ class _GeradorCertificadosEventoScreenState
             ),
             style: OutlinedButton.styleFrom(
               foregroundColor: onPrimary,
-              side: BorderSide(color: onPrimary.withOpacity(0.28)),
-              backgroundColor: onPrimary.withOpacity(0.08),
+              side: BorderSide(color: onPrimary.withAlpha(71)),
+              backgroundColor: onPrimary.withAlpha(20),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(t.buttonRadius),
               ),
@@ -2406,12 +2709,22 @@ class _GeradorCertificadosEventoScreenState
               _renderParticipante?.participacaoId ==
                   participante.participacaoId),
       onSelecionar: (value) => _alternarSelecao(participante, value),
+      onUploadPdf: () => _abrirUploadPdf(participante),
       onPreview: () => _abrirPreview(participante),
       onGerarPdf: () => _abrirPreview(participante),
       onGerarPng: () => _abrirPreview(participante),
       onImprimir: () => _abrirPreview(participante),
       onCompartilhar: () => _abrirPreview(participante),
       onMarcarImpresso: () => _marcarImpresso(participante),
+      onEmitirV2: !participante.pdfImportado && !_eventoData.exigePdfIndividual && _eventoData.configuracoes.studio.qrCode.ativo
+          ? () => _emitirV2Participante(participante)
+          : null,
+      onAbrirValidador: participante.temEmissaoOficialV2NoEvento(_eventoData)
+          ? () => _abrirValidador(participante)
+          : null,
+      onCopiarLink: participante.temEmissaoOficialV2NoEvento(_eventoData)
+          ? () => _copiarLinkValidador(participante)
+          : null,
     );
   }
 
@@ -2441,9 +2754,9 @@ class _GeradorCertificadosEventoScreenState
             width: 58,
             height: 58,
             decoration: BoxDecoration(
-              color: accent.withOpacity(0.11),
+              color: accent.withAlpha(28),
               borderRadius: BorderRadius.circular(t.cardRadius),
-              border: Border.all(color: accent.withOpacity(0.14)),
+              border: Border.all(color: accent.withAlpha(36)),
             ),
             child: loading
                 ? Padding(
@@ -2484,7 +2797,7 @@ class _GeradorCertificadosEventoScreenState
               label: Text(actionLabel),
               style: OutlinedButton.styleFrom(
                 foregroundColor: accent,
-                side: BorderSide(color: accent.withOpacity(0.28)),
+                side: BorderSide(color: accent.withAlpha(71)),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(t.buttonRadius),
                 ),

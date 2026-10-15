@@ -1,6 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:uai_capoeira/modules/usuarios/widgets/usuario_action_overlay.dart';
+import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'package:uai_capoeira/modules/usuarios/models/permissao_predefinida_model.dart';
+import 'package:uai_capoeira/modules/usuarios/services/permissao_predefinida_service.dart';
+import 'package:uai_capoeira/modules/usuarios/admin/usuario_role_catalog.dart';
+import 'package:uai_capoeira/modules/usuarios/services/usuario_auditoria_service.dart';
 
 class AprovarUsuarioScreen extends StatefulWidget {
   final String userId;
@@ -21,675 +27,831 @@ class AprovarUsuarioScreen extends StatefulWidget {
 class _AprovarUsuarioScreenState extends State<AprovarUsuarioScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final PermissaoPredefinidaService _presetService =
+      PermissaoPredefinidaService();
 
-  // 🔥 Tipos carregados do Firestore (cache local)
   List<Map<String, dynamic>> _tiposUsuarios = [];
-  String _selectedTipo = 'aluno';
+  List<PermissaoPredefinidaModel> _predefinicoes = [];
+  String? _selectedTipo;
+  String? _selectedPresetId;
   bool _carregando = true;
   bool _aprovando = false;
-  bool _rejeitando = false;
+  String? _erroCarregamento;
 
   @override
   void initState() {
     super.initState();
-    _carregarTiposUsuarios();
+    _carregarDados();
   }
 
-  // 🔥 CARREGA TIPOS DO FIRESTORE (configurável)
-  Future<void> _carregarTiposUsuarios() async {
-    try {
-      final doc = await _firestore
-          .collection('configuracoes')
-          .doc('tipos_usuario')
-          .get();
-
-      if (doc.exists && doc.data() != null) {
-        final data = doc.data()!;
-        final tipos = data['tipos'] as List<dynamic>?;
-
-        if (tipos != null && tipos.isNotEmpty) {
-          setState(() {
-            _tiposUsuarios = tipos
-                .map((t) => Map<String, dynamic>.from(t))
-                .toList();
-            _carregando = false;
-          });
-
-          // Define o tipo padrão (primeiro ou o que já estava)
-          final tipoAtual = widget.userData['tipo'];
-          if (tipoAtual != null &&
-              _tiposUsuarios.any((t) => t['tipo'] == tipoAtual)) {
-            _selectedTipo = tipoAtual;
-          } else {
-            _selectedTipo = _tiposUsuarios.first['tipo'];
-          }
-
-          return;
-        }
-      }
-
-      // Fallback para tipos padrão se não encontrar no Firestore
-      _carregarTiposFallback();
-    } catch (e) {
-      print('Erro ao carregar tipos: $e');
-      _carregarTiposFallback();
-    }
-  }
-
-  // 🔥 Tipos padrão (fallback)
-  void _carregarTiposFallback() {
+  Future<void> _carregarDados() async {
     setState(() {
-      _tiposUsuarios = [
-        {
-          'tipo': 'aluno',
-          'peso': 10,
-          'descricao': 'Acesso básico ao conteúdo',
-          'icone': 'person',
-          'cor': '#4CAF50', // verde
-        },
-        {
-          'tipo': 'monitor',
-          'peso': 30,
-          'descricao': 'Pode auxiliar alunos',
-          'icone': 'supervised_user_circle',
-          'cor': '#2196F3', // azul
-        },
-        {
-          'tipo': 'professor',
-          'peso': 50,
-          'descricao': 'Cadastra alunos e agenda aulas',
-          'icone': 'school',
-          'cor': '#FF9800', // laranja
-        },
-        {
-          'tipo': 'administrador',
-          'peso': 100,
-          'descricao': 'Acesso total ao sistema',
-          'icone': 'admin_panel_settings',
-          'cor': '#F44336', // vermelho
-        },
-      ];
-      _carregando = false;
-
-      final tipoAtual = widget.userData['tipo'];
-      if (tipoAtual != null &&
-          _tiposUsuarios.any((t) => t['tipo'] == tipoAtual)) {
-        _selectedTipo = tipoAtual;
-      } else {
-        _selectedTipo = _tiposUsuarios.first['tipo'];
-      }
+      _carregando = true;
+      _erroCarregamento = null;
     });
-  }
 
-  // 🔥 Converte string icone para IconData
-  IconData _getIconData(String iconName) {
-    switch (iconName) {
-      case 'person':
-        return Icons.person;
-      case 'supervised_user_circle':
-        return Icons.supervised_user_circle;
-      case 'school':
-        return Icons.school;
-      case 'admin_panel_settings':
-        return Icons.admin_panel_settings;
-      default:
-        return Icons.person;
+    try {
+      final resultados = await Future.wait<dynamic>([
+        _firestore.collection('configuracoes').doc('tipos_usuario').get(),
+        _presetService.streamPredefinicoes(apenasAtivas: true).first,
+      ]);
+
+      final docTipos = resultados[0] as DocumentSnapshot<Map<String, dynamic>>;
+      final presets = resultados[1] as List<PermissaoPredefinidaModel>;
+
+      var tipos = <Map<String, dynamic>>[];
+      final raw = docTipos.data()?['tipos'];
+      if (raw is List) {
+        tipos = raw
+            .whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .where(_ehTipoAdministrativo)
+            .toList(growable: false);
+      }
+
+      if (tipos.isEmpty) tipos = _tiposFallback();
+
+      final tipoAtual = widget.userData['tipo']?.toString().trim();
+      final selecionado = tipoAtual != null &&
+              tipos.any((item) => item['tipo']?.toString() == tipoAtual)
+          ? tipoAtual
+          : tipos.first['tipo']?.toString();
+
+      if (!mounted) return;
+      setState(() {
+        _tiposUsuarios = tipos;
+        _predefinicoes = presets;
+        _selectedTipo = selecionado;
+        _carregando = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _tiposUsuarios = _tiposFallback();
+        _selectedTipo = _tiposUsuarios.first['tipo']?.toString();
+        _predefinicoes = [];
+        _erroCarregamento = e.toString();
+        _carregando = false;
+      });
     }
   }
 
-  // 🔥 Converte cor hex para Color
-  Color _getColorFromHex(String hexColor) {
-    hexColor = hexColor.replaceAll('#', '');
-    if (hexColor.length == 6) {
-      hexColor = 'FF$hexColor';
+  bool _ehTipoAdministrativo(Map<String, dynamic> tipo) {
+    final nome = (tipo['tipo'] ?? '').toString().trim().toLowerCase();
+    if (nome.isEmpty) return false;
+    // Área do Aluno é um acesso independente. A aprovação desta tela é
+    // exclusivamente para a gestão administrativa.
+    if (nome == 'aluno' ||
+        nome == 'area_aluno' ||
+        nome == 'área_aluno' ||
+        nome == 'usuario' ||
+        nome == 'usuário') {
+      return false;
     }
-    return Color(int.parse(hexColor, radix: 16));
+    return true;
   }
 
-  Color _getTipoColor(Map<String, dynamic> tipo) {
-    final corHex = tipo['cor'] as String?;
-    if (corHex != null && corHex.isNotEmpty) {
-      return _getColorFromHex(corHex);
-    }
+  List<Map<String, dynamic>> _tiposFallback() => UsuarioRoleCatalog
+      .administrativos
+      .map((role) => {
+            'tipo': role.id,
+            'peso': role.peso,
+            'descricao': role.descricao,
+            'icone': switch (role.id) {
+              'administrador' => 'admin_panel_settings',
+              'professor' => 'school',
+              'monitor' => 'supervised_user_circle',
+              _ => 'badge',
+            },
+          })
+      .toList(growable: false);
 
-    // Fallback por nome
-    switch (tipo['tipo']) {
+
+  Map<String, dynamic> get _tipoSelecionado {
+    if (_tiposUsuarios.isEmpty) return const <String, dynamic>{};
+    return _tiposUsuarios.firstWhere(
+      (item) => item['tipo']?.toString() == _selectedTipo,
+      orElse: () => _tiposUsuarios.first,
+    );
+  }
+
+  PermissaoPredefinidaModel? get _presetSelecionado {
+    final id = _selectedPresetId;
+    if (id == null || id.isEmpty) return null;
+    for (final preset in _predefinicoes) {
+      if (preset.id == id) return preset;
+    }
+    return null;
+  }
+
+  int _peso(Map<String, dynamic> tipo) {
+    final value = tipo['peso'];
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  String _descricao(Map<String, dynamic> tipo) =>
+      tipo['descricao']?.toString().trim().isNotEmpty == true
+          ? tipo['descricao'].toString().trim()
+          : 'Perfil administrativo do sistema.';
+
+  Color _corTipo(Map<String, dynamic> tipo) {
+    final hex = tipo['cor']?.toString().replaceAll('#', '').trim() ?? '';
+    if (hex.length == 6 || hex.length == 8) {
+      try {
+        return Color(int.parse(hex.length == 6 ? 'FF$hex' : hex, radix: 16));
+      } catch (_) {}
+    }
+    switch (tipo['tipo']?.toString().toLowerCase()) {
       case 'administrador':
         return Colors.red;
       case 'professor':
         return Colors.orange;
       case 'monitor':
         return Colors.blue;
-      case 'aluno':
-        return Colors.green;
       default:
-        return Colors.grey;
+        return Theme.of(context).colorScheme.primary;
     }
   }
 
-  IconData _getTipoIcon(Map<String, dynamic> tipo) {
-    final iconName = tipo['icone'] as String?;
-    if (iconName != null && iconName.isNotEmpty) {
-      return _getIconData(iconName);
+  IconData _iconeTipo(Map<String, dynamic> tipo) {
+    switch (tipo['icone']?.toString()) {
+      case 'admin_panel_settings':
+        return Icons.admin_panel_settings_rounded;
+      case 'school':
+        return Icons.school_rounded;
+      case 'supervised_user_circle':
+        return Icons.supervised_user_circle_rounded;
+      case 'badge':
+        return Icons.badge_rounded;
+      default:
+        return Icons.manage_accounts_rounded;
     }
-    return Icons.person;
   }
 
-  String _getTipoDescricao(Map<String, dynamic> tipo) {
-    return tipo['descricao'] ?? 'Sem descrição';
-  }
-
-  int _getPesoTipo(Map<String, dynamic> tipo) {
-    return tipo['peso'] ?? 0;
-  }
+  bool get _possuiAreaAluno =>
+      widget.userData['acesso_area_aluno'] == true ||
+      widget.userData['vinculado_area_aluno'] == true ||
+      widget.userData['area_aluno'] == true ||
+      (widget.userData['tipo_identidade']?.toString() == 'hibrido');
 
   Future<void> _aprovarUsuario() async {
+    if (_aprovando || _selectedTipo == null) return;
     final currentUser = _auth.currentUser;
     if (currentUser == null) {
-      _mostrarErro('Usuário não autenticado');
+      _snack('Usuário administrador não autenticado.', erro: true);
       return;
     }
 
-    setState(() => _aprovando = true);
+    final tipo = _tipoSelecionado;
+    final preset = _presetSelecionado;
+    final nome = _nomeUsuario;
 
-    try {
-      final tipoSelecionado = _tiposUsuarios.firstWhere(
-        (t) => t['tipo'] == _selectedTipo,
-        orElse: () => _tiposUsuarios.first,
-      );
-
-      final adminNome = widget.adminData['nome_completo'] ?? 'Administrador';
-      final adminId = currentUser.uid;
-
-      await _firestore.collection('usuarios').doc(widget.userId).update({
-        'tipo': _selectedTipo,
-        'peso_permissao': _getPesoTipo(tipoSelecionado),
-        'status_conta': 'ativa',
-        'aprovado_por': adminId,
-        'aprovado_por_nome': adminNome,
-        'aprovado_em': FieldValue.serverTimestamp(),
-        'ultima_atualizacao': FieldValue.serverTimestamp(),
-      });
-
-      if (mounted) {
-        _mostrarSucesso('Usuário aprovado com sucesso!');
-        await Future.delayed(const Duration(milliseconds: 1500));
-        Navigator.pop(context, true);
-      }
-    } catch (e) {
-      _mostrarErro('Erro ao aprovar: $e');
-    } finally {
-      if (mounted) {
-        setState(() => _aprovando = false);
-      }
-    }
-  }
-
-  Future<void> _rejeitarUsuario() async {
-    final result = await showDialog<bool>(
+    final confirmar = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Rejeitar Usuário'),
-        content: const Text(
-          'Tem certeza que deseja rejeitar este usuário? '
-          'Ele será marcado como "bloqueado" e não poderá acessar o sistema.',
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Confirmar acesso à gestão'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('$nome será aprovado como ${_labelTipo(_selectedTipo!)}.'),
+            const SizedBox(height: 10),
+            Text(
+              preset == null
+                  ? 'Nenhuma predefinição será aplicada agora. As permissões específicas poderão ser configuradas depois.'
+                  : 'Predefinição: ${preset.nome} (${preset.totalAtivas} permissões ativas).',
+            ),
+            if (_possuiAreaAluno) ...[
+              const SizedBox(height: 10),
+              const Text(
+                'O vínculo existente com a Área do Aluno será preservado. A conta ficará híbrida: Gestão + Área do Aluno.',
+              ),
+            ],
+          ],
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Voltar'),
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Rejeitar'),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            icon: const Icon(Icons.verified_user_rounded),
+            label: const Text('Aprovar acesso'),
           ),
         ],
       ),
     );
+    if (confirmar != true) return;
 
-    if (result != true) return;
-
-    setState(() => _rejeitando = true);
-
+    if (!mounted) return;
+    setState(() => _aprovando = true);
+    UsuarioActionOverlay.show(
+      context,
+      title: 'Aprovando $nome...',
+      subtitle: preset == null
+          ? 'Liberando o acesso à gestão.'
+          : 'Liberando o acesso e aplicando a predefinição ${preset.nome}.',
+      icon: Icons.verified_user_rounded,
+    );
     try {
-      await _firestore.collection('usuarios').doc(widget.userId).update({
-        'status_conta': 'bloqueada',
-        'ultima_atualizacao': FieldValue.serverTimestamp(),
-      });
+      final adminNome = widget.adminData['nome_completo']?.toString().trim();
+      final userRef = _firestore.collection('usuarios').doc(widget.userId);
+      final permissoesRef = userRef
+          .collection('permissoes_usuario')
+          .doc('configuracoes');
+      final batch = _firestore.batch();
 
-      if (mounted) {
-        _mostrarSucesso('Usuário rejeitado!', cor: Colors.orange);
-        await Future.delayed(const Duration(milliseconds: 1500));
-        Navigator.pop(context, true);
+      batch.set(
+        userRef,
+        {
+          'tipo': _selectedTipo,
+          'peso_permissao': _peso(tipo),
+          'status_conta': 'ativa',
+          'acesso_gestao': true,
+          'exibir_na_gestao': true,
+          'solicitacao_acesso_gestao': false,
+          'aprovado_por': currentUser.uid,
+          'aprovado_por_nome':
+              (adminNome == null || adminNome.isEmpty) ? 'Administrador' : adminNome,
+          'aprovado_em': FieldValue.serverTimestamp(),
+          'ultima_atualizacao': FieldValue.serverTimestamp(),
+          'predefinicao_permissoes_id': preset?.id,
+          'predefinicao_permissoes_nome': preset?.nome,
+          'predefinicao_aplicada_em':
+              preset == null ? null : FieldValue.serverTimestamp(),
+          'predefinicao_aplicada_por': preset == null ? null : currentUser.uid,
+        },
+        SetOptions(merge: true),
+      );
+
+      if (preset != null) {
+        batch.set(
+          permissoesRef,
+          Map<String, bool>.from(preset.permissoes),
+          SetOptions(merge: true),
+        );
       }
+
+      batch.set(
+        UsuarioAuditoriaService.novoEventoRef(widget.userId),
+        UsuarioAuditoriaService.evento(
+          tipo: 'aprovacao',
+          titulo: 'Acesso à gestão aprovado',
+          descricao: preset == null
+              ? '$nome aprovado como ${_labelTipo(_selectedTipo!)}.'
+              : '$nome aprovado como ${_labelTipo(_selectedTipo!)} com a predefinição ${preset.nome}.',
+          atorUid: currentUser.uid,
+          atorNome: (adminNome == null || adminNome.isEmpty) ? 'Administrador' : adminNome,
+          antes: {
+            'status_conta': widget.userData['status_conta'],
+            'tipo': widget.userData['tipo'],
+          },
+          depois: {
+            'status_conta': 'ativa',
+            'tipo': _selectedTipo,
+            'predefinicao': preset?.nome,
+          },
+        ),
+      );
+
+      await batch.commit();
+
+      if (!mounted) return;
+      _snack(
+        preset == null
+            ? '$nome aprovado como ${_labelTipo(_selectedTipo!)}.'
+            : '$nome aprovado e permissões de "${preset.nome}" aplicadas.',
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 650));
+      if (mounted) Navigator.pop(context, true);
     } catch (e) {
-      _mostrarErro('Erro ao rejeitar: $e');
+      if (!mounted) return;
+      _snack('Não foi possível aprovar o acesso: $e', erro: true);
     } finally {
-      if (mounted) {
-        setState(() => _rejeitando = false);
-      }
+      UsuarioActionOverlay.hide();
+      if (mounted) setState(() => _aprovando = false);
     }
   }
 
-  void _mostrarSucesso(String mensagem, {Color cor = Colors.green}) {
+  String get _nomeUsuario {
+    for (final key in ['nome_completo', 'nome', 'name', 'displayName']) {
+      final value = widget.userData[key]?.toString().trim() ?? '';
+      if (value.isNotEmpty) return value;
+    }
+    return 'Usuário';
+  }
+
+  String get _emailUsuario {
+    final value = widget.userData['email']?.toString().trim() ?? '';
+    return value.isEmpty ? 'E-mail não informado' : value;
+  }
+
+  String _labelTipo(String tipo) => UsuarioRoleCatalog.label(tipo);
+
+  void _snack(String mensagem, {bool erro = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(mensagem),
-        backgroundColor: cor,
-        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: erro ? context.uai.error : context.uai.success,
       ),
     );
-  }
-
-  void _mostrarErro(String mensagem) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(mensagem),
-        backgroundColor: Colors.red,
-        duration: const Duration(seconds: 3),
-      ),
-    );
-  }
-
-  Color _getStatusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'ativa':
-        return Colors.green;
-      case 'pendente':
-        return Colors.orange;
-      case 'bloqueada':
-        return Colors.red;
-      case 'inativa':
-        return Colors.grey;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  IconData _getStatusIcon(String status) {
-    switch (status.toLowerCase()) {
-      case 'ativa':
-        return Icons.check_circle;
-      case 'pendente':
-        return Icons.pending;
-      case 'bloqueada':
-        return Icons.block;
-      case 'inativa':
-        return Icons.person_off;
-      default:
-        return Icons.help;
-    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     if (_carregando) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return Scaffold(
+        appBar: AppBar(title: const Text('Aprovar acesso')),
+        body: const Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 14),
+              Text('Preparando aprovação...'),
+            ],
+          ),
+        ),
+      );
     }
 
-    final theme = Theme.of(context);
-    final data = widget.userData;
-    final nome = data['nome_completo'] ?? 'Nome não informado';
-    final email = data['email'] ?? 'Email não informado';
-    final contato = data['contato'] ?? 'Não informado';
-    final fotoUrl = data['foto_url'];
-    final statusAtual = data['status_conta'] ?? 'pendente';
+    final preset = _presetSelecionado;
+    final foto = (widget.userData['foto_url'] ??
+            widget.userData['photoURL'] ??
+            widget.userData['photoUrl'])
+        ?.toString()
+        .trim();
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Aprovar Usuário'),
-        backgroundColor: theme.primaryColor,
-        foregroundColor: Colors.white,
-        leading: IconButton(
-          icon: const Icon(Icons.close),
-          onPressed: () => Navigator.pop(context),
-        ),
+        title: const Text('Aprovar acesso'),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Banner de status atual
-            Container(
-              padding: const EdgeInsets.all(12),
-              margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(
-                color: _getStatusColor(statusAtual).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: _getStatusColor(statusAtual)),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    _getStatusIcon(statusAtual),
-                    color: _getStatusColor(statusAtual),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Status atual: ${statusAtual.toUpperCase()}',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: _getStatusColor(statusAtual),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Tipo: ${data['tipo'] ?? 'não definido'}',
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // Card de informações do usuário
-            Card(
-              elevation: 2,
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      backgroundColor: theme.primaryColor.withOpacity(0.1),
-                      radius: 30,
-                      backgroundImage:
-                          fotoUrl != null && fotoUrl.toString().isNotEmpty
-                          ? NetworkImage(fotoUrl.toString()) as ImageProvider
-                          : null,
-                      child: fotoUrl == null || fotoUrl.toString().isEmpty
-                          ? Text(
-                              nome.substring(0, 1).toUpperCase(),
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: theme.primaryColor,
-                              ),
-                            )
-                          : null,
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            nome,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            email,
-                            style: TextStyle(color: Colors.grey[600]),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Contato: $contato',
-                            style: TextStyle(color: Colors.grey[600]),
-                          ),
-                        ],
+      body: Stack(
+        children: [
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final maxWidth = constraints.maxWidth >= 1000 ? 940.0 : double.infinity;
+              final horizontal = constraints.maxWidth >= 700 ? 28.0 : 14.0;
+              return Align(
+                alignment: Alignment.topCenter,
+                child: SizedBox(
+                  width: maxWidth,
+                  child: ListView(
+                    padding: EdgeInsets.fromLTRB(horizontal, 18, horizontal, 32),
+                    children: [
+                      _UsuarioResumoCard(
+                        nome: _nomeUsuario,
+                        email: _emailUsuario,
+                        fotoUrl: foto,
+                        hibrido: _possuiAreaAluno,
                       ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 24),
-            const Text(
-              'Definir Tipo de Acesso',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Selecione o nível de permissão para este usuário:',
-              style: TextStyle(color: Colors.grey),
-            ),
-            const SizedBox(height: 16),
-
-            // Cards de seleção de tipo (dinâmico do Firestore)
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: _tiposUsuarios
-                  .map((tipo) => _buildTipoCard(tipo, theme))
-                  .toList(),
-            ),
-
-            const SizedBox(height: 24),
-
-            // Resumo da seleção
-            Card(
-              elevation: 2,
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Row(
-                  children: [
-                    Icon(
-                      _getTipoIcon(
-                        _tiposUsuarios.firstWhere(
-                          (t) => t['tipo'] == _selectedTipo,
-                        ),
-                      ),
-                      color: _getTipoColor(
-                        _tiposUsuarios.firstWhere(
-                          (t) => t['tipo'] == _selectedTipo,
-                        ),
-                      ),
-                      size: 32,
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _selectedTipo[0].toUpperCase() +
-                                _selectedTipo.substring(1),
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: _getTipoColor(
-                                _tiposUsuarios.firstWhere(
-                                  (t) => t['tipo'] == _selectedTipo,
+                      if (_erroCarregamento != null) ...[
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: colors.tertiaryContainer,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.info_outline_rounded),
+                              const SizedBox(width: 10),
+                              const Expanded(
+                                child: Text(
+                                  'Algumas configurações online não carregaram. Perfis padrão foram usados com segurança.',
                                 ),
                               ),
-                            ),
+                              IconButton(
+                                tooltip: 'Tentar novamente',
+                                onPressed: _carregarDados,
+                                icon: const Icon(Icons.refresh_rounded),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _getTipoDescricao(
-                              _tiposUsuarios.firstWhere(
-                                (t) => t['tipo'] == _selectedTipo,
+                        ),
+                      ],
+                      const SizedBox(height: 22),
+                      const _TituloEtapa(
+                        numero: 1,
+                        titulo: 'Função administrativa',
+                        subtitulo: 'Escolha o papel que a pessoa terá na gestão.',
+                      ),
+                      const SizedBox(height: 12),
+                      ..._tiposUsuarios.map((item) {
+                        final selecionado = item['tipo']?.toString() == _selectedTipo;
+                        final cor = _corTipo(item);
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(16),
+                            onTap: _aprovando
+                                ? null
+                                : () => setState(
+                                      () => _selectedTipo = item['tipo']?.toString(),
+                                    ),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 160),
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(16),
+                                color: selecionado
+                                    ? cor.withValues(alpha: 0.10)
+                                    : colors.surfaceContainerLow,
+                                border: Border.all(
+                                  color: selecionado ? cor : colors.outlineVariant,
+                                  width: selecionado ? 2 : 1,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  CircleAvatar(
+                                    backgroundColor: cor.withValues(alpha: 0.14),
+                                    foregroundColor: cor,
+                                    child: Icon(_iconeTipo(item)),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          _labelTipo(item['tipo']?.toString() ?? ''),
+                                          style: const TextStyle(fontWeight: FontWeight.w900),
+                                        ),
+                                        const SizedBox(height: 3),
+                                        Text(
+                                          _descricao(item),
+                                          style: TextStyle(color: colors.onSurfaceVariant),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (selecionado)
+                                    Icon(Icons.check_circle_rounded, color: cor),
+                                ],
                               ),
                             ),
-                            style: const TextStyle(
-                              color: Colors.grey,
-                              fontSize: 12,
-                            ),
                           ),
-                        ],
+                        );
+                      }),
+                      const SizedBox(height: 20),
+                      const _TituloEtapa(
+                        numero: 2,
+                        titulo: 'Predefinição de permissões',
+                        subtitulo:
+                            'Opcional. Aplique um modelo pronto junto com a aprovação.',
                       ),
-                    ),
-                    Chip(
-                      label: Text(
-                        'Peso: ${_getPesoTipo(_tiposUsuarios.firstWhere((t) => t['tipo'] == _selectedTipo))}',
-                        style: const TextStyle(
-                          color: Colors.white,
+                      const SizedBox(height: 12),
+                      _PresetCard(
+                        selecionado: _selectedPresetId == null,
+                        titulo: 'Configurar depois',
+                        descricao:
+                            'Aprova a função agora sem alterar as permissões específicas.',
+                        total: null,
+                        onTap: _aprovando
+                            ? null
+                            : () => setState(() => _selectedPresetId = null),
+                      ),
+                      ..._predefinicoes.map(
+                        (item) => Padding(
+                          padding: const EdgeInsets.only(top: 10),
+                          child: _PresetCard(
+                            selecionado: _selectedPresetId == item.id,
+                            titulo: item.nome,
+                            descricao: item.descricao.isEmpty
+                                ? 'Predefinição administrativa'
+                                : item.descricao,
+                            total: item.totalAtivas,
+                            onTap: _aprovando
+                                ? null
+                                : () => setState(() => _selectedPresetId = item.id),
+                          ),
+                        ),
+                      ),
+                      if (_predefinicoes.isEmpty) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          'Nenhuma predefinição ativa cadastrada. Você ainda pode aprovar e configurar as permissões depois.',
+                          style: TextStyle(color: colors.onSurfaceVariant),
+                        ),
+                      ],
+                      const SizedBox(height: 22),
+                      const _TituloEtapa(
+                        numero: 3,
+                        titulo: 'Revisão',
+                        subtitulo: 'Confira o que será concedido antes de finalizar.',
+                      ),
+                      const SizedBox(height: 12),
+                      Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            children: [
+                              _LinhaResumo(
+                                icone: Icons.badge_rounded,
+                                titulo: 'Função',
+                                valor: _selectedTipo == null
+                                    ? 'Não definida'
+                                    : _labelTipo(_selectedTipo!),
+                              ),
+                              const Divider(height: 24),
+                              _LinhaResumo(
+                                icone: Icons.fact_check_rounded,
+                                titulo: 'Permissões',
+                                valor: preset == null
+                                    ? 'Configurar depois'
+                                    : '${preset.nome} • ${preset.totalAtivas} ativas',
+                              ),
+                              if (_possuiAreaAluno) ...[
+                                const Divider(height: 24),
+                                const _LinhaResumo(
+                                  icone: Icons.school_rounded,
+                                  titulo: 'Área do Aluno',
+                                  valor: 'Preservada • conta híbrida',
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      FilledButton.icon(
+                        onPressed: _aprovando ? null : _aprovarUsuario,
+                        icon: const Icon(Icons.verified_user_rounded),
+                        label: Text(
+                          _aprovando ? 'Aprovando acesso...' : 'Aprovar acesso à gestão',
+                        ),
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'A rejeição continua disponível na tela de Solicitações. Esta tela apenas concede acesso.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: colors.onSurfaceVariant,
                           fontSize: 12,
                         ),
                       ),
-                      backgroundColor: _getTipoColor(
-                        _tiposUsuarios.firstWhere(
-                          (t) => t['tipo'] == _selectedTipo,
-                        ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+          if (_aprovando)
+            Positioned.fill(
+              child: ColoredBox(
+                color: colors.scrim.withValues(alpha: 0.34),
+                child: Center(
+                  child: Card(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 20,
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const CircularProgressIndicator(),
+                          const SizedBox(height: 14),
+                          Text(
+                            'Aprovando $_nomeUsuario...',
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(height: 4),
+                          const Text('Aplicando função e permissões com segurança.'),
+                        ],
                       ),
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
 
-            const SizedBox(height: 32),
+class _UsuarioResumoCard extends StatelessWidget {
+  final String nome;
+  final String email;
+  final String? fotoUrl;
+  final bool hibrido;
 
-            // Informações do aprovador
-            const Text(
-              'Informações da Aprovação',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Card(
-              elevation: 1,
-              child: Padding(
-                padding: const EdgeInsets.all(12.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildInfoRow(
-                      'Aprovador:',
-                      widget.adminData['nome_completo'] ?? 'Administrador',
-                    ),
-                    const SizedBox(height: 4),
-                    _buildInfoRow(
-                      'Data/Hora:',
-                      DateTime.now().toLocal().toString().substring(0, 16),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+  const _UsuarioResumoCard({
+    required this.nome,
+    required this.email,
+    required this.fotoUrl,
+    required this.hibrido,
+  });
 
-            const SizedBox(height: 32),
-
-            // Botões de ação
-            Row(
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final temFoto = fotoUrl != null && fotoUrl!.isNotEmpty;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: colors.primaryContainer.withValues(alpha: 0.48),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: colors.outlineVariant),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 29,
+            backgroundColor: colors.primary.withValues(alpha: 0.12),
+            backgroundImage: temFoto ? NetworkImage(fotoUrl!) : null,
+            child: temFoto
+                ? null
+                : Text(
+                    nome.isEmpty ? '?' : nome[0].toUpperCase(),
+                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 20),
+                  ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _rejeitando ? null : _rejeitarUsuario,
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.red,
-                      side: const BorderSide(color: Colors.red),
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                    ),
-                    icon: _rejeitando
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.close, size: 20),
-                    label: Text(_rejeitando ? 'REJEITANDO...' : 'REJEITAR'),
-                  ),
+                Text(
+                  nome,
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w900),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _aprovando ? null : _aprovarUsuario,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
+                const SizedBox(height: 2),
+                Text(email, style: TextStyle(color: colors.onSurfaceVariant)),
+                if (hibrido) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: colors.secondaryContainer,
+                      borderRadius: BorderRadius.circular(999),
                     ),
-                    icon: _aprovando
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.check, size: 20),
-                    label: Text(
-                      _aprovando ? 'APROVANDO...' : 'APROVAR USUÁRIO',
+                    child: const Text(
+                      'ÁREA DO ALUNO JÁ VINCULADA',
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 11),
                     ),
                   ),
-                ),
+                ],
               ],
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTipoCard(Map<String, dynamic> tipo, ThemeData theme) {
-    final String tipoNome = tipo['tipo'];
-    final int peso = tipo['peso'] ?? 0;
-    final String descricao = tipo['descricao'] ?? '';
-    final IconData icone = _getTipoIcon(tipo);
-    final Color cor = _getTipoColor(tipo);
-    final bool isSelected = _selectedTipo == tipoNome;
-
-    return InkWell(
-      onTap: () {
-        if (!_aprovando && !_rejeitando) {
-          setState(() => _selectedTipo = tipoNome);
-        }
-      },
-      child: Container(
-        width: 110,
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: isSelected ? cor.withOpacity(0.1) : Colors.white,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: isSelected ? cor : Colors.grey[300]!,
-            width: isSelected ? 2 : 1,
           ),
-        ),
-        child: Column(
-          children: [
-            Icon(icone, color: cor, size: 24),
-            const SizedBox(height: 8),
-            Text(
-              tipoNome[0].toUpperCase() + tipoNome.substring(1),
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: cor,
-                fontSize: 12,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Peso: $peso',
-              style: TextStyle(color: Colors.grey[600], fontSize: 10),
-            ),
-            if (isSelected)
-              const Padding(
-                padding: EdgeInsets.only(top: 4),
-                child: Icon(Icons.check_circle, color: Colors.green, size: 12),
-              ),
-          ],
-        ),
+        ],
       ),
     );
   }
+}
 
-  Widget _buildInfoRow(String label, String value) {
+class _TituloEtapa extends StatelessWidget {
+  final int numero;
+  final String titulo;
+  final String subtitulo;
+
+  const _TituloEtapa({
+    required this.numero,
+    required this.titulo,
+    required this.subtitulo,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(
-          width: 80,
-          child: Text(
-            label,
-            style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+        CircleAvatar(
+          radius: 15,
+          backgroundColor: colors.primary,
+          foregroundColor: colors.onPrimary,
+          child: Text('$numero', style: const TextStyle(fontWeight: FontWeight.w900)),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                titulo,
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 2),
+              Text(subtitulo, style: TextStyle(color: colors.onSurfaceVariant)),
+            ],
           ),
         ),
+      ],
+    );
+  }
+}
+
+class _PresetCard extends StatelessWidget {
+  final bool selecionado;
+  final String titulo;
+  final String descricao;
+  final int? total;
+  final VoidCallback? onTap;
+
+  const _PresetCard({
+    required this.selecionado,
+    required this.titulo,
+    required this.descricao,
+    required this.total,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: selecionado
+              ? colors.primaryContainer.withValues(alpha: 0.52)
+              : colors.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selecionado ? colors.primary : colors.outlineVariant,
+            width: selecionado ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              total == null ? Icons.tune_rounded : Icons.fact_check_rounded,
+              color: selecionado ? colors.primary : colors.onSurfaceVariant,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(titulo, style: const TextStyle(fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 3),
+                  Text(descricao, style: TextStyle(color: colors.onSurfaceVariant)),
+                ],
+              ),
+            ),
+            if (total != null) ...[
+              const SizedBox(width: 8),
+              Text('$total', style: const TextStyle(fontWeight: FontWeight.w900)),
+            ],
+            if (selecionado) ...[
+              const SizedBox(width: 8),
+              Icon(Icons.check_circle_rounded, color: colors.primary),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LinhaResumo extends StatelessWidget {
+  final IconData icone;
+  final String titulo;
+  final String valor;
+
+  const _LinhaResumo({
+    required this.icone,
+    required this.titulo,
+    required this.valor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Icon(icone, color: colors.primary),
+        const SizedBox(width: 12),
         Expanded(
-          child: Text(
-            value,
-            style: TextStyle(color: Colors.grey[700], fontSize: 13),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(titulo, style: TextStyle(color: colors.onSurfaceVariant)),
+              const SizedBox(height: 2),
+              Text(valor, style: const TextStyle(fontWeight: FontWeight.w900)),
+            ],
           ),
         ),
       ],

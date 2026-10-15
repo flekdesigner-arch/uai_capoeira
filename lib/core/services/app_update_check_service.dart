@@ -36,9 +36,11 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import 'package:uai_capoeira/modules/sistema/atualizacoes/models/app_version_model.dart';
+import 'package:uai_capoeira/core/services/uai_callable_client.dart';
 
 class AppUpdateCheckService {
   AppUpdateCheckService({FirebaseFirestore? firestore})
@@ -85,76 +87,90 @@ class AppUpdateCheckService {
           .collection(configCollection)
           .doc(configAppDoc)
           .get(const GetOptions(source: Source.server));
-
       final config = configDoc.data() ?? {};
 
-      final versaoAtualServidor = (config['versao_atual'] ?? '')
-          .toString()
-          .trim();
+      AppVersionModel? versionModel;
+      String canal = 'producao';
+      bool resolverV3Respondeu = false;
+      bool releaseIncompativel = false;
+      try {
+        final payload = <String, dynamic>{'versaoLocal': versaoLocal, 'buildLocal': buildLocal};
+        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+          try {
+            final android = await DeviceInfoPlugin().androidInfo;
+            payload['androidSdk'] = android.version.sdkInt;
+            payload['abis'] = android.supportedAbis;
+          } catch (_) {}
+        }
+        final map = await UaiCallableClient.instance.call(
+          'resolverAtualizacaoDisponivelV3',
+          payload,
+        );
+        if (map.isNotEmpty) {
+          resolverV3Respondeu = true;
+          releaseIncompativel = map['incompatible'] == true;
+          if (map['release'] is Map) {
+            versionModel = AppVersionModel.fromMap(
+              Map<String, dynamic>.from(map['release'] as Map),
+              fallbackId: (map['release'] as Map)['versionId']?.toString(),
+            );
+            canal = versionModel.canal;
+          }
+        }
+      } catch (e) {
+        debugPrint('⚠️ Resolver V3 indisponível, usando produção legada: $e');
+      }
 
-      if (versaoAtualServidor.isEmpty) {
-        return AppUpdateStatus.semConfiguracao(
-          versaoLocal: versaoLocal,
-          buildLocal: buildLocal,
+      final versaoProducao = (config['versao_atual'] ?? '').toString().trim();
+      if (resolverV3Respondeu && releaseIncompativel && versionModel == null) {
+        return AppUpdateStatus(
+          carregou: true, erro: null, versaoLocal: versaoLocal, buildLocal: buildLocal,
+          versaoServidor: versaoProducao, versaoMinimaObrigatoria: '', precisaAtualizar: false,
+          atualizacaoObrigatoria: false, deveBloquear: false,
+          titulo: 'Versão atual incompatível com este dispositivo',
+          mensagem: 'A atualização disponível não é compatível com este aparelho ou com a versão instalada.',
+          apkPath: '', apkUrl: '', versionModel: null, config: config, canal: 'producao',
         );
       }
-
-      final ultimaVersaoId = (config['ultima_versao_id'] ?? '')
-          .toString()
-          .trim();
-
-      final versaoMinimaObrigatoria =
-          (config['versao_minima_obrigatoria'] ?? '').toString().trim();
-
-      final atualizacaoObrigatoria = config['atualizacao_obrigatoria'] == true;
-
-      final precisaAtualizar = AppVersionModel.precisaAtualizar(
-        versaoLocal: versaoLocal,
-        versaoRemota: versaoAtualServidor,
-      );
-
-      final estaAbaixoDaMinima = versaoMinimaObrigatoria.isNotEmpty
-          ? AppVersionModel.precisaAtualizar(
-              versaoLocal: versaoLocal,
-              versaoRemota: versaoMinimaObrigatoria,
-            )
-          : false;
-
-      final deveBloquear = atualizacaoObrigatoria && estaAbaixoDaMinima;
-
-      AppVersionModel? versionModel;
-
-      if (ultimaVersaoId.isNotEmpty) {
-        versionModel = await _buscarVersaoPorId(ultimaVersaoId);
+      final versaoServidor = versionModel?.versao.trim().isNotEmpty == true
+          ? versionModel!.versao.trim()
+          : versaoProducao;
+      if (versaoServidor.isEmpty) {
+        return AppUpdateStatus.semConfiguracao(versaoLocal: versaoLocal, buildLocal: buildLocal);
       }
 
-      versionModel ??= await _buscarVersaoPorVersao(versaoAtualServidor);
+      final versaoMinimaObrigatoria = (config['versao_minima_obrigatoria'] ?? '').toString().trim();
+      final atualizacaoObrigatoria = canal == 'producao' && config['atualizacao_obrigatoria'] == true;
+      final precisaAtualizar = AppVersionModel.precisaAtualizar(versaoLocal: versaoLocal, versaoRemota: versaoServidor);
+      final estaAbaixoDaMinima = versaoMinimaObrigatoria.isNotEmpty
+          ? AppVersionModel.precisaAtualizar(versaoLocal: versaoLocal, versaoRemota: versaoMinimaObrigatoria)
+          : false;
+      final deveBloquear = atualizacaoObrigatoria && estaAbaixoDaMinima;
+
+      if (versionModel == null) {
+        final ultimaVersaoId = (config['ultima_versao_id'] ?? '').toString().trim();
+        if (ultimaVersaoId.isNotEmpty) versionModel = await _buscarVersaoPorId(ultimaVersaoId);
+        versionModel ??= await _buscarVersaoPorVersao(versaoServidor);
+        canal = versionModel?.canal ?? canal;
+      }
 
       final titulo = versionModel?.titulo.trim().isNotEmpty == true
           ? versionModel!.titulo
-          : (config['titulo_atualizacao'] ?? 'Nova versão disponível')
-                .toString();
-
+          : (canal == 'beta'
+              ? 'Atualização BETA disponível'
+              : (canal == 'teste_interno' ? 'Atualização de TESTE INTERNO disponível' : (config['titulo_atualizacao'] ?? 'Nova versão disponível').toString()));
       final mensagem = versionModel?.resumo.trim().isNotEmpty == true
           ? versionModel!.resumo
-          : (config['mensagem_atualizacao'] ??
-                    'Atualize para receber melhorias e correções.')
-                .toString();
-
-      final apkPath = versionModel?.storagePath.trim().isNotEmpty == true
-          ? versionModel!.storagePath
-          : (config['apk_path'] ?? '').toString();
-
-      final apkUrl = versionModel?.downloadUrl.trim().isNotEmpty == true
-          ? versionModel!.downloadUrl
-          : (config['apk_url'] ?? '').toString();
+          : (config['mensagem_atualizacao'] ?? 'Atualize para receber melhorias e correções.').toString();
+      final apkPath = versionModel?.storagePath.trim().isNotEmpty == true ? versionModel!.storagePath : (config['apk_path'] ?? '').toString();
+      final apkUrl = versionModel?.downloadUrl.trim().isNotEmpty == true ? versionModel!.downloadUrl : (config['apk_url'] ?? '').toString();
 
       return AppUpdateStatus(
         carregou: true,
         erro: null,
         versaoLocal: versaoLocal,
         buildLocal: buildLocal,
-        versaoServidor: versaoAtualServidor,
+        versaoServidor: versaoServidor,
         versaoMinimaObrigatoria: versaoMinimaObrigatoria,
         precisaAtualizar: precisaAtualizar,
         atualizacaoObrigatoria: atualizacaoObrigatoria,
@@ -165,15 +181,11 @@ class AppUpdateCheckService {
         apkUrl: apkUrl,
         versionModel: versionModel,
         config: config,
+        canal: canal,
       );
     } catch (e) {
       debugPrint('❌ AppUpdateCheckService: erro ao verificar status: $e');
-
-      return AppUpdateStatus.erro(
-        versaoLocal: versaoLocal,
-        buildLocal: buildLocal,
-        erro: e.toString(),
-      );
+      return AppUpdateStatus.erro(versaoLocal: versaoLocal, buildLocal: buildLocal, erro: e.toString());
     }
   }
 
@@ -234,6 +246,7 @@ class AppUpdateStatus {
 
   final AppVersionModel? versionModel;
   final Map<String, dynamic> config;
+  final String canal;
 
   const AppUpdateStatus({
     required this.carregou,
@@ -251,6 +264,7 @@ class AppUpdateStatus {
     required this.apkUrl,
     required this.versionModel,
     required this.config,
+    this.canal = 'producao',
   });
 
   factory AppUpdateStatus.semConfiguracao({
@@ -300,12 +314,17 @@ class AppUpdateStatus {
     );
   }
 
+  bool get isBeta => canal == 'beta';
+  bool get isTesteInterno => canal == 'teste_interno' || canal == 'teste';
+
   bool get estaAtualizado => !precisaAtualizar && !deveBloquear;
 
   bool get temApkConfigurado =>
       apkPath.trim().isNotEmpty || apkUrl.trim().isNotEmpty;
 
   String get statusLabel {
+    if (isBeta) return 'BETA';
+    if (isTesteInterno) return 'TESTE INTERNO';
     if (deveBloquear) return 'Obrigatória';
     if (precisaAtualizar) return 'Opcional';
     if (!carregou) return 'Erro';

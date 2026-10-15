@@ -44,15 +44,15 @@ class CacaBugEventModel {
   }) {
     return CacaBugEventModel(
       id: id,
-      tipo: tipo,
-      acao: acao,
-      descricao: _limit(descricao, 800),
-      tela: tela,
-      arquivo: arquivo,
-      rota: rota,
-      status: status,
+      tipo: _safeShort(tipo, 40),
+      acao: _safeShort(acao, 80),
+      descricao: sanitizeText(descricao, max: 800),
+      tela: _safeShort(tela, 120),
+      arquivo: _safeShort(arquivo, 220),
+      rota: _safeShort(rota, 180),
+      status: _safeShort(status, 40),
       dados: sanitizeMap(dados ?? const {}),
-      erro: erro == null ? null : sanitizeMap(erro, stackLimit: 4000),
+      erro: erro == null ? null : sanitizeMap(erro, stackLimit: 1200),
       criadoEm: DateTime.now(),
       ordem: ordem,
     );
@@ -132,45 +132,77 @@ class CacaBugEventModel {
 
   static Map<String, dynamic> sanitizeMap(
     Map<String, dynamic> input, {
-    int stackLimit = 1200,
+    int stackLimit = 700,
   }) {
     final out = <String, dynamic>{};
     input.forEach((key, value) {
       if (value == null) return;
       final normalizedKey = key.toString();
       final lower = normalizedKey.toLowerCase();
-      if (lower.contains('senha') ||
-          lower.contains('password') ||
-          lower.contains('token') ||
-          lower.contains('cpf') ||
-          lower.contains('documento') ||
-          lower.contains('telefone')) {
-        return;
-      }
-      out[normalizedKey] = _sanitizeValue(value, stackLimit: stackLimit);
+      if (_isSensitiveKey(lower)) return;
+      out[_safeShort(normalizedKey, 80)] = _sanitizeValue(
+        value,
+        stackLimit: stackLimit,
+      );
     });
     return out;
+  }
+
+  static bool _isSensitiveKey(String lower) {
+    if (lower == 'temcontato' || lower == 'destinotipo' || lower == 'canal') {
+      return false;
+    }
+    return lower.contains('senha') ||
+        lower.contains('password') ||
+        lower.contains('token') ||
+        lower.contains('cpf') ||
+        lower.contains('documento') ||
+        lower.contains('telefone') ||
+        lower.contains('whatsapp') ||
+        lower.contains('contato') ||
+        lower.contains('email') ||
+        lower.contains('endereco') ||
+        lower.contains('endereço') ||
+        lower.contains('nascimento') ||
+        lower.contains('responsavel') ||
+        lower.contains('mensagem') ||
+        lower.contains('url') ||
+        lower.contains('link');
   }
 
   static dynamic _sanitizeValue(dynamic value, {required int stackLimit}) {
     if (value == null || value is num || value is bool) return value;
     if (value is DateTime) return value.toIso8601String();
     if (value is Timestamp) return value;
-    if (value is String) return _limit(value, stackLimit);
+    if (value is String) return sanitizeText(value, max: stackLimit);
     if (value is List) {
       return value
-          .take(30)
-          .map((e) => _sanitizeValue(e, stackLimit: 300))
+          .take(20)
+          .map((e) => _sanitizeValue(e, stackLimit: 220))
           .toList();
     }
     if (value is Map) {
-      return sanitizeMap(Map<String, dynamic>.from(value), stackLimit: 300);
+      return sanitizeMap(Map<String, dynamic>.from(value), stackLimit: 220);
     }
-    return _limit(value.toString(), 500);
+    return sanitizeText(value.toString(), max: 420);
   }
 
-  static String _limit(String value, int max) {
-    if (value.length <= max) return value;
-    return value.substring(0, max);
+  static String sanitizeText(String value, {required int max}) {
+    var text = value
+        .replaceAll(RegExp(r'https?:\/\/\S+'), '[url_redigida]')
+        .replaceAll(RegExp(r'wa\.me\/\S+'), '[whatsapp_redigido]')
+        .replaceAll(RegExp(r'api\.whatsapp\.com\/\S+'), '[whatsapp_redigido]')
+        .replaceAll(RegExp(r'tel:\S+'), '[telefone_redigido]')
+        .replaceAll(RegExp(r'\+?\d[\d\s\-\(\)]{7,}\d'), '[numero_redigido]')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (text.length <= max) return text;
+    return '${text.substring(0, max)}...';
+  }
+
+  static String _safeShort(String value, int max) {
+    final text = value.trim();
+    if (text.length <= max) return text;
+    return text.substring(0, max);
   }
 }

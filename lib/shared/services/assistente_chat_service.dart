@@ -1,3 +1,4 @@
+import 'dart:developer' as developer;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
@@ -46,7 +47,7 @@ class AssistenteChatService {
         return configPadrao;
       }
     } catch (e) {
-      print('Erro ao carregar configurações: $e');
+      developer.log('Erro ao carregar configurações: $e');
       return {
         'ativo': false,
         'perfil': _getPerfilPadrao(),
@@ -113,7 +114,7 @@ class AssistenteChatService {
 
       return turmas;
     } catch (e) {
-      print('Erro ao buscar turmas: $e');
+      developer.log('Erro ao buscar turmas: $e');
       return [];
     }
   }
@@ -168,7 +169,7 @@ class AssistenteChatService {
         'total_inscricoes': 0,
       };
     } catch (e) {
-      print('Erro ao buscar config inscrições: $e');
+      developer.log('Erro ao buscar config inscrições: $e');
       return {
         'abertas': false,
         'vagas': 0,
@@ -462,7 +463,7 @@ Lembre-se: Seja ${regras['tom_respostas'].toString().toLowerCase()} e sempre aju
       return result.data['resposta'] ??
           'Desculpe, não consegui processar sua pergunta.';
     } catch (e) {
-      print('Erro ao chamar Cloud Function: $e');
+      developer.log('Erro ao chamar Cloud Function: $e');
       return 'Ops! Estou com problemas técnicos. Tente novamente mais tarde.';
     }
   }

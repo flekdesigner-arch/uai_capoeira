@@ -1,15 +1,16 @@
+import 'dart:io' show stdout;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 
 void main() async {
-  print('🚀 INICIANDO SETUP FIREBASE...');
+  stdout.writeln('🚀 INICIANDO SETUP FIREBASE...');
 
   try {
     await Firebase.initializeApp();
     final firestore = FirebaseFirestore.instance;
 
-    print('✅ Firebase conectado!');
-    print('📊 Criando academia CENTRO DE CONVIVIO...');
+    stdout.writeln('✅ Firebase conectado!');
+    stdout.writeln('📊 Criando academia CENTRO DE CONVIVIO...');
 
     final academiaData = {
       'nome': 'CENTRO DE CONVIVIO',
@@ -30,9 +31,9 @@ void main() async {
     final academiaRef = await firestore
         .collection('academias')
         .add(academiaData);
-    print('✅ Academia criada! ID: ' + academiaRef.id);
+    stdout.writeln('✅ Academia criada! ID: ${academiaRef.id}');
 
-    print('🎓 Criando 2 turmas...');
+    stdout.writeln('🎓 Criando 2 turmas...');
 
     final turma1 = {
       'nome': '19:00 AS 20:30',
@@ -75,28 +76,28 @@ void main() async {
     };
 
     await academiaRef.collection('turmas').add(turma1);
-    print('   ✅ Turma 1: 19:00 AS 20:30');
+    stdout.writeln('   ✅ Turma 1: 19:00 AS 20:30');
 
     await academiaRef.collection('turmas').add(turma2);
-    print('   ✅ Turma 2: 18:00 AS 19:00');
+    stdout.writeln('   ✅ Turma 2: 18:00 AS 19:00');
 
     await academiaRef.update({'turmas_count': 2});
 
-    print('');
-    print('==========================================');
-    print('🎉 SETUP COMPLETO!');
-    print('==========================================');
-    print('📊 1 Academia criada');
-    print('🎓 2 Turmas criadas');
-    print('🔗 Tudo vinculado automaticamente');
-    print('📍 ID da Academia: ' + academiaRef.id);
-    print('==========================================');
+    stdout.writeln('');
+    stdout.writeln('==========================================');
+    stdout.writeln('🎉 SETUP COMPLETO!');
+    stdout.writeln('==========================================');
+    stdout.writeln('📊 1 Academia criada');
+    stdout.writeln('🎓 2 Turmas criadas');
+    stdout.writeln('🔗 Tudo vinculado automaticamente');
+    stdout.writeln('📍 ID da Academia: ${academiaRef.id}');
+    stdout.writeln('==========================================');
   } catch (e) {
-    print('❌ ERRO: ' + e.toString());
-    print('');
-    print('🔧 Tente criar manualmente:');
-    print('1. Acesse: https://console.firebase.google.com/');
-    print('2. Coleção: academias');
-    print('3. Subcoleção: turmas');
+    stdout.writeln('❌ ERRO: ${e.toString()}');
+    stdout.writeln('');
+    stdout.writeln('🔧 Tente criar manualmente:');
+    stdout.writeln('1. Acesse: https://console.firebase.google.com/');
+    stdout.writeln('2. Coleção: academias');
+    stdout.writeln('3. Subcoleção: turmas');
   }
 }

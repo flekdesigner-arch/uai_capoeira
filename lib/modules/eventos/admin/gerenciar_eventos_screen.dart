@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -7,8 +6,15 @@ import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
 import 'package:uai_capoeira/core/permissions/permissao_service.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/eventos/admin/criar_evento_screen.dart';
+import 'package:uai_capoeira/modules/eventos/admin/gerenciar_participacoes_screen.dart';
+import 'package:uai_capoeira/modules/eventos/screens/participantes_evento_screen.dart';
 import 'package:uai_capoeira/modules/eventos/models/evento_model.dart';
+import 'package:uai_capoeira/modules/eventos/screens/detalhes_evento_screen.dart';
+import 'package:uai_capoeira/modules/eventos/screens/detalhes_evento_andamento_screen.dart';
 import 'package:uai_capoeira/modules/eventos/services/evento_participantes_cache_service.dart';
+import 'package:uai_capoeira/modules/site/portfolio_v3/data/portfolio_repository.dart';
+import 'package:uai_capoeira/modules/site/portfolio_v3/screens/portfolio_detail_screen.dart';
+import 'package:uai_capoeira/modules/site/portfolio_v3/widgets/portfolio_cover_image.dart';
 
 class GerenciarEventosScreen extends StatefulWidget {
   const GerenciarEventosScreen({super.key});
@@ -23,13 +29,14 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
   final PermissaoService _permissaoService = PermissaoService();
   final EventoParticipantesCacheService _cacheService =
       EventoParticipantesCacheService();
+  final PortfolioRepository _portfolioRepository = PortfolioRepository();
   late final PermissionAccessGuard _accessGuard = PermissionAccessGuard(
     service: _permissaoService,
   );
 
   String _searchQuery = '';
   String _statusFiltro = 'todos';
-  int _viewMode = 0;
+  int _viewMode = 1;
 
   bool _podeCriarEvento = false;
   bool _podeEditarEvento = false;
@@ -191,7 +198,7 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
       permission: 'pode_excluir_evento',
       message: 'Você não tem permissão para excluir eventos.',
     );
-    if (!permitido) {
+    if (!mounted || !permitido) {
       return;
     }
 
@@ -233,7 +240,7 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
                                 width: 48,
                                 height: 48,
                                 decoration: BoxDecoration(
-                                  color: error.withOpacity(0.12),
+                                  color: error.withAlpha(31),
                                   borderRadius: BorderRadius.circular(
                                     t.buttonRadius,
                                   ),
@@ -287,14 +294,14 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
                               color: Color.alphaBlend(
-                                error.withOpacity(0.10),
+                                error.withAlpha(26),
                                 t.cardAlt,
                               ),
                               borderRadius: BorderRadius.circular(
                                 t.inputRadius,
                               ),
                               border: Border.all(
-                                color: error.withOpacity(0.18),
+                                color: error.withAlpha(46),
                               ),
                             ),
                             child: Text(
@@ -444,7 +451,7 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
           ? 'Você não tem permissão para finalizar eventos.'
           : 'Você não tem permissão para reabrir eventos.',
     );
-    if (!permitido) return;
+    if (!mounted || !permitido) return;
 
     final confirmar = await showDialog<bool>(
       context: context,
@@ -478,7 +485,7 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
                           width: 48,
                           height: 48,
                           decoration: BoxDecoration(
-                            color: accent.withOpacity(0.12),
+                            color: accent.withAlpha(31),
                             borderRadius: BorderRadius.circular(t.buttonRadius),
                           ),
                           child: Icon(
@@ -617,7 +624,7 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
           ? 'Você não tem permissão para criar eventos.'
           : 'Você não tem permissão para editar eventos.',
     );
-    if (!permitido) {
+    if (!mounted || !permitido) {
       return;
     }
 
@@ -856,44 +863,23 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
     final onPrimary = _readableOn(t.primary);
 
     return SliverAppBar(
-      expandedHeight: 118,
       pinned: true,
+      floating: false,
+      snap: false,
       elevation: 0,
+      toolbarHeight: 64,
       backgroundColor: t.primary,
       foregroundColor: onPrimary,
-      flexibleSpace: FlexibleSpaceBar(
-        // Quando esta tela é aberta por Navigator.push, o SliverAppBar cria
-        // automaticamente a setinha de voltar. Por isso o título precisa começar
-        // depois da área do leading, senão ele fica por cima da seta.
-        titlePadding: EdgeInsetsDirectional.only(
-          start: Navigator.canPop(context) ? 72 : 18,
-          bottom: 14,
-          end: 16,
-        ),
-        title: Text(
-          'Gerenciar Eventos',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: onPrimary,
-            fontWeight: FontWeight.w900,
-            fontSize: 18,
-            letterSpacing: 0.2,
-          ),
-        ),
-        background: Container(
-          decoration: BoxDecoration(gradient: t.primaryGradient),
-          child: Align(
-            alignment: Alignment.topRight,
-            child: Padding(
-              padding: const EdgeInsets.only(top: 42, right: 24),
-              child: Icon(
-                Icons.event_available_rounded,
-                size: 72,
-                color: onPrimary.withOpacity(0.12),
-              ),
-            ),
-          ),
+      titleSpacing: 4,
+      title: Text(
+        'Gerenciar Eventos',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: onPrimary,
+          fontWeight: FontWeight.w900,
+          fontSize: 18,
+          letterSpacing: 0.2,
         ),
       ),
       actions: [
@@ -932,7 +918,7 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
       decoration: BoxDecoration(
         color: t.card,
         borderRadius: BorderRadius.circular(t.cardRadius + 2),
-        border: Border.all(color: primary.withOpacity(0.14)),
+        border: Border.all(color: primary.withAlpha(36)),
         boxShadow: t.softShadow,
       ),
       child: Column(
@@ -943,16 +929,16 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: primary.withOpacity(0.12),
+                  color: primary.withAlpha(31),
                   borderRadius: BorderRadius.circular(t.buttonRadius),
-                  border: Border.all(color: primary.withOpacity(0.16)),
+                  border: Border.all(color: primary.withAlpha(41)),
                 ),
                 child: Icon(Icons.event_note_rounded, color: primary),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  'Controle de eventos, portfólio web e status do sistema.',
+                  'Eventos, inscrições, banners e publicação no portfólio em uma central única.',
                   style: TextStyle(
                     color: t.textSecondary,
                     height: 1.25,
@@ -1030,9 +1016,9 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.09), t.cardAlt),
+        color: Color.alphaBlend(accent.withAlpha(23), t.cardAlt),
         borderRadius: BorderRadius.circular(t.buttonRadius),
-        border: Border.all(color: accent.withOpacity(0.16)),
+        border: Border.all(color: accent.withAlpha(41)),
       ),
       child: Column(
         children: [
@@ -1134,10 +1120,51 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
       avatar: Icon(icon, size: 16, color: foreground),
       label: Text(label),
       selectedColor: primary,
-      backgroundColor: Color.alphaBlend(primary.withOpacity(0.09), t.cardAlt),
+      backgroundColor: Color.alphaBlend(primary.withAlpha(23), t.cardAlt),
       labelStyle: TextStyle(color: foreground, fontWeight: FontWeight.w900),
-      side: BorderSide(color: selected ? primary : primary.withOpacity(0.18)),
+      side: BorderSide(color: selected ? primary : primary.withAlpha(46)),
       onSelected: (_) => setState(() => _statusFiltro = value),
+    );
+  }
+
+  Future<void> _abrirPreviewPublico(EventoModel evento) async {
+    final id = evento.id;
+    if (id == null || id.isEmpty) return;
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('eventos')
+          .doc(id)
+          .get();
+      if (!mounted) return;
+      final entry = _portfolioRepository.entryFromEventDoc(doc);
+      await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => PortfolioDetailScreen(entry: entry)),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Não foi possível abrir a prévia do evento: $e')),
+      );
+    }
+  }
+
+  Future<void> _abrirPreviewModuloEventos(EventoModel evento) async {
+    final id = evento.id;
+    if (id == null || id.isEmpty || !mounted) return;
+
+    final Widget screen = evento.status == 'andamento'
+        ? DetalhesEventoAndamentoScreen(evento: evento, eventoId: id)
+        : DetalhesEventoScreen(
+            evento: evento,
+            eventoId: id,
+            adminMode: true,
+          );
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => screen),
     );
   }
 
@@ -1166,9 +1193,7 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
         borderRadius: BorderRadius.circular(t.cardRadius),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
-          onTap: _podeEditarEvento
-              ? () => _abrirCadastroEvento(evento: evento)
-              : null,
+          onTap: () => _abrirPreviewPublico(evento),
           child: Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
@@ -1197,12 +1222,26 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
     return LayoutBuilder(
       key: const ValueKey('eventos_grade'),
       builder: (context, constraints) {
-        final width = MediaQuery.of(context).size.width;
-        final crossAxisCount = width >= 1100
+        final width = constraints.maxWidth;
+        final crossAxisCount = width >= 1380
             ? 4
-            : width >= 780
+            : width >= 980
             ? 3
-            : 2;
+            : width >= 620
+            ? 2
+            : width >= 360
+            ? 2
+            : 1;
+
+        const gap = 14.0;
+        final cellWidth = (width - (gap * (crossAxisCount - 1))) / crossAxisCount;
+        final coverAspect = cellWidth <= 260
+            ? 1.0
+            : cellWidth <= 420
+                ? 4 / 3
+                : 16 / 9;
+        final bodyHeight = cellWidth <= 260 ? 104.0 : 112.0;
+        final tileHeight = (cellWidth / coverAspect) + bodyHeight + 3;
 
         return GridView.builder(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
@@ -1211,79 +1250,133 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
           itemCount: eventos.length,
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: crossAxisCount,
-            mainAxisSpacing: 12,
-            crossAxisSpacing: 12,
-            childAspectRatio: width < 380 ? 0.63 : 0.69,
+            mainAxisSpacing: gap,
+            crossAxisSpacing: gap,
+            mainAxisExtent: tileHeight,
           ),
           itemBuilder: (context, index) {
-            return _buildGridEventCard(eventos[index]);
+            return _buildGridEventCard(
+              eventos[index],
+              coverAspectRatio: coverAspect,
+              bodyHeight: bodyHeight,
+              dense: cellWidth <= 260,
+            );
           },
         );
       },
     );
   }
 
-  Widget _buildGridEventCard(EventoModel evento) {
+  Widget _buildGridEventCard(
+    EventoModel evento, {
+    required double coverAspectRatio,
+    required double bodyHeight,
+    required bool dense,
+  }) {
     final t = context.uai;
     final corStatus = _ensureVisible(_statusColor(evento.status), t.card);
 
     return Material(
       color: t.card,
-      borderRadius: BorderRadius.circular(t.cardRadius),
+      borderRadius: BorderRadius.circular(20),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: _podeEditarEvento
-            ? () => _abrirCadastroEvento(evento: evento)
-            : null,
+        onTap: () => _abrirPreviewPublico(evento),
         child: Container(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(t.cardRadius),
+            borderRadius: BorderRadius.circular(20),
             border: Border.all(color: t.border),
-            boxShadow: t.softShadow,
           ),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(
-                flex: 6,
+              AspectRatio(
+                aspectRatio: coverAspectRatio,
                 child: Stack(
+                  fit: StackFit.expand,
                   children: [
-                    Positioned.fill(
-                      child: _buildEventImage(
-                        evento,
-                        corStatus,
-                        width: double.infinity,
-                        height: double.infinity,
-                        radius: 0,
+                    _buildEventImage(
+                      evento,
+                      corStatus,
+                      width: double.infinity,
+                      height: double.infinity,
+                      radius: 0,
+                    ),
+                    Positioned(
+                      left: 7,
+                      top: 7,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildPortfolioPill(evento),
+                          const SizedBox(height: 6),
+                          _buildStatusShortcut(evento),
+                        ],
                       ),
                     ),
                     Positioned(
-                      left: 8,
-                      top: 8,
-                      child: _buildStatusPill(evento.status),
-                    ),
-                    Positioned(
-                      right: 8,
-                      top: 8,
-                      child: _buildPortfolioPill(evento),
+                      right: 7,
+                      top: 7,
+                      child: _buildAdminActionsMenu(evento),
                     ),
                   ],
                 ),
               ),
-              Expanded(
-                flex: 5,
+              SizedBox(
+                height: bodyHeight,
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                  padding: EdgeInsets.fromLTRB(
+                    dense ? 10 : 12,
+                    9,
+                    dense ? 10 : 12,
+                    9,
+                  ),
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        child: _buildEventInfo(
-                          evento,
-                          corStatus,
-                          compact: true,
+                      Text(
+                        _formatarData(evento.data),
+                        style: TextStyle(
+                          color: t.primary,
+                          fontSize: dense ? 10.5 : 11.5,
+                          fontWeight: FontWeight.w900,
                         ),
                       ),
-                      const SizedBox(height: 6),
-                      _buildActionRow(evento),
+                      const SizedBox(height: 5),
+                      Text(
+                        evento.nome,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: t.textPrimary,
+                          fontSize: dense ? 12.5 : 13.5,
+                          fontWeight: FontWeight.w900,
+                          height: 1.05,
+                        ),
+                      ),
+                      const Spacer(),
+                      if (evento.cidade.isNotEmpty)
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.location_on_rounded,
+                              size: 14,
+                              color: t.textMuted,
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                evento.cidade,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: t.textMuted,
+                                  fontSize: dense ? 10.5 : 11.5,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                     ],
                   ),
                 ),
@@ -1291,6 +1384,216 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Future<void> _abrirGerenciamentoParticipacoes(EventoModel evento) async {
+    if (evento.id == null) return;
+
+    final Widget destino = evento.status == 'andamento'
+        ? ParticipantesEventoScreen(
+            eventoId: evento.id!,
+            eventoNome: evento.nome,
+            evento: evento,
+          )
+        : GerenciarParticipacoesScreen(
+            eventoId: evento.id!,
+            eventoNome: evento.nome,
+            evento: evento,
+          );
+
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => destino),
+    );
+  }
+
+  Widget _buildStatusShortcut(EventoModel evento) {
+    if (!_podeEditarEvento || evento.id == null) return const SizedBox.shrink();
+    final emAndamento = evento.status == 'andamento';
+    final color = emAndamento ? context.uai.error : context.uai.success;
+    return Tooltip(
+      message: emAndamento ? 'Finalizar evento' : 'Iniciar evento',
+      child: Material(
+        color: color,
+        shape: const CircleBorder(),
+        elevation: 2,
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: () => _alterarStatus(evento.id!, evento.status),
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: Icon(
+              emAndamento ? Icons.stop_rounded : Icons.play_arrow_rounded,
+              color: Colors.white,
+              size: 18,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAdminActionsMenu(EventoModel evento) {
+    final t = context.uai;
+    return Material(
+      color: Colors.black.withAlpha(148),
+      shape: const CircleBorder(),
+      child: PopupMenuButton<String>(
+        tooltip: 'Ações do evento',
+        color: t.surface,
+        padding: EdgeInsets.zero,
+        icon: const Icon(
+          Icons.more_vert_rounded,
+          color: Colors.white,
+          size: 20,
+        ),
+        onSelected: (value) {
+          if (value == 'module_preview') {
+            _abrirPreviewModuloEventos(evento);
+          } else if (value == 'participants') {
+            _abrirGerenciamentoParticipacoes(evento);
+          } else if (value == 'edit') {
+            _abrirCadastroEvento(evento: evento);
+          } else if (value == 'visibility' && evento.id != null) {
+            _alternarPortfolioWeb(
+              evento.id!,
+              evento.mostrarNoPortfolioWeb,
+            );
+          } else if (value == 'status' && evento.id != null) {
+            _alterarStatus(evento.id!, evento.status);
+          } else if (value == 'delete' && evento.id != null) {
+            _excluirEvento(evento.id!, evento.nome);
+          }
+        },
+        itemBuilder: (_) => [
+          const PopupMenuItem(
+            value: 'module_preview',
+            child: Row(
+              children: [
+                Icon(Icons.visibility_rounded, size: 20),
+                SizedBox(width: 12),
+                Text('Visualizar no módulo Eventos'),
+              ],
+            ),
+          ),
+          const PopupMenuItem(
+            value: 'participants',
+            child: Row(
+              children: [
+                Icon(Icons.groups_2_rounded, size: 20),
+                SizedBox(width: 12),
+                Text('Gerenciar participações'),
+              ],
+            ),
+          ),
+          if (_podeEditarEvento)
+            const PopupMenuItem(
+              value: 'edit',
+              child: Row(
+                children: [
+                  Icon(Icons.edit_rounded, size: 20),
+                  SizedBox(width: 12),
+                  Text('Editar evento'),
+                ],
+              ),
+            ),
+          if (_podeEditarEvento)
+            PopupMenuItem(
+              value: 'visibility',
+              child: Row(
+                children: [
+                  Icon(
+                    evento.mostrarNoPortfolioWeb
+                        ? Icons.public_off_rounded
+                        : Icons.public_rounded,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    evento.mostrarNoPortfolioWeb
+                        ? 'Remover do site'
+                        : 'Adicionar ao site',
+                  ),
+                ],
+              ),
+            ),
+          if (_podeEditarEvento)
+            PopupMenuItem(
+              value: 'status',
+              child: Row(
+                children: [
+                  Icon(
+                    evento.status == 'andamento'
+                        ? Icons.stop_circle_rounded
+                        : Icons.play_circle_fill_rounded,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    evento.status == 'andamento'
+                        ? 'Finalizar evento'
+                        : 'Iniciar evento',
+                  ),
+                ],
+              ),
+            ),
+          if (_podeEditarEvento)
+            const PopupMenuItem(
+              value: 'delete',
+              child: Row(
+                children: [
+                  Icon(Icons.delete_outline_rounded, size: 20),
+                  SizedBox(width: 12),
+                  Text('Excluir'),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCompactEventMenu(EventoModel evento) {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: () => showModalBottomSheet<void>(
+          context: context,
+          showDragHandle: true,
+          builder: (_) => SafeArea(
+            child: Wrap(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.visibility_rounded),
+                  title: const Text('Visualizar no módulo Eventos'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _abrirPreviewModuloEventos(evento);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.groups_2_rounded),
+                  title: const Text('Gerenciar participações'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _abrirGerenciamentoParticipacoes(evento);
+                  },
+                ),
+                if (_podeEditarEvento)
+                  ListTile(leading: const Icon(Icons.edit_rounded), title: const Text('Editar evento'), onTap: () { Navigator.pop(context); _abrirCadastroEvento(evento: evento); }),
+                if (_podeEditarEvento)
+                  ListTile(leading: const Icon(Icons.public_rounded), title: Text(evento.mostrarNoPortfolioWeb ? 'Remover do site' : 'Adicionar ao site'), onTap: () { Navigator.pop(context); _alternarPortfolioWeb(evento.id!, evento.mostrarNoPortfolioWeb); }),
+                if (_podeEditarEvento)
+                  ListTile(leading: Icon(evento.status == 'andamento' ? Icons.stop_circle_rounded : Icons.play_circle_fill_rounded), title: Text(evento.status == 'andamento' ? 'Finalizar evento' : 'Iniciar evento'), onTap: () { Navigator.pop(context); _alterarStatus(evento.id!, evento.status); }),
+                if (_podeEditarEvento)
+                  ListTile(leading: const Icon(Icons.delete_outline_rounded), title: const Text('Excluir'), onTap: () { Navigator.pop(context); _excluirEvento(evento.id!, evento.nome); }),
+              ],
+            ),
+          ),
+        ),
+        icon: const Icon(Icons.more_horiz_rounded, size: 18),
+        label: const Text('AÇÕES'),
       ),
     );
   }
@@ -1310,14 +1613,14 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
       child: Container(
         width: width,
         height: height,
-        color: Color.alphaBlend(corStatus.withOpacity(0.08), t.cardAlt),
+        color: Color.alphaBlend(corStatus.withAlpha(20), t.cardAlt),
         child: evento.linkBanner != null && evento.linkBanner!.isNotEmpty
-            ? CachedNetworkImage(
-                imageUrl: evento.linkBanner!,
-                fit: BoxFit.cover,
-                placeholder: (context, url) => Container(color: t.cardAlt),
-                errorWidget: (context, url, error) =>
-                    _buildFallbackImage(evento, corStatus),
+            ? PortfolioCoverImage(
+                url: evento.linkBanner!,
+                positionX: evento.portfolioCoverPositionX,
+                positionY: evento.portfolioCoverPositionY,
+                scale: evento.portfolioCoverScale,
+                placeholder: _buildFallbackImage(evento, corStatus),
               )
             : _buildFallbackImage(evento, corStatus),
       ),
@@ -1434,9 +1737,9 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(color.withOpacity(0.10), t.cardAlt),
+        color: Color.alphaBlend(color.withAlpha(26), t.cardAlt),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: color.withOpacity(0.18)),
+        border: Border.all(color: color.withAlpha(46)),
       ),
       child: Text(
         _statusLabel(status),
@@ -1458,15 +1761,31 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
     final color = ativo ? t.info : t.textSecondary;
 
     return Tooltip(
-      message: ativo ? 'Visível no site' : 'Oculto no site',
-      child: Container(
-        padding: const EdgeInsets.all(6),
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: t.softShadow,
+      message: ativo ? 'Remover do site' : 'Adicionar ao site',
+      child: Material(
+        color: color,
+        borderRadius: BorderRadius.circular(12),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: _podeEditarEvento && evento.id != null
+              ? () => _alternarPortfolioWeb(
+                    evento.id!,
+                    evento.mostrarNoPortfolioWeb,
+                  )
+              : null,
+          child: Container(
+            padding: const EdgeInsets.all(7),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: t.softShadow,
+            ),
+            child: Icon(
+              ativo ? Icons.public_rounded : Icons.public_off_rounded,
+              color: _readableOn(color),
+              size: 15,
+            ),
+          ),
         ),
-        child: Icon(Icons.public_rounded, color: _readableOn(color), size: 15),
       ),
     );
   }
@@ -1565,7 +1884,7 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
     return Tooltip(
       message: tooltip,
       child: Material(
-        color: Color.alphaBlend(accent.withOpacity(0.09), t.cardAlt),
+        color: Color.alphaBlend(accent.withAlpha(23), t.cardAlt),
         borderRadius: BorderRadius.circular(12),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
@@ -1579,7 +1898,7 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
             ),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: accent.withOpacity(0.16)),
+              border: Border.all(color: accent.withAlpha(41)),
             ),
             child: Icon(icon, color: accent, size: small ? 18 : 20),
           ),
@@ -1657,7 +1976,7 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
       decoration: BoxDecoration(
         color: t.card,
         borderRadius: BorderRadius.circular(t.cardRadius + 2),
-        border: Border.all(color: error.withOpacity(0.18)),
+        border: Border.all(color: error.withAlpha(46)),
         boxShadow: t.softShadow,
       ),
       child: Column(

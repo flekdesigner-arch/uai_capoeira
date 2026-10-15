@@ -106,7 +106,7 @@ class _SplashAuthScreenState extends State<SplashAuthScreen>
               child: CircularProgressIndicator(
                 strokeWidth: 3,
                 valueColor: AlwaysStoppedAnimation<Color>(Colors.red.shade900),
-                backgroundColor: Colors.red.shade900.withOpacity(0.08),
+                backgroundColor: Colors.red.shade900.withAlpha(20),
               ),
             ),
           ),
@@ -118,7 +118,7 @@ class _SplashAuthScreenState extends State<SplashAuthScreen>
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.08),
+                  color: Colors.black.withAlpha(20),
                   blurRadius: 18,
                   offset: const Offset(0, 8),
                 ),

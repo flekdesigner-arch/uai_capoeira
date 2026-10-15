@@ -36,7 +36,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import 'package:uai_capoeira/core/services/atualizacao_direta_service.dart';
-import 'package:uai_capoeira/core/services/versao_service.dart';
+import 'package:uai_capoeira/core/services/app_update_check_service.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/sistema/atualizacoes/models/app_version_model.dart';
 
@@ -49,7 +49,6 @@ class AtualizacaoDialogService {
   AtualizacaoDialogService._internal();
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final VersaoService _versaoService = VersaoService();
   final AtualizacaoDiretaService _atualizacaoService =
       AtualizacaoDiretaService();
 
@@ -60,96 +59,29 @@ class AtualizacaoDialogService {
   // =====================================================
   Future<void> verificarEMostrarDialogo(BuildContext context) async {
     if (_dialogoJaMostrado) return;
-
-    // =====================================================
-    // 🌐 PWA / WEB
-    // =====================================================
-    // Atualização direta por APK só faz sentido no Android.
-    // No PWA, a atualização acontece por deploy/cache/service worker.
-    // Então não mostramos diálogo nem bloqueio de APK no navegador.
-    // Isso evita erro: Unsupported operation: Platform._operatingSystem.
-    // =====================================================
     if (kIsWeb) {
       debugPrint('🌐 Atualização APK ignorada no PWA/Web.');
       return;
     }
-
     try {
-      final versaoLocal = await _versaoService.getVersaoLocal();
-
-      final configDoc = await _firestore
-          .collection('configuracoes')
-          .doc('app')
-          .get(const GetOptions(source: Source.server));
-
-      final config = configDoc.data() ?? {};
-
-      final versaoAtualServidor = (config['versao_atual'] ?? '1.0.0')
-          .toString()
-          .trim();
-
-      if (versaoAtualServidor.isEmpty) return;
-
-      final String ultimaVersaoId = (config['ultima_versao_id'] ?? '')
-          .toString()
-          .trim();
-
-      final bool atualizacaoObrigatoria =
-          config['atualizacao_obrigatoria'] == true;
-
-      final String versaoMinimaObrigatoria =
-          (config['versao_minima_obrigatoria'] ?? '').toString().trim();
-
-      final bool existeVersaoNova = _compararVersoes(
-        versaoLocal,
-        versaoAtualServidor,
-      );
-
-      final bool estaAbaixoDaMinima = versaoMinimaObrigatoria.isNotEmpty
-          ? _compararVersoes(versaoLocal, versaoMinimaObrigatoria)
-          : false;
-
-      final bool deveBloquear =
-          atualizacaoObrigatoria == true && estaAbaixoDaMinima;
-
-      if (!existeVersaoNova && !deveBloquear) {
-        debugPrint(
-          '✅ App atualizado. Local: $versaoLocal | Servidor: $versaoAtualServidor',
-        );
-        return;
-      }
-
-      final apkExiste = await _atualizacaoService.apkExiste(
-        versaoAtualServidor,
-      );
-
+      final status = await AppUpdateCheckService().verificarStatus();
+      if (!status.carregou || (!status.precisaAtualizar && !status.deveBloquear)) return;
+      final novaVersao = status.versaoServidor;
+      if (novaVersao.trim().isEmpty) return;
+      final apkExiste = await _atualizacaoService.apkExiste(novaVersao);
       if (!apkExiste) {
-        debugPrint(
-          '⚠️ Existe versão nova ($versaoAtualServidor), '
-          'mas o APK não foi encontrado no Storage.',
-        );
+        debugPrint('⚠️ Existe versão nova ($novaVersao), mas o APK não foi encontrado no Storage.');
         return;
       }
-
-      AppVersionModel? versionModel;
-
-      if (ultimaVersaoId.isNotEmpty) {
-        versionModel = await _buscarVersaoPorId(ultimaVersaoId);
-      }
-
-      versionModel ??= await _buscarVersaoPorVersao(versaoAtualServidor);
-
       if (!context.mounted) return;
-
       _dialogoJaMostrado = true;
-
       await _mostrarDialogoAtualizacao(
         context: context,
-        versaoAtual: versaoLocal,
-        novaVersao: versaoAtualServidor,
-        obrigatoria: deveBloquear,
-        config: config,
-        versionModel: versionModel,
+        versaoAtual: status.versaoLocal,
+        novaVersao: novaVersao,
+        obrigatoria: status.deveBloquear,
+        config: {...status.config, 'canal_release': status.canal},
+        versionModel: status.versionModel,
       );
     } catch (e) {
       debugPrint('❌ Erro ao verificar atualização: $e');
@@ -172,46 +104,6 @@ class AtualizacaoDialogService {
     } catch (e) {
       debugPrint('⚠️ Não foi possível buscar versão por ID: $e');
       return null;
-    }
-  }
-
-  Future<AppVersionModel?> _buscarVersaoPorVersao(String versao) async {
-    try {
-      final versionId = AppVersionModel.gerarVersionId(versao);
-      if (versionId.isEmpty) return null;
-
-      return _buscarVersaoPorId(versionId);
-    } catch (e) {
-      debugPrint('⚠️ Não foi possível buscar versão por número: $e');
-      return null;
-    }
-  }
-
-  // =====================================================
-  // 🔍 COMPARAR VERSÕES
-  // Retorna true se "servidor" for maior que "local".
-  // =====================================================
-  bool _compararVersoes(String local, String servidor) {
-    try {
-      final localParts = local.split('.').map(int.parse).toList();
-      final servidorParts = servidor.split('.').map(int.parse).toList();
-
-      final maxLength = localParts.length > servidorParts.length
-          ? localParts.length
-          : servidorParts.length;
-
-      for (int i = 0; i < maxLength; i++) {
-        final localValue = i < localParts.length ? localParts[i] : 0;
-        final servidorValue = i < servidorParts.length ? servidorParts[i] : 0;
-
-        if (servidorValue > localValue) return true;
-        if (servidorValue < localValue) return false;
-      }
-
-      return false;
-    } catch (e) {
-      debugPrint('❌ Erro ao comparar versões: $e');
-      return false;
     }
   }
 
@@ -240,7 +132,7 @@ class AtualizacaoDialogService {
   }
 
   Color _softFill(Color color, Color base, [double opacity = 0.10]) {
-    return Color.alphaBlend(color.withOpacity(opacity), base);
+    return Color.alphaBlend(color.withAlpha((255.0 * (opacity)).round()), base);
   }
 
   // =====================================================
@@ -256,9 +148,11 @@ class AtualizacaoDialogService {
   }) async {
     final t = context.uai;
 
-    final String titulo = versionModel?.titulo.trim().isNotEmpty == true
+    final bool beta = versionModel?.isBeta == true || config['canal_release'] == 'beta';
+    final String tituloBase = versionModel?.titulo.trim().isNotEmpty == true
         ? versionModel!.titulo
         : (config['titulo_atualizacao'] ?? 'Nova versão disponível').toString();
+    final String titulo = beta ? 'BETA • $tituloBase' : tituloBase;
 
     final String resumo = versionModel?.resumo.trim().isNotEmpty == true
         ? versionModel!.resumo
@@ -276,8 +170,8 @@ class AtualizacaoDialogService {
             ? _ensureVisible(dt.error, dt.surface)
             : _ensureVisible(dt.warning, dt.surface);
 
-        return WillPopScope(
-          onWillPop: () async => !obrigatoria,
+        return PopScope(
+          canPop: !obrigatoria,
           child: Dialog(
             insetPadding: const EdgeInsets.all(16),
             backgroundColor: Colors.transparent,
@@ -303,14 +197,14 @@ class AtualizacaoDialogService {
                                 ? [
                                     statusColor,
                                     Color.alphaBlend(
-                                      Colors.black.withOpacity(0.16),
+                                      Colors.black.withAlpha(41),
                                       statusColor,
                                     ),
                                   ]
                                 : [
                                     primary,
                                     Color.alphaBlend(
-                                      Colors.black.withOpacity(0.10),
+                                      Colors.black.withAlpha(26),
                                       primary,
                                     ),
                                   ],
@@ -395,9 +289,9 @@ class AtualizacaoDialogService {
             width: 58,
             height: 58,
             decoration: BoxDecoration(
-              color: onHeader.withOpacity(0.14),
+              color: onHeader.withAlpha(36),
               borderRadius: BorderRadius.circular(t.buttonRadius + 4),
-              border: Border.all(color: onHeader.withOpacity(0.18)),
+              border: Border.all(color: onHeader.withAlpha(46)),
             ),
             child: Icon(
               obrigatoria
@@ -429,7 +323,7 @@ class AtualizacaoDialogService {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: onHeader.withOpacity(0.84),
+                    color: onHeader.withAlpha(214),
                     fontSize: 12.5,
                     height: 1.25,
                     fontWeight: FontWeight.w700,
@@ -550,7 +444,7 @@ class AtualizacaoDialogService {
       decoration: BoxDecoration(
         color: _softFill(accent, t.card, 0.07),
         borderRadius: BorderRadius.circular(t.cardRadius),
-        border: Border.all(color: accent.withOpacity(0.14)),
+        border: Border.all(color: accent.withAlpha(36)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,

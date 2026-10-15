@@ -183,7 +183,7 @@ class _AreaAlunoMeusEventosSectionState
           width: 39,
           height: 39,
           decoration: BoxDecoration(
-            color: Color.alphaBlend(accent.withOpacity(0.09), t.cardAlt),
+            color: Color.alphaBlend(accent.withAlpha(23), t.cardAlt),
             borderRadius: BorderRadius.circular(14),
           ),
           child: Icon(Icons.event_available_rounded, color: accent, size: 21),
@@ -231,7 +231,7 @@ class _AreaAlunoMeusEventosSectionState
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: pagamentoAccent.withOpacity(0.20)),
+            border: Border.all(color: pagamentoAccent.withAlpha(51)),
             boxShadow: t.softShadow,
           ),
           child: IntrinsicHeight(
@@ -346,10 +346,10 @@ class _AreaAlunoMeusEventosSectionState
                           width: 34,
                           height: 34,
                           decoration: BoxDecoration(
-                            color: onCardBg.withOpacity(0.08),
+                            color: onCardBg.withAlpha(20),
                             borderRadius: BorderRadius.circular(14),
                             border: Border.all(
-                              color: pagamentoAccent.withOpacity(0.12),
+                              color: pagamentoAccent.withAlpha(31),
                             ),
                           ),
                           child: Icon(
@@ -380,7 +380,7 @@ class _AreaAlunoMeusEventosSectionState
         ? 0.080
         : 0.090;
 
-    return Color.alphaBlend(accent.withOpacity(opacity), t.card);
+    return Color.alphaBlend(accent.withAlpha((255.0 * (opacity)).round()), t.card);
   }
 
   Widget _buildEventoLogo(
@@ -394,9 +394,9 @@ class _AreaAlunoMeusEventosSectionState
       width: 58,
       height: 58,
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.10), background),
+        color: Color.alphaBlend(accent.withAlpha(26), background),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: accent.withOpacity(0.13)),
+        border: Border.all(color: accent.withAlpha(33)),
       ),
       child: logo.isNotEmpty
           ? ClipRRect(
@@ -404,7 +404,7 @@ class _AreaAlunoMeusEventosSectionState
               child: Image.network(
                 logo,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _buildEventoLogoFallback(accent),
+                errorBuilder: (_, _, _) => _buildEventoLogoFallback(accent),
                 loadingBuilder: (context, child, loadingProgress) {
                   if (loadingProgress == null) return child;
                   return Center(
@@ -439,7 +439,7 @@ class _AreaAlunoMeusEventosSectionState
         : pagamentoAccent;
 
     final bg = evento.pagamentoParcial
-        ? Color.alphaBlend(pagamentoAccent.withOpacity(0.12), t.cardAlt)
+        ? Color.alphaBlend(pagamentoAccent.withAlpha(31), t.cardAlt)
         : pagamentoAccent;
 
     return Container(
@@ -447,7 +447,7 @@ class _AreaAlunoMeusEventosSectionState
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: pagamentoAccent.withOpacity(0.20)),
+        border: Border.all(color: pagamentoAccent.withAlpha(51)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -503,9 +503,9 @@ class _AreaAlunoMeusEventosSectionState
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), background),
+        color: Color.alphaBlend(accent.withAlpha(20), background),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: accent.withOpacity(0.12)),
+        border: Border.all(color: accent.withAlpha(31)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -560,7 +560,7 @@ class _AreaAlunoMeusEventosSectionState
   void _mostrarDetalhesRapidos(AreaAlunoEventoResumo evento) {
     final t = context.uai;
     final accent = _ensureVisible(_pagamentoColor(evento), t.surface);
-    final cardBg = Color.alphaBlend(accent.withOpacity(0.07), t.surface);
+    final cardBg = Color.alphaBlend(accent.withAlpha(18), t.surface);
 
     showModalBottomSheet<void>(
       context: context,
@@ -664,9 +664,9 @@ class _AreaAlunoMeusEventosSectionState
                     width: double.infinity,
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Color.alphaBlend(accent.withOpacity(0.07), t.card),
+                      color: Color.alphaBlend(accent.withAlpha(18), t.card),
                       borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: accent.withOpacity(0.13)),
+                      border: Border.all(color: accent.withAlpha(33)),
                     ),
                     child: Text(
                       'Para corrigir camisa, nome, graduação ou qualquer dado do evento, use o card “Solicitar alterações” na Área do Aluno.',

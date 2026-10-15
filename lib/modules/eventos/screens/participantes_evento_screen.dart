@@ -194,7 +194,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
   String _assinaturaEstatisticas = '';
   final Map<String, CachedAlunoData> _cacheAlunos = {};
   List<Map<String, dynamic>> _graduacoes = [];
-  Map<String, Map<String, String>> _coresGraduacao = {};
+  final Map<String, Map<String, String>> _coresGraduacao = {};
 
   List<Map<String, dynamic>> _usosPatrocinio = [];
   Set<String> _participantesPatrocinados = {};
@@ -247,7 +247,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
   }
 
   Color _onCard() => _readableOn(context.uai.card);
-  Color _onCardMuted() => _onCard().withOpacity(0.68);
+  Color _onCardMuted() => _onCard().withAlpha(173);
   Color _appBarBg() =>
       Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
   Color _appBarFg() =>
@@ -855,10 +855,10 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                   vertical: 7,
                 ),
                 decoration: BoxDecoration(
-                  color: context.uai.primary.withOpacity(0.10),
+                  color: context.uai.primary.withAlpha(26),
                   borderRadius: BorderRadius.circular(99),
                   border: Border.all(
-                    color: context.uai.primary.withOpacity(0.18),
+                    color: context.uai.primary.withAlpha(46),
                   ),
                 ),
                 child: Text(
@@ -1035,10 +1035,10 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                                     vertical: 5,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: accent.withOpacity(0.10),
+                                    color: accent.withAlpha(26),
                                     borderRadius: BorderRadius.circular(99),
                                     border: Border.all(
-                                      color: accent.withOpacity(0.18),
+                                      color: accent.withAlpha(46),
                                     ),
                                   ),
                                   child: Text(
@@ -1071,9 +1071,9 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.10),
+        color: accent.withAlpha(26),
         borderRadius: BorderRadius.circular(compact ? 12 : 15),
-        border: Border.all(color: accent.withOpacity(0.18)),
+        border: Border.all(color: accent.withAlpha(46)),
       ),
       child: Icon(icon, color: accent, size: compact ? 18 : 22),
     );
@@ -1092,9 +1092,9 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
       constraints: BoxConstraints(minHeight: r.isPhone ? 92 : 86),
       padding: const EdgeInsets.all(11),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), context.uai.cardAlt),
+        color: Color.alphaBlend(accent.withAlpha(20), context.uai.cardAlt),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: accent.withOpacity(0.16)),
+        border: Border.all(color: accent.withAlpha(41)),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -1139,9 +1139,9 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), context.uai.cardAlt),
+        color: Color.alphaBlend(accent.withAlpha(20), context.uai.cardAlt),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: accent.withOpacity(0.16)),
+        border: Border.all(color: accent.withAlpha(41)),
       ),
       child: Row(
         children: [
@@ -1268,6 +1268,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
       return;
     }
 
+    if (!mounted) return;
     final evento = widget.evento ?? _eventoCarregado;
     if (evento == null) return;
 
@@ -1395,6 +1396,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
       return;
     }
 
+    if (!mounted) return;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1956,7 +1958,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                   const SizedBox(height: 16),
                   const Text('Graduação:'),
                   DropdownButtonFormField<String?>(
-                    value: graduacaoId,
+                    initialValue: graduacaoId,
                     items: [
                       const DropdownMenuItem(value: null, child: Text('Todas')),
                       ..._graduacoes.map(
@@ -2085,10 +2087,10 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
       selected: selected,
       onSelected: (v) => setState(() => _filtroStatus = v ? valor : 'todos'),
       backgroundColor: context.uai.card,
-      selectedColor: accent.withOpacity(0.14),
+      selectedColor: accent.withAlpha(36),
       checkmarkColor: accent,
       side: BorderSide(
-        color: selected ? accent.withOpacity(0.55) : context.uai.border,
+        color: selected ? accent.withAlpha(140) : context.uai.border,
       ),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(99)),
       labelStyle: TextStyle(
@@ -2127,7 +2129,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
               borderRadius: BorderRadius.circular(22),
               boxShadow: [
                 BoxShadow(
-                  color: accent.withOpacity(0.16),
+                  color: accent.withAlpha(41),
                   blurRadius: 10,
                   offset: const Offset(0, 4),
                 ),
@@ -2144,7 +2146,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                     color: context.uai.card,
                     borderRadius: BorderRadius.circular(22),
                     border: Border.all(
-                      color: accent.withOpacity(0.78),
+                      color: accent.withAlpha(199),
                       width: isPaid || isSponsored ? 2.1 : 1.8,
                     ),
                   ),
@@ -2170,8 +2172,8 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                                             begin: Alignment.bottomCenter,
                                             end: Alignment.center,
                                             colors: [
-                                              Colors.black.withOpacity(0.66),
-                                              Colors.black.withOpacity(0.18),
+                                              Colors.black.withAlpha(168),
+                                              Colors.black.withAlpha(46),
                                               Colors.transparent,
                                             ],
                                           ),
@@ -2217,7 +2219,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                                 width: double.infinity,
                                 padding: const EdgeInsets.fromLTRB(8, 8, 8, 9),
                                 decoration: BoxDecoration(
-                                  color: accent.withOpacity(0.09),
+                                  color: accent.withAlpha(23),
                                 ),
                                 child: Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
@@ -2244,7 +2246,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                               ),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withOpacity(0.20),
+                                  color: Colors.black.withAlpha(51),
                                   blurRadius: 5,
                                 ),
                               ],
@@ -2266,7 +2268,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                                 ),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.black.withOpacity(0.18),
+                                    color: Colors.black.withAlpha(46),
                                     blurRadius: 7,
                                   ),
                                 ],
@@ -2361,9 +2363,9 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.88),
+        color: Colors.white.withAlpha(224),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: Colors.white.withOpacity(0.24)),
+        border: Border.all(color: Colors.white.withAlpha(61)),
       ),
       child: Text(
         texto,
@@ -2403,9 +2405,9 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.11),
+        color: accent.withAlpha(28),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: accent.withOpacity(0.18)),
+        border: Border.all(color: accent.withAlpha(46)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -2458,9 +2460,9 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             decoration: BoxDecoration(
-              color: context.uai.success.withOpacity(0.10),
+              color: context.uai.success.withAlpha(26),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: context.uai.success.withOpacity(0.18)),
+              border: Border.all(color: context.uai.success.withAlpha(46)),
             ),
             child: Text(
               nova,
@@ -2494,10 +2496,10 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
           decoration: BoxDecoration(
             color: context.uai.card,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: borderColor.withOpacity(0.6), width: 2),
+            border: Border.all(color: borderColor.withAlpha(153), width: 2),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.08),
+                color: Colors.black.withAlpha(20),
                 blurRadius: 8,
                 offset: const Offset(0, 2),
               ),
@@ -2642,9 +2644,9 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.10),
+        color: accent.withAlpha(26),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: accent.withOpacity(0.14)),
+        border: Border.all(color: accent.withAlpha(36)),
       ),
       child: Text(
         texto,
@@ -2667,9 +2669,9 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.10),
+        color: accent.withAlpha(26),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: accent.withOpacity(0.16)),
+        border: Border.all(color: accent.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -2721,9 +2723,9 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.10),
+        color: accent.withAlpha(26),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: accent.withOpacity(0.14)),
+        border: Border.all(color: accent.withAlpha(36)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -2900,9 +2902,9 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.10),
+        color: accent.withAlpha(26),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: accent.withOpacity(0.14)),
+        border: Border.all(color: accent.withAlpha(36)),
       ),
       child: Text(
         label,
@@ -3031,9 +3033,9 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: primary.withOpacity(0.08),
+                      color: primary.withAlpha(20),
                       borderRadius: BorderRadius.circular(99),
-                      border: Border.all(color: primary.withOpacity(0.14)),
+                      border: Border.all(color: primary.withAlpha(36)),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -3223,7 +3225,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
         bottom: TabBar(
           controller: _tabController,
           labelColor: _appBarFg(),
-          unselectedLabelColor: _appBarFg().withOpacity(0.66),
+          unselectedLabelColor: _appBarFg().withAlpha(168),
           indicatorColor: _appBarFg(),
           tabs: [
             const Tab(text: 'PARTICIPANTES', icon: Icon(Icons.people)),
@@ -3263,7 +3265,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                   Icon(
                     Icons.error_outline,
                     size: 60,
-                    color: context.uai.error.withOpacity(0.50),
+                    color: context.uai.error.withAlpha(128),
                   ),
                   const SizedBox(height: 16),
                   Text('Erro: ${snapshot.error}'),
@@ -3442,7 +3444,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: context.uai.primary.withOpacity(0.10),
+                              color: context.uai.primary.withAlpha(26),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
@@ -3462,7 +3464,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: context.uai.info.withOpacity(0.10),
+                              color: context.uai.info.withAlpha(26),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
@@ -3482,7 +3484,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: context.uai.success.withOpacity(0.10),
+                              color: context.uai.success.withAlpha(26),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Row(
@@ -3601,7 +3603,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
       label: Text(label),
       selected: selected,
       onSelected: (_) => setState(() => _filtroConcluidosWhatsapp = value),
-      selectedColor: context.uai.primary.withOpacity(0.16),
+      selectedColor: context.uai.primary.withAlpha(41),
       backgroundColor: context.uai.card,
       labelStyle: TextStyle(
         color: selected
@@ -3612,7 +3614,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
       ),
       side: BorderSide(
         color: selected
-            ? context.uai.primary.withOpacity(0.35)
+            ? context.uai.primary.withAlpha(89)
             : context.uai.border,
       ),
     );
@@ -3674,7 +3676,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
           decoration: BoxDecoration(
             color: bg,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: context.uai.success.withOpacity(0.35)),
+            border: Border.all(color: context.uai.success.withAlpha(89)),
           ),
           child: SvgPicture.asset(
             'assets/images/whatsapp.svg',
@@ -3715,13 +3717,13 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: enviado
-                  ? context.uai.success.withOpacity(0.45)
+                  ? context.uai.success.withAlpha(115)
                   : context.uai.border,
               width: enviado ? 1.5 : 1,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.06),
+                color: Colors.black.withAlpha(15),
                 blurRadius: 8,
                 offset: const Offset(0, 2),
               ),
@@ -4140,7 +4142,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   DropdownButtonFormField<String>(
-                    value: campoSelecionado,
+                    initialValue: campoSelecionado,
                     decoration: const InputDecoration(
                       labelText: 'Campo de ordenação',
                     ),

@@ -371,7 +371,7 @@ class AreaAlunoCertificadoViewerScreen extends StatelessWidget {
           _buildLogoEvento(
             context,
             size: 58,
-            background: onPrimary.withOpacity(0.16),
+            background: onPrimary.withAlpha(41),
             foreground: onPrimary,
           ),
           const SizedBox(width: 12),
@@ -396,7 +396,7 @@ class AreaAlunoCertificadoViewerScreen extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: onPrimary.withOpacity(0.82),
+                    color: onPrimary.withAlpha(209),
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                   ),
@@ -423,14 +423,14 @@ class AreaAlunoCertificadoViewerScreen extends StatelessWidget {
       decoration: BoxDecoration(
         color: background,
         borderRadius: BorderRadius.circular(19),
-        border: Border.all(color: foreground.withOpacity(0.15)),
+        border: Border.all(color: foreground.withAlpha(38)),
       ),
       clipBehavior: Clip.antiAlias,
       child: logo.isNotEmpty
           ? Image.network(
               logo,
               fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) {
+              errorBuilder: (_, _, _) {
                 return Icon(
                   Icons.workspace_premium_rounded,
                   color: foreground,
@@ -488,7 +488,7 @@ class AreaAlunoCertificadoViewerScreen extends StatelessWidget {
                 width: 39,
                 height: 39,
                 decoration: BoxDecoration(
-                  color: Color.alphaBlend(accent.withOpacity(0.10), t.cardAlt),
+                  color: Color.alphaBlend(accent.withAlpha(26), t.cardAlt),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Icon(Icons.info_rounded, color: accent, size: 21),
@@ -583,9 +583,9 @@ class AreaAlunoCertificadoViewerScreen extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), t.card),
+        color: Color.alphaBlend(accent.withAlpha(20), t.card),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: accent.withOpacity(0.14)),
+        border: Border.all(color: accent.withAlpha(36)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,

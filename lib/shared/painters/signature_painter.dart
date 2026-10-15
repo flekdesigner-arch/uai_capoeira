@@ -20,6 +20,13 @@ class SignaturePainter extends CustomPainter {
       ..style = PaintingStyle.stroke;
 
     for (var stroke in points) {
+      if (stroke.length == 1) {
+        canvas.drawCircle(
+          stroke.first,
+          strokeWidth / 2,
+          Paint()..color = color,
+        );
+      }
       for (int i = 0; i < stroke.length - 1; i++) {
         final p1 = stroke[i];
         final p2 = stroke[i + 1];
@@ -30,25 +37,32 @@ class SignaturePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant SignaturePainter oldDelegate) {
-    return oldDelegate.points != points;
+    return oldDelegate.points != points ||
+        oldDelegate.color != color ||
+        oldDelegate.strokeWidth != strokeWidth;
   }
 }
 
 // 🔥 CRIAR UM CONTROLLER PARA A ASSINATURA
 class SignatureController extends ChangeNotifier {
-  List<List<Offset>> _points = [];
+  final List<List<Offset>> _points = [];
   List<Offset>? _currentStroke;
 
-  List<List<Offset>> get points => List.unmodifiable(_points);
-  bool get hasSignature => _points.isNotEmpty;
+  List<List<Offset>> get points => List.unmodifiable([
+    ..._points.map((s) => List<Offset>.unmodifiable(s)),
+    if (_currentStroke != null) List<Offset>.unmodifiable(_currentStroke!),
+  ]);
+  bool get hasSignature =>
+      _points.any((stroke) => stroke.length >= 2) ||
+      (_currentStroke?.length ?? 0) >= 2;
 
   void addPoint(Offset point) {
     if (_currentStroke == null) {
       _currentStroke = [point];
     } else {
       _currentStroke!.add(point);
-      notifyListeners();
     }
+    notifyListeners();
   }
 
   void endStroke() {
@@ -83,33 +97,54 @@ class SignaturePad extends StatefulWidget {
 }
 
 class _SignaturePadState extends State<SignaturePad> {
+  int? _activePointer;
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onPanStart: (details) {
-        widget.controller.addPoint(details.localPosition);
+    Offset bounded(Offset p) {
+      final box = context.findRenderObject() as RenderBox?;
+      if (box == null || !box.hasSize) return p;
+      return Offset(
+        p.dx.clamp(0.0, box.size.width),
+        p.dy.clamp(0.0, box.size.height),
+      );
+    }
+
+    return Listener(
+      behavior: HitTestBehavior.opaque,
+      onPointerDown: (e) {
+        if (_activePointer != null) return;
+        _activePointer = e.pointer;
+        widget.controller.addPoint(bounded(e.localPosition));
       },
-      onPanUpdate: (details) {
-        widget.controller.addPoint(details.localPosition);
+      onPointerMove: (e) {
+        if (_activePointer == e.pointer) {
+          widget.controller.addPoint(bounded(e.localPosition));
+        }
       },
-      onPanEnd: (details) {
-        widget.controller.endStroke();
+      onPointerUp: (e) {
+        if (_activePointer == e.pointer) {
+          widget.controller.endStroke();
+          _activePointer = null;
+        }
       },
-      child: Listener(
-        behavior: HitTestBehavior.opaque,
-        child: AnimatedBuilder(
-          animation: widget.controller,
-          builder: (context, child) {
-            return CustomPaint(
-              painter: SignaturePainter(
-                points: widget.controller.points,
-                color: widget.penColor,
-                strokeWidth: widget.strokeWidth,
-              ),
-              size: Size.infinite,
-            );
-          },
-        ),
+      onPointerCancel: (e) {
+        if (_activePointer == e.pointer) {
+          widget.controller.endStroke();
+          _activePointer = null;
+        }
+      },
+      child: AnimatedBuilder(
+        animation: widget.controller,
+        builder: (context, child) {
+          return CustomPaint(
+            painter: SignaturePainter(
+              points: widget.controller.points,
+              color: widget.penColor,
+              strokeWidth: widget.strokeWidth,
+            ),
+            size: Size.infinite,
+          );
+        },
       ),
     );
   }

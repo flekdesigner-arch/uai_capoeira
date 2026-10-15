@@ -138,7 +138,6 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
   Future<void> _excluirInscricao() async {
     if (_inscricao == null) return;
 
-    String nomeConfirmacao = '';
     bool podeExcluir = false;
 
     await showDialog(
@@ -270,7 +269,6 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
                 TextField(
                   onChanged: (value) {
                     setDialogState(() {
-                      nomeConfirmacao = value;
                       podeExcluir =
                           value.trim().toUpperCase() ==
                           _inscricao!.nome.toUpperCase();
@@ -446,10 +444,10 @@ class _DetalheInscricaoScreenState extends State<DetalheInscricaoScreen> {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       } else {
         final webUrl = Uri.parse(
-          'https://web.whatsapp.com/send?phone=$cleanedPhone' +
-              (mensagem != null && mensagem.isNotEmpty
+          'https://web.whatsapp.com/send?phone=$cleanedPhone${
+              mensagem != null && mensagem.isNotEmpty
                   ? '&text=${Uri.encodeComponent(mensagem)}'
-                  : ''),
+                  : ''}',
         );
         await launchUrl(webUrl, mode: LaunchMode.externalApplication);
       }

@@ -1,12 +1,15 @@
+import 'package:uai_capoeira/core/session_log/session_log_service.dart';
 import 'dart:async';
+import 'package:uai_capoeira/core/image_cache/uai_student_photo.dart';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'package:uai_capoeira/modules/chamadas/services/aluno_foto_resolver.dart';
 
 Color _readableOn(Color background) => background.computeLuminance() > 0.48
     ? const Color(0xFF111827)
@@ -42,6 +45,7 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
   final _buscaController = TextEditingController();
   final _professorController = TextEditingController();
   final _observacaoController = TextEditingController();
+  final ScrollController _listaScrollController = ScrollController();
 
   late final AnimationController _animationController;
   late final Animation<double> _fadeAnimation;
@@ -63,6 +67,7 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
   bool _modoListaCompacta = false;
   bool _salvando = false;
   bool _mostrarProgresso = false;
+  bool _headerCompacto = false;
   String _statusMensagem = '';
   Timer? _buscaDebounce;
   String _cacheAssinaturaFiltro = '';
@@ -96,12 +101,16 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
           ),
         );
     _inicializarDados();
+    _sincronizarFotosAtuais();
     _buscaController.addListener(_onBuscaChanged);
+    _listaScrollController.addListener(_onListaScroll);
   }
 
   @override
   void dispose() {
     _buscaDebounce?.cancel();
+    _listaScrollController.removeListener(_onListaScroll);
+    _listaScrollController.dispose();
     _buscaController.dispose();
     _professorController.dispose();
     _observacaoController.dispose();
@@ -118,7 +127,7 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
   }
 
   Color _onCard() => _readableOn(context.uai.card);
-  Color _onCardMuted() => _onCard().withOpacity(0.68);
+  Color _onCardMuted() => _onCard().withAlpha(173);
   Color _appBarBg() =>
       Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
   Color _appBarFg() =>
@@ -189,11 +198,40 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
     };
   }
 
+  Future<void> _sincronizarFotosAtuais() async {
+    final ids = _alunosEdit
+        .map(AlunoFotoResolver.alunoIdDoMapa)
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    if (ids.isEmpty) return;
+
+    final atuais = await AlunoFotoResolver.carregarAtuaisEmLote(ids);
+    if (!mounted || atuais.isEmpty) return;
+    setState(() {
+      for (final aluno in _alunosEdit) {
+        final id = AlunoFotoResolver.alunoIdDoMapa(aluno);
+        final foto = atuais[id];
+        if (foto != null && foto.isNotEmpty) {
+          aluno['foto_perfil_aluno'] = foto;
+          aluno['foto'] = foto;
+        }
+      }
+      _invalidarCacheFiltro();
+    });
+  }
+
   DateTime? _parseDateTime(dynamic value) {
     if (value is Timestamp) return value.toDate();
     if (value is DateTime) return value;
     if (value is String) return DateTime.tryParse(value);
     return null;
+  }
+
+  void _onListaScroll() {
+    if (!_listaScrollController.hasClients) return;
+    final compacto = _listaScrollController.offset >= 96;
+    if (compacto == _headerCompacto || !mounted) return;
+    setState(() => _headerCompacto = compacto);
   }
 
   void _onBuscaChanged() {
@@ -415,8 +453,9 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
       }
       if (mudouData || mudouTipo || mudouProfessor) logs.add(id);
       if (mudouData && (antes || depois)) recalcular.add(id);
-      if ((mudouTipo || mudouProfessor) && (antes || depois))
+      if ((mudouTipo || mudouProfessor) && (antes || depois)) {
         recalcular.add(id);
+      }
       if (mudouData) {
         if (antes) ajustesContador++;
         if (depois) ajustesContador++;
@@ -563,10 +602,10 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: context.uai.warning.withOpacity(0.12),
+                      color: context.uai.warning.withAlpha(31),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: context.uai.warning.withOpacity(0.28),
+                        color: context.uai.warning.withAlpha(71),
                       ),
                     ),
                     child: Text(
@@ -784,6 +823,10 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
       }
 
       await batch.commit();
+      unawaited(SessionLogService.instance.recordEntityOperation(
+        module: 'chamadas', entityType: 'chamada',
+        entityId: widget.chamadaId, operation: 'atualizou', result: 'sucesso',
+      ));
       setState(() => _statusMensagem = 'Recalculando últimas presenças...');
       for (final alunoId in resumo.alunosParaRecalcularUltimos) {
         await _recalcularUltimosDoAluno(alunoId);
@@ -801,6 +844,10 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
       );
       Navigator.pop(context, true);
     } catch (e) {
+      unawaited(SessionLogService.instance.recordEntityOperation(
+        module: 'chamadas', entityType: 'chamada',
+        entityId: widget.chamadaId, operation: 'atualizou', result: 'falha',
+      ));
       debugPrint('Erro ao salvar edição da chamada: $e');
       if (!mounted) return;
       setState(() {
@@ -1076,7 +1123,20 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
               alignment: Alignment.topCenter,
               child: ConstrainedBox(
                 constraints: BoxConstraints(maxWidth: maxWidth),
-                child: _buildChamadaHeader(),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 220),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  child: _headerCompacto
+                      ? KeyedSubtree(
+                          key: const ValueKey('header_compacto'),
+                          child: _buildChamadaHeaderCompacto(),
+                        )
+                      : KeyedSubtree(
+                          key: const ValueKey('header_completo'),
+                          child: _buildChamadaHeader(),
+                        ),
+                ),
               ),
             ),
             Expanded(child: _buildAlunosList()),
@@ -1095,7 +1155,7 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
                   border: Border(top: BorderSide(color: context.uai.border)),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.08),
+                      color: Colors.black.withAlpha(20),
                       blurRadius: 14,
                       offset: const Offset(0, -4),
                     ),
@@ -1223,6 +1283,103 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
     return context.uai.error;
   }
 
+  Widget _buildChamadaHeaderCompacto() {
+    final progress = _total > 0 ? _presentes / _total : 0.0;
+    final progressColor = _presentes == 0
+        ? context.uai.error
+        : _presentes == _total
+        ? context.uai.success
+        : context.uai.warning;
+    final onPrimary = _onPrimary();
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(10, 6, 10, 4),
+      padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
+      decoration: BoxDecoration(
+        gradient: context.uai.primaryGradient,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: context.uai.primary.withAlpha(31),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.fact_check_rounded, color: onPrimary, size: 19),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  widget.turmaNome,
+                  style: TextStyle(
+                    color: onPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    height: 1.0,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Icon(
+                Icons.edit_rounded,
+                size: 13,
+                color: onPrimary.withAlpha(184),
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '${DateFormat('dd/MM').format(_dataEdit)} • $_tipoEdit',
+                style: TextStyle(
+                  color: onPrimary.withAlpha(199),
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              _buildHeaderTinyStat('P', _presentes, context.uai.success),
+              const SizedBox(width: 6),
+              _buildHeaderTinyStat('A', _ausentes, context.uai.error),
+              const SizedBox(width: 6),
+              _buildHeaderTinyStat('T', _total, onPrimary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 6,
+                    backgroundColor: onPrimary.withAlpha(51),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      _ensureVisible(progressColor, context.uai.primary),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '$_percentual%',
+                style: TextStyle(
+                  color: onPrimary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildChamadaHeader() {
     final progress = _total > 0 ? _presentes / _total : 0.0;
     final progressColor = _presentes == 0
@@ -1240,7 +1397,7 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-            color: context.uai.primary.withOpacity(0.16),
+            color: context.uai.primary.withAlpha(41),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -1255,9 +1412,9 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
                 width: 38,
                 height: 38,
                 decoration: BoxDecoration(
-                  color: onPrimary.withOpacity(0.14),
+                  color: onPrimary.withAlpha(36),
                   borderRadius: BorderRadius.circular(13),
-                  border: Border.all(color: onPrimary.withOpacity(0.16)),
+                  border: Border.all(color: onPrimary.withAlpha(41)),
                 ),
                 child: Icon(Icons.edit_calendar_rounded, color: onPrimary),
               ),
@@ -1288,7 +1445,7 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: context.uai.warning.withOpacity(0.92),
+                            color: context.uai.warning.withAlpha(235),
                             borderRadius: BorderRadius.circular(999),
                           ),
                           child: Text(
@@ -1306,7 +1463,7 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
                     Text(
                       '${DateFormat('dd/MM/yyyy HH:mm').format(_dataEdit)} • $_tipoEdit',
                       style: TextStyle(
-                        color: onPrimary.withOpacity(0.78),
+                        color: onPrimary.withAlpha(199),
                         fontSize: 11,
                         fontWeight: FontWeight.w800,
                       ),
@@ -1342,7 +1499,7 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
                   child: LinearProgressIndicator(
                     value: progress,
                     minHeight: 7,
-                    backgroundColor: onPrimary.withOpacity(0.20),
+                    backgroundColor: onPrimary.withAlpha(51),
                     valueColor: AlwaysStoppedAnimation<Color>(
                       _ensureVisible(progressColor, context.uai.primary),
                     ),
@@ -1417,9 +1574,9 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
       decoration: BoxDecoration(
-        color: onPrimary.withOpacity(0.13),
+        color: onPrimary.withAlpha(33),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: onPrimary.withOpacity(0.16)),
+        border: Border.all(color: onPrimary.withAlpha(41)),
       ),
       child: RichText(
         text: TextSpan(
@@ -1427,7 +1584,7 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
             TextSpan(
               text: '$label ',
               style: TextStyle(
-                color: onPrimary.withOpacity(0.72),
+                color: onPrimary.withAlpha(184),
                 fontSize: 10,
                 fontWeight: FontWeight.w700,
               ),
@@ -1564,7 +1721,7 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
       decoration: BoxDecoration(
         color: context.uai.card,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: accent.withOpacity(0.18)),
+        border: Border.all(color: accent.withAlpha(46)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1657,7 +1814,8 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
                         child: _modoListaCompacta
                             ? isDesktop
                                   ? GridView.builder(
-                                      cacheExtent: 700,
+                                      controller: _listaScrollController,
+                                      scrollCacheExtent: const ScrollCacheExtent.pixels(700),
                                       padding: _gridPaddingForWidth(
                                         larguraTela,
                                       ),
@@ -1669,7 +1827,8 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
                                           _buildAlunoCompactTile(alunos[index]),
                                     )
                                   : ListView.builder(
-                                      cacheExtent: 500,
+                                      controller: _listaScrollController,
+                                      scrollCacheExtent: const ScrollCacheExtent.pixels(500),
                                       padding: const EdgeInsets.only(
                                         top: 6,
                                         bottom: 14,
@@ -1679,7 +1838,8 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
                                           _buildAlunoCompactTile(alunos[index]),
                                     )
                             : GridView.builder(
-                                cacheExtent: 800,
+                                controller: _listaScrollController,
+                                scrollCacheExtent: const ScrollCacheExtent.pixels(800),
                                 padding: _gridPaddingForWidth(larguraTela),
                                 gridDelegate: _gridDelegateForChamada(
                                   larguraTela,
@@ -1877,9 +2037,9 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
         decoration: BoxDecoration(
-          color: accent.withOpacity(0.12),
+          color: accent.withAlpha(31),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: accent.withOpacity(0.24)),
+          border: Border.all(color: accent.withAlpha(61)),
         ),
         child: Row(
           children: [
@@ -1926,7 +2086,7 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
           borderRadius: BorderRadius.circular(22),
           boxShadow: [
             BoxShadow(
-              color: accent.withOpacity(presente ? 0.18 : 0.14),
+              color: accent.withAlpha(presente ? 46 : 36),
               blurRadius: presente ? 13 : 10,
               offset: const Offset(0, 4),
             ),
@@ -1946,7 +2106,7 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
                 border: Border.all(
                   color: presente
                       ? context.uai.success
-                      : context.uai.error.withOpacity(0.70),
+                      : context.uai.error.withAlpha(179),
                   width: presente ? 2.2 : 1.8,
                 ),
               ),
@@ -1970,35 +2130,32 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
                                           color: context.uai.textMuted,
                                         ),
                                       )
-                                    : CachedNetworkImage(
+                                    : UaiStudentPhoto(
+                                        studentId: id,
                                         imageUrl: foto,
+                                        profile: UaiStudentPhotoProfile.grid,
                                         fit: BoxFit.cover,
-                                        memCacheWidth: 420,
-                                        placeholder: (context, url) =>
-                                            Container(
-                                              color: context.uai.cardAlt,
-                                              child: Center(
-                                                child: SizedBox(
-                                                  width: 18,
-                                                  height: 18,
-                                                  child:
-                                                      CircularProgressIndicator(
-                                                        strokeWidth: 2,
-                                                        color:
-                                                            context.uai.primary,
-                                                      ),
-                                                ),
+                                        placeholder: Container(
+                                          color: context.uai.cardAlt,
+                                          child: Center(
+                                            child: SizedBox(
+                                              width: 18,
+                                              height: 18,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: context.uai.primary,
                                               ),
                                             ),
-                                        errorWidget: (context, url, error) =>
-                                            Container(
-                                              color: context.uai.cardAlt,
-                                              child: Icon(
-                                                Icons.person_rounded,
-                                                size: 68,
-                                                color: context.uai.textMuted,
-                                              ),
-                                            ),
+                                          ),
+                                        ),
+                                        fallback: Container(
+                                          color: context.uai.cardAlt,
+                                          child: Icon(
+                                            Icons.person_rounded,
+                                            size: 68,
+                                            color: context.uai.textMuted,
+                                          ),
+                                        ),
                                       ),
                                 Positioned.fill(
                                   child: DecoratedBox(
@@ -2007,7 +2164,7 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
                                         begin: Alignment.bottomCenter,
                                         end: Alignment.center,
                                         colors: [
-                                          Colors.black.withOpacity(0.58),
+                                          Colors.black.withAlpha(148),
                                           Colors.transparent,
                                         ],
                                       ),
@@ -2028,12 +2185,12 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
                                         vertical: 4,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: Colors.black.withOpacity(0.34),
+                                        color: Colors.black.withAlpha(87),
                                         borderRadius: BorderRadius.circular(
                                           999,
                                         ),
                                         border: Border.all(
-                                          color: Colors.white.withOpacity(0.10),
+                                          color: Colors.white.withAlpha(26),
                                         ),
                                       ),
                                       child: FittedBox(
@@ -2049,9 +2206,8 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
                                             height: 1.08,
                                             shadows: [
                                               Shadow(
-                                                color: Colors.black.withOpacity(
-                                                  0.55,
-                                                ),
+                                                color: Colors.black.withAlpha((255.0 * (
+                                                  0.55)).round()),
                                                 blurRadius: 8,
                                                 offset: const Offset(0, 1),
                                               ),
@@ -2071,7 +2227,7 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
                             width: double.infinity,
                             padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
                             decoration: BoxDecoration(
-                              color: accent.withOpacity(0.10),
+                              color: accent.withAlpha(26),
                             ),
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
@@ -2141,11 +2297,11 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
                           decoration: BoxDecoration(
                             color: obs.isNotEmpty
                                 ? context.uai.warning
-                                : Colors.white.withOpacity(0.94),
+                                : Colors.white.withAlpha(240),
                             shape: BoxShape.circle,
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.16),
+                                color: Colors.black.withAlpha(41),
                                 blurRadius: 7,
                               ),
                             ],
@@ -2180,7 +2336,7 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
                           border: Border.all(color: context.uai.card, width: 2),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.18),
+                              color: Colors.black.withAlpha(46),
                               blurRadius: 5,
                             ),
                           ],
@@ -2199,7 +2355,7 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
                           border: Border.all(color: context.uai.card, width: 2),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.18),
+                              color: Colors.black.withAlpha(46),
                               blurRadius: 5,
                             ),
                           ],
@@ -2231,9 +2387,9 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.13),
+        color: accent.withAlpha(33),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: accent.withOpacity(0.22)),
+        border: Border.all(color: accent.withAlpha(56)),
       ),
       child: Icon(
         presencaAlterada ? Icons.edit_rounded : Icons.sticky_note_2_rounded,
@@ -2247,10 +2403,10 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
       decoration: BoxDecoration(
-        color: context.uai.info.withOpacity(0.94),
+        color: context.uai.info.withAlpha(240),
         borderRadius: BorderRadius.circular(999),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.14), blurRadius: 6),
+          BoxShadow(color: Colors.black.withAlpha(36), blurRadius: 6),
         ],
       ),
       child: Text(
@@ -2285,7 +2441,7 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
         border: Border.all(
           color: presencaAlterada
               ? context.uai.info
-              : accent.withOpacity(presente ? 0.52 : 0.22),
+              : accent.withAlpha(presente ? 133 : 56),
           width: presencaAlterada ? 2 : (presente ? 2 : 1),
         ),
       ),
@@ -2293,12 +2449,22 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
         onTap: () => _togglePresenca(id),
         leading: CircleAvatar(
           backgroundColor: context.uai.cardAlt,
-          backgroundImage: foto.isEmpty
-              ? null
-              : CachedNetworkImageProvider(foto),
           child: foto.isEmpty
               ? Icon(Icons.person_rounded, color: context.uai.textMuted)
-              : null,
+              : ClipOval(
+                  child: UaiStudentPhoto(
+                    studentId: id,
+                    imageUrl: foto,
+                    profile: UaiStudentPhotoProfile.compact,
+                    width: 40,
+                    height: 40,
+                    fit: BoxFit.cover,
+                    fallback: Icon(
+                      Icons.person_rounded,
+                      color: context.uai.textMuted,
+                    ),
+                  ),
+                ),
         ),
         title: Text(
           nome,
@@ -2435,7 +2601,7 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
   Widget _buildTelaProgresso() {
     return Positioned.fill(
       child: Container(
-        color: Colors.black.withOpacity(0.36),
+        color: Colors.black.withAlpha(92),
         child: Center(
           child: FadeTransition(
             opacity: _fadeAnimation,
@@ -2453,7 +2619,7 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
                   borderRadius: BorderRadius.circular(25),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.2),
+                      color: Colors.black.withAlpha(51),
                       blurRadius: 15,
                       offset: const Offset(0, 5),
                     ),
@@ -2480,17 +2646,17 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
                         vertical: 10,
                       ),
                       decoration: BoxDecoration(
-                        color: _onPrimary().withOpacity(0.14),
+                        color: _onPrimary().withAlpha(36),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: _onPrimary().withOpacity(0.16),
+                          color: _onPrimary().withAlpha(41),
                         ),
                       ),
                       child: Text(
                         _statusMensagem,
                         style: TextStyle(
                           fontSize: 14,
-                          color: _onPrimary().withOpacity(0.92),
+                          color: _onPrimary().withAlpha(235),
                         ),
                         textAlign: TextAlign.center,
                       ),

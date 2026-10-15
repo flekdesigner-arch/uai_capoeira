@@ -779,7 +779,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
 
     final String tipoAtual =
         graduacaoAtualObj?['tipo_publico'] ??
-        (graduacaoAtual?.contains('INFANTIL') == true ? 'INFANTIL' : 'ADULTO');
+        (graduacaoAtual.contains('INFANTIL') == true ? 'INFANTIL' : 'ADULTO');
 
     debugPrint('📌 Tipo da graduação atual: $tipoAtual');
 
@@ -811,7 +811,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
 
       // 1. Próximas graduações INFANTIS
       final proximasInfantis = graduacoesInfantis
-          .where((g) => (g['nivel_graduacao'] ?? 0) > (nivelAtual ?? 0))
+          .where((g) => (g['nivel_graduacao'] ?? 0) > nivelAtual)
           .toList();
       resultados.addAll(proximasInfantis);
       debugPrint('   • Próximas INFANTIS: ${proximasInfantis.length}');
@@ -827,7 +827,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       }
 
       // Verifica se pode mudar para adulto
-      bool podeMostrarAdultas = _podeMudarParaAdulto(nivelAtual ?? 0, idade);
+      bool podeMostrarAdultas = _podeMudarParaAdulto(nivelAtual, idade);
 
       if (podeMostrarAdultas) {
         debugPrint('   ✅ Pode mostrar ADULTAS');
@@ -841,7 +841,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
     else {
       debugPrint('📌 Aluno ADULTO - só pode ir para níveis maiores');
       final proximasAdultas = graduacoesAdultas
-          .where((g) => (g['nivel_graduacao'] ?? 0) > (nivelAtual ?? 0))
+          .where((g) => (g['nivel_graduacao'] ?? 0) > nivelAtual)
           .toList();
       resultados.addAll(proximasAdultas);
       debugPrint('   • Próximas ADULTAS: ${proximasAdultas.length}');
@@ -1249,7 +1249,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
-                      value: formaSelecionada,
+                      initialValue: formaSelecionada,
                       decoration: const InputDecoration(
                         labelText: 'Forma de pagamento',
                         border: OutlineInputBorder(),
@@ -1270,7 +1270,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
-                      value: statusSelecionado,
+                      initialValue: statusSelecionado,
                       decoration: const InputDecoration(
                         labelText: 'Status',
                         border: OutlineInputBorder(),
@@ -1965,7 +1965,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       'assets/images/whatsapp.svg',
       width: 20,
       height: 20,
-      color: enabled ? color : Colors.grey.shade400,
+      colorFilter: ColorFilter.mode(enabled ? color : Colors.grey.shade400, BlendMode.srcIn),
     );
   }
 
@@ -2003,10 +2003,10 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
         }
       } catch (appError) {
         final webUrl = Uri.parse(
-          'https://web.whatsapp.com/send?phone=$cleanedPhone' +
-              (mensagem != null && mensagem.isNotEmpty
+          'https://web.whatsapp.com/send?phone=$cleanedPhone${
+              mensagem != null && mensagem.isNotEmpty
                   ? '&text=${Uri.encodeComponent(mensagem)}'
-                  : ''),
+                  : ''}',
         );
 
         await launchUrl(webUrl, mode: LaunchMode.externalApplication);
@@ -2065,7 +2065,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withAlpha(13),
             blurRadius: 4,
             offset: const Offset(0, 2),
           ),
@@ -2347,9 +2347,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.14),
+        color: color.withAlpha(36),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: color.withOpacity(0.18)),
+        border: Border.all(color: color.withAlpha(46)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -2426,7 +2426,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
 
     return Material(
       color: Color.alphaBlend(
-        accent.withOpacity(enabled ? 0.08 : 0.03),
+        accent.withAlpha(enabled ? 20 : 8),
         t.card,
       ),
       borderRadius: BorderRadius.circular(t.inputRadius),
@@ -2439,7 +2439,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(t.inputRadius),
             border: Border.all(
-              color: enabled ? accent.withOpacity(0.18) : t.border,
+              color: enabled ? accent.withAlpha(46) : t.border,
             ),
           ),
           child: Row(
@@ -2523,9 +2523,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       constraints: const BoxConstraints(minHeight: 66),
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 9),
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.08),
+        color: accent.withAlpha(20),
         borderRadius: BorderRadius.circular(t.inputRadius),
-        border: Border.all(color: accent.withOpacity(0.16)),
+        border: Border.all(color: accent.withAlpha(41)),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -2811,9 +2811,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
           width: double.infinity,
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Color.alphaBlend(accent.withOpacity(0.07), t.card),
+            color: Color.alphaBlend(accent.withAlpha(18), t.card),
             borderRadius: BorderRadius.circular(t.cardRadius),
-            border: Border.all(color: accent.withOpacity(0.20)),
+            border: Border.all(color: accent.withAlpha(51)),
             boxShadow: t.softShadow,
           ),
           child: Row(
@@ -2844,7 +2844,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
                     Text(
                       temCertificado
                           ? 'Origem: ${_tipoLinkCertificado(link)} • toque para abrir'
-                          : 'Gere pelo gerador de certificados ou vincule um link antes de finalizar.',
+                          : 'Gere ou envie o PDF pronto no gerador de certificados antes de finalizar.',
                       style: TextStyle(
                         color: t.textSecondary,
                         fontSize: 12,
@@ -2929,9 +2929,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: cor.withOpacity(0.07),
+        color: cor.withAlpha(18),
         borderRadius: BorderRadius.circular(t.inputRadius),
-        border: Border.all(color: cor.withOpacity(0.15)),
+        border: Border.all(color: cor.withAlpha(38)),
       ),
       child: Row(
         children: [
@@ -3031,9 +3031,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
           margin: const EdgeInsets.only(bottom: 8),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            color: t.warning.withOpacity(0.07),
+            color: t.warning.withAlpha(18),
             borderRadius: BorderRadius.circular(t.inputRadius),
-            border: Border.all(color: t.warning.withOpacity(0.16)),
+            border: Border.all(color: t.warning.withAlpha(41)),
           ),
           child: Row(
             children: [
@@ -3085,7 +3085,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       decoration: BoxDecoration(
         color: t.card,
         borderRadius: BorderRadius.circular(t.cardRadius),
-        border: Border.all(color: accent.withOpacity(0.16)),
+        border: Border.all(color: accent.withAlpha(41)),
         boxShadow: t.softShadow,
       ),
       child: Column(
@@ -3119,7 +3119,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
                   ],
                 ),
               ),
-              if (trailing != null) trailing,
+              ?trailing,
             ],
           ),
           SizedBox(height: slim ? 10 : 14),
@@ -3137,9 +3137,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.07),
+        color: accent.withAlpha(18),
         borderRadius: BorderRadius.circular(t.inputRadius),
-        border: Border.all(color: accent.withOpacity(0.14)),
+        border: Border.all(color: accent.withAlpha(36)),
       ),
       child: Row(
         children: [
@@ -3185,9 +3185,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.12),
+        color: accent.withAlpha(31),
         borderRadius: BorderRadius.circular(t.buttonRadius),
-        border: Border.all(color: accent.withOpacity(0.20)),
+        border: Border.all(color: accent.withAlpha(51)),
       ),
       child: Icon(icon, color: accent, size: size * 0.52),
     );
@@ -3216,9 +3216,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.11),
+        color: accent.withAlpha(28),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: accent.withOpacity(0.14)),
+        border: Border.all(color: accent.withAlpha(36)),
       ),
       child: Text(
         label,
@@ -3284,9 +3284,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
     return Container(
       padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.08),
+        color: accent.withAlpha(20),
         borderRadius: BorderRadius.circular(t.inputRadius),
-        border: Border.all(color: accent.withOpacity(0.18)),
+        border: Border.all(color: accent.withAlpha(46)),
       ),
       child: Row(
         children: [
@@ -3332,9 +3332,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       constraints: const BoxConstraints(minHeight: 92),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.07),
+        color: color.withAlpha(18),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: color.withOpacity(0.14)),
+        border: Border.all(color: color.withAlpha(36)),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -3379,10 +3379,10 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: color.withOpacity(0.10)),
+        border: Border.all(color: color.withAlpha(26)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.035),
+            color: Colors.black.withAlpha(9),
             blurRadius: 7,
             offset: const Offset(0, 3),
           ),
@@ -3397,7 +3397,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: color.withOpacity(0.08),
+                  color: color.withAlpha(20),
                   borderRadius: BorderRadius.circular(15),
                 ),
                 child: Icon(icon, color: color),
@@ -3472,9 +3472,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: Colors.orange.withOpacity(0.07),
+            color: Colors.orange.withAlpha(18),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.orange.withOpacity(0.16)),
+            border: Border.all(color: Colors.orange.withAlpha(41)),
           ),
           child: Row(
             children: [
@@ -3507,9 +3507,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
           margin: const EdgeInsets.only(bottom: 8),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            color: Colors.red.withOpacity(0.045),
+            color: Colors.red.withAlpha(11),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.red.withOpacity(0.12)),
+            border: Border.all(color: Colors.red.withAlpha(31)),
           ),
           child: Row(
             children: [
@@ -3517,7 +3517,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
                 width: 34,
                 height: 34,
                 decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.08),
+                  color: Colors.red.withAlpha(20),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
@@ -3563,9 +3563,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: cor.withOpacity(0.055),
+        color: cor.withAlpha(14),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: cor.withOpacity(0.13)),
+        border: Border.all(color: cor.withAlpha(33)),
       ),
       child: Row(
         children: [
@@ -3573,7 +3573,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: cor.withOpacity(0.10),
+              color: cor.withAlpha(26),
               borderRadius: BorderRadius.circular(15),
             ),
             child: Icon(
@@ -3625,7 +3625,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                 decoration: BoxDecoration(
-                  color: cor.withOpacity(0.10),
+                  color: cor.withAlpha(26),
                   borderRadius: BorderRadius.circular(99),
                 ),
                 child: Text(

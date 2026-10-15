@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:xml/xml.dart' as xml;
 
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/core/utils/responsive_utils.dart';
 import 'package:uai_capoeira/modules/rastreio/services/rastreio_site.dart';
+import 'package:uai_capoeira/modules/site/widgets/graduacao_alunos_logados_dialog.dart';
 
 class GraduacoesScreen extends StatefulWidget {
   const GraduacoesScreen({super.key});
@@ -23,7 +25,7 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
   int _maiorPercentualRolagem = 0;
 
   // Cache de 3 dias
-  static const int CACHE_DURATION_DAYS = 3;
+  static const int cacheDurationDays = 3;
 
   List<Map<String, dynamic>> _graduacoes = [];
   Map<String, int> _contagemAlunosPorGraduacao = {};
@@ -202,9 +204,12 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
               .difference(lastUpdate.toDate())
               .inDays;
 
-          if (diasDesdeAtualizacao < CACHE_DURATION_DAYS) {
+          final usuarioAutenticado = FirebaseAuth.instance.currentUser != null;
+          if (diasDesdeAtualizacao < cacheDurationDays || !usuarioAutenticado) {
             debugPrint(
-              '✅ Usando cache de estatísticas ($diasDesdeAtualizacao dias atrás)',
+              usuarioAutenticado
+                  ? '✅ Usando cache de estatísticas ($diasDesdeAtualizacao dias atrás)'
+                  : '✅ Site público usando cache seguro de estatísticas',
             );
 
             setState(() {
@@ -222,10 +227,18 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
         }
       }
 
-      await _buscarDadosReaisESalvar();
+      if (FirebaseAuth.instance.currentUser != null) {
+        await _buscarDadosReaisESalvar();
+      } else {
+        debugPrint(
+          'ℹ️ Site público sem cache disponível: consulta direta de alunos bloqueada por segurança.',
+        );
+      }
     } catch (e) {
       debugPrint('❌ Erro ao carregar estatísticas: $e');
-      await _buscarDadosReaisESalvar();
+      if (FirebaseAuth.instance.currentUser != null) {
+        await _buscarDadosReaisESalvar();
+      }
     }
   }
 
@@ -263,7 +276,7 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
 
       final totalGraduados = contagemTemp.values.fold<int>(
         0,
-        (sum, count) => sum + count,
+        (total, itemCount) => total + itemCount,
       );
 
       final statsData = {
@@ -274,7 +287,7 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
         'contagem_por_graduacao': contagemTemp,
         'last_update': FieldValue.serverTimestamp(),
         'cache_expira_em': Timestamp.fromDate(
-          DateTime.now().add(const Duration(days: CACHE_DURATION_DAYS)),
+          DateTime.now().add(const Duration(days: cacheDurationDays)),
         ),
       };
 
@@ -355,7 +368,7 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
           if (element.name.local.isNotEmpty) {
             final style = element.getAttribute('style') ?? '';
             final hex =
-                '#${color.value.toRadixString(16).substring(2).toUpperCase()}';
+                '#${color.toARGB32().toRadixString(16).substring(2).toUpperCase()}';
 
             String newStyle;
             if (style.contains('fill:')) {
@@ -548,7 +561,7 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
     return Tooltip(
       message: 'Atualizar dados',
       child: Material(
-        color: onPrimary.withOpacity(0.14),
+        color: onPrimary.withAlpha(36),
         borderRadius: BorderRadius.circular(t.buttonRadius),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
@@ -558,7 +571,7 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
             height: 46,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(t.buttonRadius),
-              border: Border.all(color: onPrimary.withOpacity(0.16)),
+              border: Border.all(color: onPrimary.withAlpha(41)),
             ),
             child: Icon(Icons.refresh_rounded, color: onPrimary),
           ),
@@ -575,9 +588,9 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
       width: 72,
       height: 72,
       decoration: BoxDecoration(
-        color: onPrimary.withOpacity(0.14),
+        color: onPrimary.withAlpha(36),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: onPrimary.withOpacity(0.16)),
+        border: Border.all(color: onPrimary.withAlpha(41)),
       ),
       child: Icon(Icons.workspace_premium_rounded, color: onPrimary, size: 38),
     );
@@ -607,7 +620,7 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
           'A evolução na capoeira contada pelas cordas, suas cores e seus significados.',
           textAlign: centered ? TextAlign.center : TextAlign.left,
           style: TextStyle(
-            color: onPrimary.withOpacity(0.82),
+            color: onPrimary.withAlpha(209),
             fontSize: isMobile ? 13.5 : 15,
             height: 1.35,
             fontWeight: FontWeight.w500,
@@ -622,7 +635,7 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
             if (_usandoCache) _buildCacheInfoChip(),
             if (isMobile)
               Material(
-                color: onPrimary.withOpacity(0.14),
+                color: onPrimary.withAlpha(36),
                 borderRadius: BorderRadius.circular(99),
                 clipBehavior: Clip.antiAlias,
                 child: InkWell(
@@ -635,7 +648,7 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
                     ),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(99),
-                      border: Border.all(color: onPrimary.withOpacity(0.16)),
+                      border: Border.all(color: onPrimary.withAlpha(41)),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -668,9 +681,9 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: onPrimary.withOpacity(0.14),
+        color: onPrimary.withAlpha(36),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: onPrimary.withOpacity(0.16)),
+        border: Border.all(color: onPrimary.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -752,7 +765,7 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
     return Container(
       constraints: BoxConstraints(minHeight: compact ? 98 : 112),
       padding: EdgeInsets.all(compact ? 11 : 14),
-      decoration: _cardDecoration(borderColor: accent.withOpacity(0.13)),
+      decoration: _cardDecoration(borderColor: accent.withAlpha(33)),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -805,9 +818,9 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: Color.alphaBlend(primary.withOpacity(0.09), t.cardAlt),
+              color: Color.alphaBlend(primary.withAlpha(23), t.cardAlt),
               borderRadius: BorderRadius.circular(15),
-              border: Border.all(color: primary.withOpacity(0.14)),
+              border: Border.all(color: primary.withAlpha(36)),
             ),
             child: Icon(Icons.timeline_rounded, color: primary, size: 23),
           ),
@@ -863,6 +876,7 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
         return _buildTimelineItem(
           index: index,
           total: _graduacoes.length,
+          graduacaoId: id,
           nome: nome,
           titulo: titulo,
           corda: corda,
@@ -881,6 +895,7 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
   Widget _buildTimelineItem({
     required int index,
     required int total,
+    required String graduacaoId,
     required String nome,
     required String titulo,
     required String corda,
@@ -897,22 +912,39 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
     final isLast = index == total - 1;
     final lineColor = _ensureVisible(t.primary, t.background);
 
-    return GestureDetector(
-      onTap: () {
-        _rastreioService.registrarItemVisualizado(
-          tela: 'graduacoes',
-          itemTipo: 'graduacao',
-          itemNome: nome,
-          itemId: corda,
-          metadata: {
-            'index': index,
-            'titulo': titulo,
-            'tipo_publico': tipoPublico,
-            'quantidade_alunos': quantidadeAlunos,
-          },
-        );
-      },
-      child: IntrinsicHeight(
+    final usuarioLogado = FirebaseAuth.instance.currentUser != null;
+
+    return MouseRegion(
+      cursor: usuarioLogado
+          ? SystemMouseCursors.click
+          : SystemMouseCursors.basic,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () async {
+          _rastreioService.registrarItemVisualizado(
+            tela: 'graduacoes',
+            itemTipo: 'graduacao',
+            itemNome: nome,
+            itemId: graduacaoId,
+            metadata: {
+              'index': index,
+              'titulo': titulo,
+              'tipo_publico': tipoPublico,
+              'quantidade_alunos': quantidadeAlunos,
+              'usuario_logado': usuarioLogado,
+            },
+          );
+
+          if (!usuarioLogado || graduacaoId.isEmpty || !mounted) return;
+
+          await showGraduacaoAlunosLogadosDialog(
+            context,
+            graduacaoId: graduacaoId,
+            graduacaoNome: nome,
+            corDestaque: color1,
+          );
+        },
+        child: IntrinsicHeight(
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -925,7 +957,7 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
                       width: 3,
                       color: isFirst
                           ? Colors.transparent
-                          : lineColor.withOpacity(0.18),
+                          : lineColor.withAlpha(46),
                     ),
                   ),
                   Container(
@@ -941,7 +973,7 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
                       border: Border.all(color: t.card, width: 3),
                       boxShadow: [
                         BoxShadow(
-                          color: color1.withOpacity(0.22),
+                          color: color1.withAlpha(56),
                           blurRadius: 7,
                           offset: const Offset(0, 3),
                         ),
@@ -963,7 +995,7 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
                       width: 3,
                       color: isLast
                           ? Colors.transparent
-                          : lineColor.withOpacity(0.18),
+                          : lineColor.withAlpha(46),
                     ),
                   ),
                 ],
@@ -981,7 +1013,7 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
                     borderColor: _ensureVisible(
                       color1,
                       t.card,
-                    ).withOpacity(0.16),
+                    ).withAlpha(41),
                   ),
                   child: isMobile
                       ? Column(
@@ -1036,7 +1068,8 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
           ],
         ),
       ),
-    );
+    ),
+  );
   }
 
   Widget _buildTimelineCordaPreview({
@@ -1171,6 +1204,12 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
                   '$quantidadeAlunos ${quantidadeAlunos == 1 ? 'aluno' : 'alunos'}',
               color: t.primary,
             ),
+            if (FirebaseAuth.instance.currentUser != null)
+              _buildInfoChip(
+                icon: Icons.touch_app_rounded,
+                label: 'Ver alunos',
+                color: t.success,
+              ),
           ],
         ),
       ],
@@ -1188,9 +1227,9 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), t.cardAlt),
+        color: Color.alphaBlend(accent.withAlpha(20), t.cardAlt),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: accent.withOpacity(0.13)),
+        border: Border.all(color: accent.withAlpha(33)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1261,7 +1300,7 @@ class _GraduacoesScreenState extends State<GraduacoesScreen> {
         child: Container(
           constraints: const BoxConstraints(maxWidth: 460),
           padding: const EdgeInsets.all(22),
-          decoration: _cardDecoration(borderColor: danger.withOpacity(0.18)),
+          decoration: _cardDecoration(borderColor: danger.withAlpha(46)),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [

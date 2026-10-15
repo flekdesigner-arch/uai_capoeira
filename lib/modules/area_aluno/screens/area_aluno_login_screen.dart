@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'package:uai_capoeira/core/services/uai_callable_client.dart';
 import 'package:uai_capoeira/modules/area_aluno/screens/area_aluno_dashboard_screen.dart'
     as area_aluno_dashboard;
 import 'package:uai_capoeira/modules/area_aluno/services/area_aluno_session_service.dart';
@@ -248,19 +249,16 @@ class _AreaAlunoLoginScreenState extends State<AreaAlunoLoginScreen> {
     setState(() => _carregando = true);
 
     try {
-      final callable = FirebaseFunctions.instance.httpsCallable(
+      final data = await UaiCallableClient.instance.call(
         'validarAcessoAreaAluno',
+        {
+          'dataNascimento': dataNascimento,
+          'iniciais': iniciais,
+          'telefoneFinal': telefoneFinal,
+          'dispositivo': dispositivoTentativa,
+          'origem': 'area_aluno_login',
+        },
       );
-
-      final result = await callable.call({
-        'dataNascimento': dataNascimento,
-        'iniciais': iniciais,
-        'telefoneFinal': telefoneFinal,
-        'dispositivo': dispositivoTentativa,
-        'origem': 'area_aluno_login',
-      });
-
-      final data = Map<String, dynamic>.from(result.data as Map);
       final success = data['success'] == true;
 
       if (!success) {
@@ -590,9 +588,9 @@ class _AreaAlunoLoginScreenState extends State<AreaAlunoLoginScreen> {
           final icon = Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: onPrimary.withOpacity(0.14),
+              color: onPrimary.withAlpha(36),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: onPrimary.withOpacity(0.16)),
+              border: Border.all(color: onPrimary.withAlpha(41)),
             ),
             child: Icon(Icons.school_rounded, color: onPrimary, size: 36),
           );
@@ -617,7 +615,7 @@ class _AreaAlunoLoginScreenState extends State<AreaAlunoLoginScreen> {
                 'Consulte seus dados, frequência, eventos e certificados.',
                 textAlign: narrow ? TextAlign.center : TextAlign.left,
                 style: TextStyle(
-                  color: onPrimary.withOpacity(0.82),
+                  color: onPrimary.withAlpha(209),
                   fontSize: 13,
                   height: 1.32,
                   fontWeight: FontWeight.w600,
@@ -649,7 +647,7 @@ class _AreaAlunoLoginScreenState extends State<AreaAlunoLoginScreen> {
     return Container(
       width: double.infinity,
       padding: EdgeInsets.all(isMobile ? 18 : 24),
-      decoration: _cardDecoration(borderColor: primary.withOpacity(0.12)),
+      decoration: _cardDecoration(borderColor: primary.withAlpha(31)),
       child: Form(
         key: _formKey,
         child: Column(
@@ -657,7 +655,7 @@ class _AreaAlunoLoginScreenState extends State<AreaAlunoLoginScreen> {
             Icon(Icons.verified_user_rounded, color: primary, size: 48),
             const SizedBox(height: 10),
             Text(
-              'Identificação do aluno',
+              'Acesse sua Área do Aluno',
               style: TextStyle(
                 color: t.textPrimary,
                 fontWeight: FontWeight.w900,
@@ -666,7 +664,55 @@ class _AreaAlunoLoginScreenState extends State<AreaAlunoLoginScreen> {
             ),
             const SizedBox(height: 5),
             Text(
-              'Digite seus dados exatamente como estão no cadastro.',
+              'Primeiro identifique o aluno com os dados do cadastro. Depois, dentro da área correta, você poderá vincular ou confirmar uma conta Google ou e-mail para liberar os recursos protegidos.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: t.textSecondary,
+                fontSize: 13,
+                height: 1.35,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 18),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(13),
+              decoration: BoxDecoration(
+                color: Color.alphaBlend(primary.withAlpha(18), t.card),
+                borderRadius: BorderRadius.circular(15),
+                border: Border.all(color: primary.withAlpha(31)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.shield_outlined, color: primary, size: 21),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Se você já vinculou Google ou e-mail durante a inscrição, o vínculo continua válido. Após identificar o aluno, basta entrar com essa mesma conta.',
+                      style: TextStyle(
+                        color: t.textSecondary,
+                        fontSize: 11.5,
+                        height: 1.35,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Identificação tradicional',
+              style: TextStyle(
+                color: t.textPrimary,
+                fontWeight: FontWeight.w900,
+                fontSize: 19,
+              ),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              'Digite os dados exatamente como estão no cadastro.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: t.textSecondary,
@@ -723,7 +769,7 @@ class _AreaAlunoLoginScreenState extends State<AreaAlunoLoginScreen> {
 
     return TextFormField(
       controller: _dataNascimentoController,
-      keyboardType: TextInputType.datetime,
+      keyboardType: TextInputType.number,
       style: TextStyle(color: t.textPrimary),
       inputFormatters: [
         FilteringTextInputFormatter.allow(RegExp(r'[0-9/]')),
@@ -913,9 +959,9 @@ class _AreaAlunoLoginScreenState extends State<AreaAlunoLoginScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), t.card),
+        color: Color.alphaBlend(accent.withAlpha(20), t.card),
         borderRadius: BorderRadius.circular(t.cardRadius),
-        border: Border.all(color: accent.withOpacity(0.14)),
+        border: Border.all(color: accent.withAlpha(36)),
         boxShadow: t.softShadow,
       ),
       child: Row(

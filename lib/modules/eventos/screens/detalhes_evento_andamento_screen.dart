@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/core/responsive/uai_responsive.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uai_capoeira/modules/eventos/models/evento_model.dart';
 import 'package:uai_capoeira/modules/eventos/services/participacao_service.dart';
@@ -39,22 +38,10 @@ class _DetalhesEventoAndamentoScreenState
         : const Color(0xFFFFFFFF);
   }
 
-  Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance())
-        .abs();
-    if (diff >= 0.26) return color;
 
-    final bgIsDark = background.computeLuminance() < 0.45;
-    final hsl = HSLColor.fromColor(color);
-
-    return hsl
-        .withLightness(bgIsDark ? 0.72 : 0.32)
-        .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
-        .toColor();
-  }
 
   Color _onCard() => _readableOn(context.uai.card);
-  Color _onCardMuted() => _onCard().withOpacity(0.68);
+  Color _onCardMuted() => _onCard().withAlpha(173);
   Color _appBarBg() =>
       Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
   Color _appBarFg() =>
@@ -71,7 +58,7 @@ class _DetalhesEventoAndamentoScreenState
   int _totalCamisas = 0;
 
   // 🔥 LISTA COMBINADA DE CAMISAS (participações + avulsas)
-  List<Map<String, dynamic>> _todasCamisas = [];
+  final List<Map<String, dynamic>> _todasCamisas = [];
 
   // Permissões dinâmicas do evento
   bool _carregandoPermissoes = true;
@@ -347,7 +334,7 @@ class _DetalhesEventoAndamentoScreenState
         );
         _totalCamisas = contagemCombinada.values.fold(
           0,
-          (sum, val) => sum + val,
+          (total, val) => total + val,
         );
       });
 
@@ -421,10 +408,10 @@ class _DetalhesEventoAndamentoScreenState
                                 width: 42,
                                 height: 42,
                                 decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.18),
+                                  color: Colors.white.withAlpha(46),
                                   borderRadius: BorderRadius.circular(15),
                                   border: Border.all(
-                                    color: Colors.white.withOpacity(0.18),
+                                    color: Colors.white.withAlpha(46),
                                   ),
                                 ),
                                 child: Icon(
@@ -484,13 +471,13 @@ class _DetalhesEventoAndamentoScreenState
                                   width: double.infinity,
                                   padding: EdgeInsets.all(14),
                                   decoration: BoxDecoration(
-                                    color: context.uai.warning.withOpacity(
-                                      0.08,
+                                    color: context.uai.warning.withAlpha(
+                                      20,
                                     ),
                                     borderRadius: BorderRadius.circular(18),
                                     border: Border.all(
-                                      color: context.uai.warning.withOpacity(
-                                        0.12,
+                                      color: context.uai.warning.withAlpha(
+                                        31,
                                       ),
                                     ),
                                   ),
@@ -580,13 +567,13 @@ class _DetalhesEventoAndamentoScreenState
                                                   BorderRadius.circular(16),
                                               border: Border.all(
                                                 color: context.uai.warning
-                                                    .withOpacity(0.12),
+                                                    .withAlpha(31),
                                               ),
                                               boxShadow: [
                                                 BoxShadow(
                                                   color: context.uai.warning
-                                                      .withOpacity(0.12)
-                                                      .withOpacity(0.35),
+                                                      .withAlpha(31)
+                                                      .withAlpha(89),
                                                   blurRadius: 5,
                                                   offset: const Offset(0, 2),
                                                 ),
@@ -620,14 +607,14 @@ class _DetalhesEventoAndamentoScreenState
                                                   ),
                                                   decoration: BoxDecoration(
                                                     color: context.uai.warning
-                                                        .withOpacity(0.08),
+                                                        .withAlpha(20),
                                                     borderRadius:
                                                         BorderRadius.circular(
                                                           99,
                                                         ),
                                                     border: Border.all(
                                                       color: context.uai.warning
-                                                          .withOpacity(0.12),
+                                                          .withAlpha(31),
                                                     ),
                                                   ),
                                                   child: FittedBox(
@@ -752,10 +739,10 @@ class _DetalhesEventoAndamentoScreenState
           decoration: BoxDecoration(
             color: context.uai.card,
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: context.uai.warning.withOpacity(0.12)),
+            border: Border.all(color: context.uai.warning.withAlpha(31)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.035),
+                color: Colors.black.withAlpha(9),
                 blurRadius: 10,
                 offset: Offset(0, 4),
               ),
@@ -938,7 +925,7 @@ class _DetalhesEventoAndamentoScreenState
         borderRadius: BorderRadius.circular(28),
         boxShadow: [
           BoxShadow(
-            color: context.uai.primary.withOpacity(0.14),
+            color: context.uai.primary.withAlpha(36),
             blurRadius: 12,
             offset: const Offset(0, 5),
           ),
@@ -959,7 +946,7 @@ class _DetalhesEventoAndamentoScreenState
                   ? Image.network(
                       evento.linkBanner!,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _buildFallbackBanner(),
+                      errorBuilder: (_, _, _) => _buildFallbackBanner(),
                     )
                   : _buildFallbackBanner(),
             ),
@@ -968,9 +955,9 @@ class _DetalhesEventoAndamentoScreenState
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      Colors.black.withOpacity(0.10),
-                      Colors.black.withOpacity(0.50),
-                      Colors.black.withOpacity(0.86),
+                      Colors.black.withAlpha(26),
+                      Colors.black.withAlpha(128),
+                      Colors.black.withAlpha(219),
                     ],
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
@@ -1014,7 +1001,7 @@ class _DetalhesEventoAndamentoScreenState
                       fontWeight: FontWeight.w900,
                       shadows: [
                         Shadow(
-                          color: Colors.black.withOpacity(0.55),
+                          color: Colors.black.withAlpha(140),
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),
@@ -1072,9 +1059,9 @@ class _DetalhesEventoAndamentoScreenState
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.44),
+        color: Colors.black.withAlpha(112),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: Colors.white.withOpacity(0.14)),
+        border: Border.all(color: Colors.white.withAlpha(36)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1088,7 +1075,7 @@ class _DetalhesEventoAndamentoScreenState
               fontSize: 11.5,
               fontWeight: FontWeight.w900,
               shadows: [
-                Shadow(color: Colors.black.withOpacity(0.45), blurRadius: 4),
+                Shadow(color: Colors.black.withAlpha(115), blurRadius: 4),
               ],
             ),
           ),
@@ -1101,9 +1088,9 @@ class _DetalhesEventoAndamentoScreenState
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.14),
+        color: Colors.white.withAlpha(36),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: Colors.white.withOpacity(0.16)),
+        border: Border.all(color: Colors.white.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1117,7 +1104,7 @@ class _DetalhesEventoAndamentoScreenState
               fontSize: 11.5,
               fontWeight: FontWeight.w800,
               shadows: [
-                Shadow(color: Colors.black.withOpacity(0.45), blurRadius: 4),
+                Shadow(color: Colors.black.withAlpha(115), blurRadius: 4),
               ],
             ),
           ),
@@ -1149,10 +1136,6 @@ class _DetalhesEventoAndamentoScreenState
           const SizedBox(height: 14),
           LayoutBuilder(
             builder: (context, constraints) {
-              final responsive = UaiResponsive.fromConstraints(
-                context,
-                constraints,
-              );
 
               // Correção 2.0.68:
               // No APK real, a área útil dentro do card fica menor por causa
@@ -1380,9 +1363,9 @@ class _DetalhesEventoAndamentoScreenState
       width: double.infinity,
       padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: context.uai.warning.withOpacity(0.08),
+        color: context.uai.warning.withAlpha(20),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: context.uai.warning.withOpacity(0.12)),
+        border: Border.all(color: context.uai.warning.withAlpha(31)),
       ),
       child: Row(
         children: [
@@ -1411,7 +1394,7 @@ class _DetalhesEventoAndamentoScreenState
     required VoidCallback? onTap,
   }) {
     return Material(
-      color: color.withOpacity(0.07),
+      color: color.withAlpha(18),
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
         onTap: onTap,
@@ -1423,7 +1406,7 @@ class _DetalhesEventoAndamentoScreenState
           padding: EdgeInsets.all(context.uaiResponsive.isPhone ? 11 : 13),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: color.withOpacity(0.14)),
+            border: Border.all(color: color.withAlpha(36)),
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -1490,8 +1473,8 @@ class _DetalhesEventoAndamentoScreenState
             padding: const EdgeInsets.all(13),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: color.withOpacity(0.12)),
-              color: color.withOpacity(0.035),
+              border: Border.all(color: color.withAlpha(31)),
+              color: color.withAlpha(9),
             ),
             child: Row(
               children: [
@@ -1499,7 +1482,7 @@ class _DetalhesEventoAndamentoScreenState
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.10),
+                    color: color.withAlpha(26),
                     borderRadius: BorderRadius.circular(17),
                   ),
                   child: Icon(icon, color: color, size: 25),
@@ -1555,7 +1538,7 @@ class _DetalhesEventoAndamentoScreenState
           width: 42,
           height: 42,
           decoration: BoxDecoration(
-            color: color.withOpacity(0.08),
+            color: color.withAlpha(20),
             borderRadius: BorderRadius.circular(15),
           ),
           child: Icon(icon, color: color),
@@ -1589,7 +1572,7 @@ class _DetalhesEventoAndamentoScreenState
       border: Border.all(color: context.uai.cardAlt),
       boxShadow: [
         BoxShadow(
-          color: Colors.black.withOpacity(0.035),
+          color: Colors.black.withAlpha(9),
           blurRadius: 7,
           offset: const Offset(0, 3),
         ),

@@ -1,5 +1,4 @@
 import 'dart:io' show File;
-import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
@@ -20,8 +19,19 @@ import 'package:uai_capoeira/modules/inscricoes/models/inscricao_model.dart';
 import 'package:uai_capoeira/modules/inscricoes/public/signature_screen.dart';
 import 'package:uai_capoeira/modules/site/screens/landing_page.dart';
 
+/// Optional picker boundaries for controlled widget tests.
+class CampeonatoPickerOperations {
+  const CampeonatoPickerOperations({required this.pickImage, required this.pickFile});
+
+  final Future<XFile?> Function() pickImage;
+  final Future<PlatformFile?> Function() pickFile;
+}
+
 class InscricaoCampeonatoScreen extends StatefulWidget {
-  const InscricaoCampeonatoScreen({super.key});
+  const InscricaoCampeonatoScreen({super.key, this.service, this.pickers});
+
+  final CampeonatoService? service;
+  final CampeonatoPickerOperations? pickers;
 
   @override
   State<InscricaoCampeonatoScreen> createState() =>
@@ -30,8 +40,8 @@ class InscricaoCampeonatoScreen extends StatefulWidget {
 
 class _InscricaoCampeonatoScreenState extends State<InscricaoCampeonatoScreen>
     with WidgetsBindingObserver, TickerProviderStateMixin {
-  final CampeonatoService _service = CampeonatoService();
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  late final CampeonatoService _service = widget.service ?? CampeonatoService();
+  late final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   late final PageController _pageController;
   late final AnimationController _animController;
@@ -583,7 +593,7 @@ class _InscricaoCampeonatoScreenState extends State<InscricaoCampeonatoScreen>
                     Container(
                       padding: const EdgeInsets.all(13),
                       decoration: BoxDecoration(
-                        color: danger.withOpacity(0.12),
+                        color: danger.withAlpha(31),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
@@ -945,17 +955,18 @@ Data e hora: [DATA_HORA]
 
   Future<void> _selecionarImagemCompetidor() async {
     try {
-      final picker = ImagePicker();
+      final image = widget.pickers == null
+          ? await ImagePicker().pickImage(
+              source: ImageSource.gallery,
+              imageQuality: 85,
+              maxWidth: 1400,
+            )
+          : await widget.pickers!.pickImage();
 
-      final image = await picker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 85,
-        maxWidth: 1400,
-      );
-
-      if (image == null) return;
+      if (image == null || !mounted) return;
 
       final bytes = await image.readAsBytes();
+      if (!mounted) return;
 
       setState(() {
         _fotoBytes = bytes;
@@ -965,39 +976,47 @@ Data e hora: [DATA_HORA]
 
       _validarEtapa1();
     } catch (e) {
+      if (!mounted) return;
       _showSnack('Erro ao selecionar foto: $e', color: context.uai.error);
     }
   }
 
   Future<void> _selecionarComprovante() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: const ['jpg', 'jpeg', 'png', 'pdf'],
-        withData: true,
-      );
+      PlatformFile? file;
+      if (widget.pickers == null) {
+        final result = await FilePicker.platform.pickFiles(
+          type: FileType.custom,
+          allowedExtensions: const ['jpg', 'jpeg', 'png', 'pdf'],
+          withData: true,
+        );
+        if (result == null || result.files.isEmpty) return;
+        file = result.files.first;
+      } else {
+        file = await widget.pickers!.pickFile();
+      }
+      if (file == null || !mounted) return;
+      final selectedFile = file;
+      var bytes = selectedFile.bytes;
 
-      if (result == null || result.files.isEmpty) return;
-
-      final file = result.files.first;
-      var bytes = file.bytes;
-
-      if (bytes == null && file.path != null) {
-        bytes = await File(file.path!).readAsBytes();
+      if (bytes == null && selectedFile.path != null) {
+        bytes = await File(selectedFile.path!).readAsBytes();
       }
 
       if (bytes == null) {
         throw Exception('Não foi possível ler o arquivo selecionado.');
       }
+      if (!mounted) return;
 
       setState(() {
         _comprovanteBytes = bytes;
-        _comprovanteNome = file.name;
+        _comprovanteNome = selectedFile.name;
         _comprovanteUrl = null;
       });
 
       _validarEtapaFinal();
     } catch (e) {
+      if (!mounted) return;
       _showSnack(
         'Erro ao selecionar comprovante: $e',
         color: context.uai.error,
@@ -1257,7 +1276,7 @@ Data e hora: [DATA_HORA]
                           'Parabéns, ${nomeAluno.isEmpty ? nomeResponsavel : nomeAluno}!',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: onPrimary.withOpacity(0.82),
+                            color: onPrimary.withAlpha(209),
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -1656,9 +1675,9 @@ Data e hora: [DATA_HORA]
             width: 68,
             height: 68,
             decoration: BoxDecoration(
-              color: onPrimary.withOpacity(0.14),
+              color: onPrimary.withAlpha(36),
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: onPrimary.withOpacity(0.16)),
+              border: Border.all(color: onPrimary.withAlpha(41)),
             ),
             child: Icon(Icons.emoji_events_rounded, color: onPrimary, size: 38),
           );
@@ -1683,7 +1702,7 @@ Data e hora: [DATA_HORA]
                 'Preencha sua inscrição com atenção e confirme os dados antes de enviar.',
                 textAlign: narrow ? TextAlign.center : TextAlign.left,
                 style: TextStyle(
-                  color: onPrimary.withOpacity(0.82),
+                  color: onPrimary.withAlpha(209),
                   height: 1.35,
                   fontWeight: FontWeight.w600,
                 ),
@@ -1728,9 +1747,9 @@ Data e hora: [DATA_HORA]
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: onPrimary.withOpacity(0.14),
+        color: onPrimary.withAlpha(36),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: onPrimary.withOpacity(0.16)),
+        border: Border.all(color: onPrimary.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1799,7 +1818,7 @@ Data e hora: [DATA_HORA]
 
     return Container(
       padding: const EdgeInsets.all(13),
-      decoration: _cardDecoration(borderColor: accent.withOpacity(0.13)),
+      decoration: _cardDecoration(borderColor: accent.withAlpha(33)),
       child: Row(
         children: [
           Icon(item.icon, color: accent),
@@ -2249,7 +2268,7 @@ Data e hora: [DATA_HORA]
     }
 
     return DropdownButtonFormField<String>(
-      value: _grupoSelecionado,
+      initialValue: _grupoSelecionado,
       isExpanded: true,
       hint: Text('Selecione o grupo', style: TextStyle(color: t.textMuted)),
       dropdownColor: t.surface,
@@ -2329,7 +2348,7 @@ Data e hora: [DATA_HORA]
                       child: Material(
                         color: selected
                             ? Color.alphaBlend(
-                                accent.withOpacity(0.14),
+                                accent.withAlpha(36),
                                 t.cardAlt,
                               )
                             : t.cardAlt,
@@ -2353,7 +2372,7 @@ Data e hora: [DATA_HORA]
                               ),
                               border: Border.all(
                                 color: selected
-                                    ? accent.withOpacity(0.42)
+                                    ? accent.withAlpha(107)
                                     : t.border,
                                 width: selected ? 1.4 : 1,
                               ),
@@ -2430,7 +2449,7 @@ Data e hora: [DATA_HORA]
           if (element.name.local.isNotEmpty) {
             final style = element.getAttribute('style') ?? '';
             final hex =
-                '#${color.value.toRadixString(16).substring(2).toUpperCase()}';
+                '#${color.toARGB32().toRadixString(16).substring(2).toUpperCase()}';
 
             final newStyle = style.contains('fill:')
                 ? style.replaceAll(RegExp(r'fill:#[0-9a-fA-F]{6}'), 'fill:$hex')
@@ -2548,21 +2567,24 @@ Data e hora: [DATA_HORA]
                       text: _gerarTermoTexto(),
                     ),
                     const SizedBox(height: 12),
-                    CheckboxListTile(
-                      value: _autorizacao,
-                      activeColor: t.primary,
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(
-                        'Li e aceito o regulamento e o termo de responsabilidade.',
-                        style: TextStyle(
-                          color: t.textPrimary,
-                          fontWeight: FontWeight.w800,
+                    Material(
+                      color: t.card,
+                      child: CheckboxListTile(
+                        value: _autorizacao,
+                        activeColor: t.primary,
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(
+                          'Li e aceito o regulamento e o termo de responsabilidade.',
+                          style: TextStyle(
+                            color: t.textPrimary,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
+                        onChanged: (value) {
+                          setState(() => _autorizacao = value ?? false);
+                          _validarEtapaFinal();
+                        },
                       ),
-                      onChanged: (value) {
-                        setState(() => _autorizacao = value ?? false);
-                        _validarEtapaFinal();
-                      },
                     ),
                     if (_recolherAssinatura) ...[
                       const SizedBox(height: 8),
@@ -2636,7 +2658,7 @@ Data e hora: [DATA_HORA]
           padding: const EdgeInsets.only(bottom: 9),
           child: Material(
             color: selected
-                ? Color.alphaBlend(accent.withOpacity(0.10), t.cardAlt)
+                ? Color.alphaBlend(accent.withAlpha(26), t.cardAlt)
                 : t.cardAlt,
             borderRadius: BorderRadius.circular(t.inputRadius),
             clipBehavior: Clip.antiAlias,
@@ -2655,7 +2677,7 @@ Data e hora: [DATA_HORA]
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(t.inputRadius),
                   border: Border.all(
-                    color: selected ? accent.withOpacity(0.38) : t.border,
+                    color: selected ? accent.withAlpha(97) : t.border,
                   ),
                 ),
                 child: Row(
@@ -2792,7 +2814,7 @@ Data e hora: [DATA_HORA]
     final accent = _ensureVisible(color, t.card);
 
     return Material(
-      color: Color.alphaBlend(accent.withOpacity(0.08), t.cardAlt),
+      color: Color.alphaBlend(accent.withAlpha(20), t.cardAlt),
       borderRadius: BorderRadius.circular(t.inputRadius),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -2801,7 +2823,7 @@ Data e hora: [DATA_HORA]
           padding: const EdgeInsets.all(13),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(t.inputRadius),
-            border: Border.all(color: accent.withOpacity(0.14)),
+            border: Border.all(color: accent.withAlpha(36)),
           ),
           child: Row(
             children: [
@@ -2936,7 +2958,7 @@ Data e hora: [DATA_HORA]
 
     return Container(
       padding: const EdgeInsets.all(15),
-      decoration: _cardDecoration(borderColor: accent.withOpacity(0.13)),
+      decoration: _cardDecoration(borderColor: accent.withAlpha(33)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2967,9 +2989,9 @@ Data e hora: [DATA_HORA]
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            color: color.withOpacity(0.10),
+            color: color.withAlpha(26),
             borderRadius: BorderRadius.circular(t.buttonRadius),
-            border: Border.all(color: color.withOpacity(0.15)),
+            border: Border.all(color: color.withAlpha(38)),
           ),
           child: Icon(icon, color: color),
         ),
@@ -3014,9 +3036,9 @@ Data e hora: [DATA_HORA]
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), t.cardAlt),
+        color: Color.alphaBlend(accent.withAlpha(20), t.cardAlt),
         borderRadius: BorderRadius.circular(t.inputRadius),
-        border: Border.all(color: accent.withOpacity(0.14)),
+        border: Border.all(color: accent.withAlpha(36)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3045,7 +3067,7 @@ Data e hora: [DATA_HORA]
 
     return OutlinedButton.styleFrom(
       foregroundColor: accent,
-      side: BorderSide(color: accent.withOpacity(0.24)),
+      side: BorderSide(color: accent.withAlpha(61)),
       padding: const EdgeInsets.symmetric(vertical: 13),
       textStyle: const TextStyle(fontWeight: FontWeight.w900),
       shape: RoundedRectangleBorder(

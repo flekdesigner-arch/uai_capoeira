@@ -75,7 +75,7 @@ class _NotificacoesScreenState extends State<NotificacoesScreen>
   }
 
   Color _softFill(Color color, Color base, [double opacity = 0.10]) {
-    return Color.alphaBlend(color.withOpacity(opacity), base);
+    return Color.alphaBlend(color.withAlpha((255.0 * (opacity)).round()), base);
   }
 
   @override
@@ -101,12 +101,12 @@ class _NotificacoesScreenState extends State<NotificacoesScreen>
               dividerColor: Colors.transparent,
               indicatorSize: TabBarIndicatorSize.tab,
               indicator: BoxDecoration(
-                color: Colors.white.withOpacity(0.16),
+                color: Colors.white.withAlpha(41),
                 borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: Colors.white.withOpacity(0.20)),
+                border: Border.all(color: Colors.white.withAlpha(51)),
               ),
               labelColor: Colors.white,
-              unselectedLabelColor: Colors.white.withOpacity(0.72),
+              unselectedLabelColor: Colors.white.withAlpha(184),
               labelStyle: const TextStyle(
                 fontWeight: FontWeight.w900,
                 fontSize: 12,
@@ -318,7 +318,7 @@ class _NotificacoesScreenState extends State<NotificacoesScreen>
         gradient: LinearGradient(
           colors: [
             primary,
-            Color.alphaBlend(Colors.black.withOpacity(0.14), primary),
+            Color.alphaBlend(Colors.black.withAlpha(36), primary),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -332,9 +332,9 @@ class _NotificacoesScreenState extends State<NotificacoesScreen>
             width: 58,
             height: 58,
             decoration: BoxDecoration(
-              color: onPrimary.withOpacity(0.14),
+              color: onPrimary.withAlpha(36),
               borderRadius: BorderRadius.circular(t.buttonRadius + 4),
-              border: Border.all(color: onPrimary.withOpacity(0.18)),
+              border: Border.all(color: onPrimary.withAlpha(46)),
             ),
             child: Icon(
               Icons.notifications_active_rounded,
@@ -364,7 +364,7 @@ class _NotificacoesScreenState extends State<NotificacoesScreen>
                       ? '$naoLidas ainda não lida(s)'
                       : 'Aniversários, atualizações e avisos importantes em um só lugar.',
                   style: TextStyle(
-                    color: onPrimary.withOpacity(0.84),
+                    color: onPrimary.withAlpha(214),
                     height: 1.25,
                     fontSize: 12.5,
                     fontWeight: FontWeight.w700,
@@ -390,7 +390,7 @@ class _NotificacoesScreenState extends State<NotificacoesScreen>
         gradient: LinearGradient(
           colors: [
             primary,
-            Color.alphaBlend(Colors.black.withOpacity(0.14), primary),
+            Color.alphaBlend(Colors.black.withAlpha(36), primary),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -404,9 +404,9 @@ class _NotificacoesScreenState extends State<NotificacoesScreen>
             width: 58,
             height: 58,
             decoration: BoxDecoration(
-              color: onPrimary.withOpacity(0.14),
+              color: onPrimary.withAlpha(36),
               borderRadius: BorderRadius.circular(t.buttonRadius + 4),
-              border: Border.all(color: onPrimary.withOpacity(0.18)),
+              border: Border.all(color: onPrimary.withAlpha(46)),
             ),
             child: Icon(
               Icons.system_update_alt_rounded,
@@ -432,7 +432,7 @@ class _NotificacoesScreenState extends State<NotificacoesScreen>
                 Text(
                   'Última versão: ${latest.versao} • ${latest.obrigatoria ? "Obrigatória" : "Opcional"}',
                   style: TextStyle(
-                    color: onPrimary.withOpacity(0.84),
+                    color: onPrimary.withAlpha(214),
                     height: 1.25,
                     fontSize: 12.5,
                     fontWeight: FontWeight.w700,
@@ -471,7 +471,7 @@ class _NotificacoesScreenState extends State<NotificacoesScreen>
             color: lida ? t.card : _softFill(accent, t.card, 0.055),
             borderRadius: BorderRadius.circular(t.cardRadius),
             border: Border.all(
-              color: lida ? t.border : accent.withOpacity(0.20),
+              color: lida ? t.border : accent.withAlpha(51),
             ),
             boxShadow: t.softShadow,
           ),
@@ -487,7 +487,7 @@ class _NotificacoesScreenState extends State<NotificacoesScreen>
                     decoration: BoxDecoration(
                       color: _softFill(accent, t.cardAlt, 0.14),
                       borderRadius: BorderRadius.circular(t.buttonRadius),
-                      border: Border.all(color: accent.withOpacity(0.12)),
+                      border: Border.all(color: accent.withAlpha(31)),
                     ),
                     child: Icon(_iconForTipo(tipo), color: accent),
                   ),
@@ -614,7 +614,7 @@ class _NotificacoesScreenState extends State<NotificacoesScreen>
       decoration: BoxDecoration(
         color: _softFill(accent, t.cardAlt, 0.12),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: accent.withOpacity(0.13)),
+        border: Border.all(color: accent.withAlpha(33)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -648,7 +648,7 @@ class _NotificacoesScreenState extends State<NotificacoesScreen>
       decoration: BoxDecoration(
         color: t.card,
         borderRadius: BorderRadius.circular(t.cardRadius),
-        border: Border.all(color: color.withOpacity(0.16)),
+        border: Border.all(color: color.withAlpha(41)),
         boxShadow: t.softShadow,
       ),
       child: Column(
@@ -662,7 +662,7 @@ class _NotificacoesScreenState extends State<NotificacoesScreen>
                 decoration: BoxDecoration(
                   color: _softFill(color, t.cardAlt, 0.14),
                   borderRadius: BorderRadius.circular(t.buttonRadius),
-                  border: Border.all(color: color.withOpacity(0.12)),
+                  border: Border.all(color: color.withAlpha(31)),
                 ),
                 child: Icon(
                   version.obrigatoria
@@ -875,7 +875,7 @@ class _NotificacoesScreenState extends State<NotificacoesScreen>
       decoration: BoxDecoration(
         color: _softFill(accent, t.card, 0.07),
         borderRadius: BorderRadius.circular(t.cardRadius),
-        border: Border.all(color: accent.withOpacity(0.14)),
+        border: Border.all(color: accent.withAlpha(36)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,

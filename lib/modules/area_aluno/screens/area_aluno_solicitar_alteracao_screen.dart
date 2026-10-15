@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'package:uai_capoeira/core/services/uai_callable_client.dart';
 
 class AreaAlunoSolicitarAlteracaoScreen extends StatefulWidget {
   final Map<String, dynamic> aluno;
@@ -285,18 +286,15 @@ class _AreaAlunoSolicitarAlteracaoScreenState
     });
 
     try {
-      final callable = FirebaseFunctions.instance.httpsCallable(
+      final data = await UaiCallableClient.instance.call(
         'criarSolicitacaoAlteracaoAreaAluno',
+        {
+          'alunoId': widget.aluno['aluno_id'],
+          'auth': widget.authPayload,
+          'dadosSolicitados': _montarDadosSolicitados(),
+          'observacaoAluno': _observacaoController.text.trim(),
+        },
       );
-
-      final result = await callable.call({
-        'alunoId': widget.aluno['aluno_id'],
-        'auth': widget.authPayload,
-        'dadosSolicitados': _montarDadosSolicitados(),
-        'observacaoAluno': _observacaoController.text.trim(),
-      });
-
-      final data = Map<String, dynamic>.from(result.data as Map);
 
       if (data['success'] != true) {
         _mostrarSnack(
@@ -569,9 +567,9 @@ class _AreaAlunoSolicitarAlteracaoScreenState
             width: 54,
             height: 54,
             decoration: BoxDecoration(
-              color: onPrimary.withOpacity(0.14),
+              color: onPrimary.withAlpha(36),
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: onPrimary.withOpacity(0.16)),
+              border: Border.all(color: onPrimary.withAlpha(41)),
             ),
             child: Icon(Icons.edit_note_rounded, color: onPrimary, size: 31),
           ),
@@ -593,7 +591,7 @@ class _AreaAlunoSolicitarAlteracaoScreenState
                 Text(
                   'Atualize somente o que estiver incorreto.',
                   style: TextStyle(
-                    color: onPrimary.withOpacity(0.76),
+                    color: onPrimary.withAlpha(194),
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                   ),
@@ -629,9 +627,9 @@ class _AreaAlunoSolicitarAlteracaoScreenState
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), t.card),
+        color: Color.alphaBlend(accent.withAlpha(20), t.card),
         borderRadius: BorderRadius.circular(t.cardRadius),
-        border: Border.all(color: accent.withOpacity(0.14)),
+        border: Border.all(color: accent.withAlpha(36)),
         boxShadow: t.softShadow,
       ),
       child: Row(
@@ -666,7 +664,7 @@ class _AreaAlunoSolicitarAlteracaoScreenState
 
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: _cardDecoration(borderColor: accent.withOpacity(0.12)),
+      decoration: _cardDecoration(borderColor: accent.withAlpha(31)),
       child: Column(
         children: [
           Row(
@@ -675,9 +673,9 @@ class _AreaAlunoSolicitarAlteracaoScreenState
                 width: 39,
                 height: 39,
                 decoration: BoxDecoration(
-                  color: Color.alphaBlend(accent.withOpacity(0.08), t.cardAlt),
+                  color: Color.alphaBlend(accent.withAlpha(20), t.cardAlt),
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: accent.withOpacity(0.12)),
+                  border: Border.all(color: accent.withAlpha(31)),
                 ),
                 child: Icon(icon, color: accent, size: 20),
               ),
@@ -751,7 +749,7 @@ class _AreaAlunoSolicitarAlteracaoScreenState
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: DropdownButtonFormField<String?>(
-        value: valorValido,
+        initialValue: valorValido,
         dropdownColor: t.surface,
         style: TextStyle(color: t.textPrimary),
         decoration: _inputDecoration(
@@ -913,9 +911,9 @@ class _AreaAlunoSolicitarAlteracaoScreenState
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), t.card),
+        color: Color.alphaBlend(accent.withAlpha(20), t.card),
         borderRadius: BorderRadius.circular(t.cardRadius),
-        border: Border.all(color: accent.withOpacity(0.14)),
+        border: Border.all(color: accent.withAlpha(36)),
         boxShadow: t.softShadow,
       ),
       child: Row(

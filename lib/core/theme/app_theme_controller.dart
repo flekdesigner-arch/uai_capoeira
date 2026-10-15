@@ -157,7 +157,7 @@ class UserThemeSettings {
   }
 
   static String _hex(Color color) {
-    return '#${color.value.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
+    return '#${color.toARGB32().toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
   }
 
   static Color? _colorFromAny(dynamic raw) {
@@ -762,11 +762,11 @@ class AppThemeController extends ChangeNotifier {
     SharedPreferences prefs,
     UserThemeSettings settings,
   ) async {
-    await prefs.setInt(_customPrimaryKey, settings.primary.value);
-    await prefs.setInt(_customBackgroundKey, settings.background.value);
-    await prefs.setInt(_customSurfaceKey, settings.surface.value);
-    await prefs.setInt(_customCardKey, settings.card.value);
-    await prefs.setInt(_customTextPrimaryKey, settings.textPrimary.value);
+    await prefs.setInt(_customPrimaryKey, settings.primary.toARGB32());
+    await prefs.setInt(_customBackgroundKey, settings.background.toARGB32());
+    await prefs.setInt(_customSurfaceKey, settings.surface.toARGB32());
+    await prefs.setInt(_customCardKey, settings.card.toARGB32());
+    await prefs.setInt(_customTextPrimaryKey, settings.textPrimary.toARGB32());
 
     await _writeNullableColor(prefs, _customAccentKey, settings.accent);
     await _writeNullableColor(prefs, _customCardAltKey, settings.cardAlt);
@@ -855,7 +855,7 @@ class AppThemeController extends ChangeNotifier {
     if (color == null) {
       await prefs.remove(key);
     } else {
-      await prefs.setInt(key, color.value);
+      await prefs.setInt(key, color.toARGB32());
     }
   }
 

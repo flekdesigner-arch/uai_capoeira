@@ -11,16 +11,33 @@ import 'package:http/http.dart' as http;
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:url_launcher/url_launcher.dart'; // 👈 IMPORT ADICIONADO!
 
+/// Local seam for controlled widget tests; production keeps the existing services.
+class CertificadosDriveOperations {
+  const CertificadosDriveOperations({
+    required this.canAccess,
+    required this.revalidate,
+    required this.loadFolder,
+    required this.saveFolder,
+  });
+
+  final Future<bool> Function() canAccess;
+  final Future<bool> Function() revalidate;
+  final Future<Map<String, dynamic>?> Function(String eventoId) loadFolder;
+  final Future<void> Function(String eventoId, Map<String, dynamic> data) saveFolder;
+}
+
 class VincularCertificadosDriveScreen extends StatefulWidget {
   final List<Map<String, dynamic>> participantes;
   final String eventoId;
   final String eventoNome;
+  final CertificadosDriveOperations? operations;
 
   const VincularCertificadosDriveScreen({
     super.key,
     required this.participantes,
     required this.eventoId,
     required this.eventoNome,
+    this.operations,
   });
 
   @override
@@ -51,7 +68,7 @@ class _VincularCertificadosDriveScreenState
   }
 
   Color _onCard() => _readableOn(context.uai.card);
-  Color _onCardMuted() => _onCard().withOpacity(0.68);
+  Color _onCardMuted() => _onCard().withAlpha(173);
   Color _appBarBg() =>
       Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
   Color _appBarFg() =>
@@ -90,7 +107,7 @@ class _VincularCertificadosDriveScreenState
   }
 
   final TextEditingController _pastaUrlController = TextEditingController();
-  final PermissaoService _permissaoService = PermissaoService();
+  late final PermissaoService _permissaoService = PermissaoService();
   late final PermissionAccessGuard _accessGuard = PermissionAccessGuard(
     service: _permissaoService,
   );
@@ -116,9 +133,11 @@ class _VincularCertificadosDriveScreenState
   }
 
   Future<void> _inicializarComPermissao() async {
-    final permitido = await _accessGuard.canAccess(
-      permission: 'pode_gerar_certificados_evento',
-    );
+    final permitido = widget.operations == null
+        ? await _accessGuard.canAccess(
+            permission: 'pode_gerar_certificados_evento',
+          )
+        : await widget.operations!.canAccess();
     if (!mounted) return;
 
     if (!permitido) {
@@ -144,6 +163,7 @@ class _VincularCertificadosDriveScreenState
   }
 
   Future<bool> _revalidarGeracao() {
+    if (widget.operations != null) return widget.operations!.revalidate();
     return _accessGuard.revalidate(
       context,
       permission: 'pode_gerar_certificados_evento',
@@ -156,14 +176,15 @@ class _VincularCertificadosDriveScreenState
   // ============================================================
   Future<void> _carregarPastaSalva() async {
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection('eventos')
-          .doc(widget.eventoId)
-          .get();
+      final data = widget.operations == null
+          ? (await FirebaseFirestore.instance
+                  .collection('eventos')
+                  .doc(widget.eventoId)
+                  .get())
+                .data()
+          : await widget.operations!.loadFolder(widget.eventoId);
 
-      if (doc.exists) {
-        final data = doc.data();
-        if (data != null && data.containsKey('pasta_certificados')) {
+      if (data != null && data.containsKey('pasta_certificados')) {
           final pastaData = data['pasta_certificados'];
           if (mounted) {
             setState(() {
@@ -176,7 +197,6 @@ class _VincularCertificadosDriveScreenState
             });
             _adicionarLog('📁 Pasta de certificados carregada do evento');
           }
-        }
       }
     } catch (e) {
       debugPrint('Erro ao carregar pasta: $e');
@@ -188,6 +208,7 @@ class _VincularCertificadosDriveScreenState
   // ============================================================
   Future<void> _salvarPastaNoFirestore() async {
     if (!await _revalidarGeracao()) return;
+    if (!mounted) return;
 
     if (_pastaUrlController.text.isEmpty) {
       _mostrarMensagem('Digite a URL da pasta primeiro', context.uai.warning);
@@ -205,7 +226,7 @@ class _VincularCertificadosDriveScreenState
       'A pasta será vinculada a este evento e poderá ser usada depois.',
     );
 
-    if (!confirmar) return;
+    if (!confirmar || !mounted) return;
 
     setState(() => _isSalvandoPasta = true);
     _adicionarLog('💾 Salvando pasta no evento...');
@@ -218,22 +239,28 @@ class _VincularCertificadosDriveScreenState
         'salvo_por': 'Sistema',
       };
 
-      await FirebaseFirestore.instance
-          .collection('eventos')
-          .doc(widget.eventoId)
-          .set({'pasta_certificados': pastaData}, SetOptions(merge: true));
+      if (widget.operations == null) {
+        await FirebaseFirestore.instance
+            .collection('eventos')
+            .doc(widget.eventoId)
+            .set({'pasta_certificados': pastaData}, SetOptions(merge: true));
+      } else {
+        await widget.operations!.saveFolder(widget.eventoId, pastaData);
+      }
 
-      setState(() {
-        _pastaSalva = pastaData;
-      });
+      if (mounted) {
+        setState(() {
+          _pastaSalva = pastaData;
+        });
+      }
 
       _adicionarLog('✅ Pasta salva com sucesso!');
-      _mostrarMensagem('✅ Pasta salva no evento!', context.uai.success);
+      if (mounted) _mostrarMensagem('✅ Pasta salva no evento!', context.uai.success);
     } catch (e) {
       _adicionarLog('❌ Erro ao salvar pasta: $e');
-      _mostrarMensagem('Erro ao salvar pasta', context.uai.error);
+      if (mounted) _mostrarMensagem('Erro ao salvar pasta', context.uai.error);
     } finally {
-      setState(() => _isSalvandoPasta = false);
+      if (mounted) setState(() => _isSalvandoPasta = false);
     }
   }
 
@@ -367,6 +394,7 @@ class _VincularCertificadosDriveScreenState
   // ============================================================
   Future<void> _buscarArquivosNaPasta() async {
     if (!await _revalidarGeracao()) return;
+    if (!mounted) return;
 
     if (_pastaUrlController.text.isEmpty) {
       _mostrarMensagem('Digite a URL da pasta do Drive', context.uai.warning);
@@ -518,7 +546,7 @@ class _VincularCertificadosDriveScreenState
       }
     } catch (e) {
       _adicionarLog('❌ Erro: $e');
-      _mostrarMensagem('Erro: $e', context.uai.error);
+      if (mounted) _mostrarMensagem('Erro: $e', context.uai.error);
     } finally {
       if (mounted) {
         setState(() => _isBuscando = false);
@@ -574,6 +602,7 @@ class _VincularCertificadosDriveScreenState
   // ============================================================
   Future<void> _salvarLinksNoFirestore() async {
     if (!await _revalidarGeracao()) return;
+    if (!mounted) return;
 
     final paraSalvar = _participantesComCertificado
         .where(
@@ -636,7 +665,7 @@ class _VincularCertificadosDriveScreenState
       }
     } catch (e) {
       _adicionarLog('❌ Erro geral: $e');
-      _mostrarMensagem('Erro ao salvar: $e', context.uai.error);
+      if (mounted) _mostrarMensagem('Erro ao salvar: $e', context.uai.error);
     } finally {
       if (mounted) setState(() => _isVinculando = false);
     }
@@ -845,7 +874,7 @@ class _VincularCertificadosDriveScreenState
                             vertical: 2,
                           ),
                           decoration: BoxDecoration(
-                            color: context.uai.success.withOpacity(0.14),
+                            color: context.uai.success.withAlpha(36),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
@@ -865,6 +894,7 @@ class _VincularCertificadosDriveScreenState
                     Expanded(
                       child: TextField(
                         controller: _pastaUrlController,
+                        onChanged: (_) => setState(() {}),
                         decoration: InputDecoration(
                           hintText:
                               'https://drive.google.com/drive/folders/...',
@@ -980,10 +1010,10 @@ class _VincularCertificadosDriveScreenState
               margin: EdgeInsets.symmetric(horizontal: 16),
               padding: EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: context.uai.associacao.withOpacity(0.08),
+                color: context.uai.associacao.withAlpha(20),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: context.uai.associacao.withOpacity(0.22),
+                  color: context.uai.associacao.withAlpha(56),
                 ),
               ),
               child: Row(
@@ -1006,7 +1036,7 @@ class _VincularCertificadosDriveScreenState
                   Container(
                     height: 40,
                     width: 1,
-                    color: context.uai.associacao.withOpacity(0.34),
+                    color: context.uai.associacao.withAlpha(87),
                   ),
                   Expanded(
                     child: Column(
@@ -1026,7 +1056,7 @@ class _VincularCertificadosDriveScreenState
                   Container(
                     height: 40,
                     width: 1,
-                    color: context.uai.associacao.withOpacity(0.34),
+                    color: context.uai.associacao.withAlpha(87),
                   ),
                   Expanded(
                     child: Column(
@@ -1084,8 +1114,8 @@ class _VincularCertificadosDriveScreenState
                           borderRadius: BorderRadius.circular(12),
                           side: BorderSide(
                             color: encontrado
-                                ? context.uai.success.withOpacity(0.24)
-                                : context.uai.warning.withOpacity(0.24),
+                                ? context.uai.success.withAlpha(61)
+                                : context.uai.warning.withAlpha(61),
                             width: 1,
                           ),
                         ),
@@ -1103,8 +1133,8 @@ class _VincularCertificadosDriveScreenState
                                   height: 50,
                                   decoration: BoxDecoration(
                                     color: encontrado
-                                        ? context.uai.success.withOpacity(0.08)
-                                        : context.uai.warning.withOpacity(0.08),
+                                        ? context.uai.success.withAlpha(20)
+                                        : context.uai.warning.withAlpha(20),
                                     shape: BoxShape.circle,
                                   ),
                                   child: Icon(

@@ -1,3 +1,4 @@
+import 'dart:developer' as developer;
 import 'dart:io';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:path/path.dart' as path;
@@ -21,7 +22,7 @@ class UploadService {
 
       return urlDownload;
     } catch (e) {
-      print('❌ Erro ao fazer upload: $e');
+      developer.log('❌ Erro ao fazer upload: $e');
       return null;
     }
   }
@@ -32,7 +33,7 @@ class UploadService {
       Reference ref = _storage.refFromURL(url);
       await ref.delete();
     } catch (e) {
-      print('❌ Erro ao deletar imagem: $e');
+      developer.log('❌ Erro ao deletar imagem: $e');
     }
   }
 }

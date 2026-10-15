@@ -1,11 +1,17 @@
 import 'dart:convert';
 
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:uai_capoeira/core/services/uai_callable_client.dart';
+
 class AreaAlunoSessionService {
+  final UaiCallableClient _callable;
+
+  AreaAlunoSessionService({UaiCallableClient? callable})
+      : _callable = callable ?? UaiCallableClient.instance;
+
   static const String _sessionKey = 'uai_area_aluno_session_v1';
 
   /// Tempo máximo para manter a sessão simples do aluno.
@@ -41,7 +47,7 @@ class AreaAlunoSessionService {
       'google_uid': googleUid ?? authPayload['google_uid']?.toString() ?? '',
       'google_email':
           googleEmail ?? authPayload['google_email']?.toString() ?? '',
-      if (temAcessoGestao != null) 'temAcessoGestao': temAcessoGestao,
+      'temAcessoGestao': ?temAcessoGestao,
       'modoAtual': 'area_aluno',
       'alunosVinculadosResumo': alunosVinculadosResumo,
       'authPayload': authPayload,
@@ -111,15 +117,64 @@ class AreaAlunoSessionService {
       final googleUid = authPayload['google_uid']?.toString() ?? '';
       final user = FirebaseAuth.instance.currentUser;
 
+      if (modoAcesso == 'conta_uai' || modoAcesso == 'email') {
+        final vinculoId = authPayload['vinculo_id']?.toString() ?? '';
+        if (user == null) {
+          await limparSessao();
+          return null;
+        }
+
+        // Fluxos antigos de Conta UAI guardavam um vinculo_id. O fluxo atual
+        // também permite vínculo administrativo direto conta <-> aluno, que pode
+        // não possuir esse ID no payload local. Nesse caso revalidamos pelo
+        // alunoId + UID autenticado usando a função unificada.
+        final data = vinculoId.isNotEmpty
+            ? await _callable.call(
+                'validarAcessoContaUaiAreaAluno',
+                {'vinculoId': vinculoId},
+              )
+            : await _callable.call(
+                'validarAcessoGoogleAreaAluno',
+                {'alunoId': alunoId},
+              );
+
+        if (data['success'] != true) {
+          await limparSessao();
+          return null;
+        }
+        final aluno = Map<String, dynamic>.from(data['aluno'] as Map? ?? {});
+        final config = Map<String, dynamic>.from(data['config'] as Map? ?? {});
+        final modoAtualizado = data['modo_acesso']?.toString().trim().isNotEmpty == true
+            ? data['modo_acesso'].toString().trim()
+            : 'conta_uai';
+        final authAtualizado = <String, dynamic>{
+          ...authPayload,
+          'modo_acesso': modoAtualizado,
+          if (vinculoId.isNotEmpty) 'vinculo_id': vinculoId,
+          'conta_uai_uid': user.uid,
+          'conta_uai_email': user.email ?? authPayload['conta_uai_email'] ?? '',
+          // aliases legados mantidos para telas antigas que ainda leem estes campos
+          'google_uid': user.uid,
+          'google_email': user.email ?? authPayload['google_email'] ?? '',
+          'aluno_id_login': aluno['aluno_id']?.toString() ?? alunoId,
+        };
+        await salvarSessao(
+          aluno: aluno,
+          config: config,
+          authPayload: authAtualizado,
+          alunoSelecionadoId: aluno['aluno_id']?.toString(),
+        );
+        return {'aluno': aluno, 'config': config, 'authPayload': authAtualizado};
+      }
+
       if (modoAcesso == 'google' &&
           alunoId.isNotEmpty &&
           googleUid.isNotEmpty &&
           user?.uid == googleUid) {
-        final result = await FirebaseFunctions.instance
-            .httpsCallable('validarAcessoGoogleAreaAluno')
-            .call({'alunoId': alunoId});
-
-        final data = Map<String, dynamic>.from(result.data as Map);
+        final data = await _callable.call(
+          'validarAcessoGoogleAreaAluno',
+          {'alunoId': alunoId},
+        );
         final success = data['success'] == true;
 
         if (!success) {
@@ -130,26 +185,34 @@ class AreaAlunoSessionService {
 
         final aluno = Map<String, dynamic>.from(data['aluno'] as Map? ?? {});
         final config = Map<String, dynamic>.from(data['config'] as Map? ?? {});
+        final modoAtualizado = data['modo_acesso']?.toString().trim().isNotEmpty == true
+            ? data['modo_acesso'].toString().trim()
+            : 'google';
+        final authAtualizado = <String, dynamic>{
+          ...authPayload,
+          'modo_acesso': modoAtualizado,
+          if (modoAtualizado == 'conta_uai') 'conta_uai_uid': user!.uid,
+          if (modoAtualizado == 'conta_uai')
+            'conta_uai_email': user?.email ?? authPayload['conta_uai_email'] ?? '',
+          // Mantidos por compatibilidade com sessões antigas.
+          'google_uid': user!.uid,
+          'google_email': user.email ?? authPayload['google_email'] ?? '',
+          'aluno_id_login': aluno['aluno_id']?.toString() ?? alunoId,
+        };
         await salvarSessao(
           aluno: aluno,
           config: config,
-          authPayload: authPayload,
+          authPayload: authAtualizado,
         );
 
-        return {'aluno': aluno, 'config': config, 'authPayload': authPayload};
+        return {'aluno': aluno, 'config': config, 'authPayload': authAtualizado};
       }
 
-      final callable = FirebaseFunctions.instance.httpsCallable(
-        'validarAcessoAreaAluno',
-      );
-
-      final result = await callable.call({
+      final data = await _callable.call('validarAcessoAreaAluno', {
         'dataNascimento': authPayload['dataNascimento']?.toString() ?? '',
         'iniciais': authPayload['iniciais']?.toString() ?? '',
         'telefoneFinal': authPayload['telefoneFinal']?.toString() ?? '',
       });
-
-      final data = Map<String, dynamic>.from(result.data as Map);
       final success = data['success'] == true;
 
       if (!success) {
@@ -160,14 +223,21 @@ class AreaAlunoSessionService {
 
       final aluno = Map<String, dynamic>.from(data['aluno'] as Map? ?? {});
       final config = Map<String, dynamic>.from(data['config'] as Map? ?? {});
+      final authAtualizado = <String, dynamic>{
+        ...authPayload,
+        'modo_acesso': data['modo_acesso']?.toString() ??
+            config['modo_acesso']?.toString() ??
+            'basico',
+        'aluno_id_login': aluno['aluno_id']?.toString() ?? alunoId,
+      };
 
       await salvarSessao(
         aluno: aluno,
         config: config,
-        authPayload: authPayload,
+        authPayload: authAtualizado,
       );
 
-      return {'aluno': aluno, 'config': config, 'authPayload': authPayload};
+      return {'aluno': aluno, 'config': config, 'authPayload': authAtualizado};
     } catch (e) {
       debugPrint('⚠️ Erro ao revalidar sessão da Área do Aluno: $e');
 

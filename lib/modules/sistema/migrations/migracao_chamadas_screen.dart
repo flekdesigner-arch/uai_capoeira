@@ -26,10 +26,10 @@ class _MigracaoChamadasScreenState extends State<MigracaoChamadasScreen> {
   bool _isLoading = false;
   bool _arquivoCarregado = false;
   Map<String, dynamic>? _estatisticas;
-  List<String> _arquivosCarregados = [];
+  final List<String> _arquivosCarregados = [];
 
   // Cache para alunos
-  Map<String, Map<String, dynamic>> _cacheAlunos = {};
+  final Map<String, Map<String, dynamic>> _cacheAlunos = {};
 
   final List<String> _arquivos = [
     'assets/log_presenca_alunos_1.json',
@@ -662,13 +662,17 @@ class _MigracaoChamadasScreenState extends State<MigracaoChamadasScreen> {
       debugPrint('✅ Serviço finalizado com sucesso!');
       debugPrint('📊 Resultado: $resultado');
 
-      if (context.mounted) Navigator.pop(context);
+      if (!mounted) return;
+      Navigator.pop(context);
+      if (!mounted) return;
       _mostrarResultadoDialog(resultado);
     } catch (e, stacktrace) {
       debugPrint('❌ ERRO NA MIGRAÇÃO: $e');
       debugPrint('📚 Stacktrace: $stacktrace');
 
-      if (context.mounted) Navigator.pop(context);
+      if (!mounted) return;
+      Navigator.pop(context);
+      if (!mounted) return;
       _mostrarSnackBar('❌ Erro na migração: $e', Colors.red);
     }
   }
@@ -688,7 +692,7 @@ class _MigracaoChamadasScreenState extends State<MigracaoChamadasScreen> {
             Text(resultado['sucesso'] ? 'SUCESSO!' : 'ATENÇÃO'),
           ],
         ),
-        content: Container(
+        content: SizedBox(
           width: double.maxFinite,
           child: SingleChildScrollView(
             child: Column(

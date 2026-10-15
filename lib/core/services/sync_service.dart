@@ -1,6 +1,5 @@
 import 'dart:async'; // ✅ IMPORT OBRIGATÓRIO PARA StreamController
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/material.dart';
 
 class SyncService {
   static final SyncService _instance = SyncService._internal();

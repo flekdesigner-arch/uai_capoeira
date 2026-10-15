@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class RastreioSiteService {
@@ -9,6 +11,10 @@ class RastreioSiteService {
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
+  static const Duration _flushDelay = Duration(seconds: 2);
+  static const Duration _retryDelay = Duration(seconds: 5);
+  static const int _maxEventosPorLote = 20;
+
   String? _documentoAcessoId;
   DateTime? _inicioSessao;
   DateTime? _inicioTelaAtual;
@@ -16,26 +22,41 @@ class RastreioSiteService {
 
   int _contadorEventos = 0;
   bool _sessaoFinalizada = false;
+  bool _flushEmAndamento = false;
+
+  Timer? _flushTimer;
 
   final Map<String, DateTime> _marcadoresTempo = {};
   final List<Map<String, dynamic>> _eventosPendentes = [];
 
   String? get documentoAcessoId => _documentoAcessoId;
+  bool get sessaoAtiva => _documentoAcessoId != null && !_sessaoFinalizada;
+  int get eventosPendentes => _eventosPendentes.length;
+
+  /// Inicia o relógio local antes mesmo da Cloud Function responder.
+  /// Assim eventos disparados muito cedo entram na fila e mantêm a ordem.
+  void prepararSessaoLocal() {
+    if (_sessaoFinalizada && _documentoAcessoId == null) {
+      _contadorEventos = 0;
+      _marcadoresTempo.clear();
+      _telaAtual = null;
+      _inicioTelaAtual = null;
+    }
+    _inicioSessao ??= DateTime.now();
+    _sessaoFinalizada = false;
+  }
 
   void iniciarSessaoComDocumento(String documentoId) {
+    if (documentoId.trim().isEmpty) return;
+    if (_documentoAcessoId == documentoId && !_sessaoFinalizada) return;
+
+    prepararSessaoLocal();
     _documentoAcessoId = documentoId;
-    _inicioSessao = DateTime.now();
-    _inicioTelaAtual = null;
-    _telaAtual = null;
-    _contadorEventos = 0;
     _sessaoFinalizada = false;
-    _marcadoresTempo.clear();
 
-    print('✅ Sessão iniciada para documento: $documentoId');
-
-    if (_eventosPendentes.isNotEmpty) {
-      _enviarEventosPendentes();
-    }
+    // Não zera contador nem fila: eventos podem ter acontecido enquanto
+    // a Cloud Function criava o documento.
+    _agendarFlush(imediato: true);
   }
 
   Map<String, dynamic> _metadadosBase(Map<String, dynamic>? metadata) {
@@ -47,6 +68,7 @@ class RastreioSiteService {
     return {
       'sessao_duracao_segundos': duracaoSessao,
       'evento_ordem': _contadorEventos,
+      if (_documentoAcessoId != null) 'sessao_documento_id': _documentoAcessoId,
       if (_telaAtual != null) 'tela_atual': _telaAtual,
       ...?metadata,
     };
@@ -59,15 +81,13 @@ class RastreioSiteService {
     String? paginaOrigem,
     Map<String, dynamic>? metadata,
   }) async {
-    if (_sessaoFinalizada) {
-      print('⚠️ Sessão já finalizada. Ignorando evento: $tipo | $nome');
-      return;
-    }
+    if (_sessaoFinalizada) return;
 
+    prepararSessaoLocal();
     _contadorEventos++;
 
     final agora = DateTime.now();
-    final evento = {
+    final evento = <String, dynamic>{
       'tipo': tipo,
       'nome': nome,
       'origem': origem,
@@ -77,58 +97,74 @@ class RastreioSiteService {
       'metadata': _metadadosBase(metadata),
     };
 
-    if (_documentoAcessoId == null) {
-      _eventosPendentes.add(evento);
-      print(
-        '⏳ Documento de acesso ainda não ativo. Evento colocado na fila: $tipo | $nome',
-      );
+    _eventosPendentes.add(evento);
+
+    // Página/conversão precisam chegar rápido ao dashboard, mas sem bloquear UI.
+    final prioritario = tipo == 'pagina' || tipo == 'conversao' || tipo == 'funil_inscricao';
+    _agendarFlush(
+      imediato: prioritario || _eventosPendentes.length >= _maxEventosPorLote,
+    );
+  }
+
+  void _agendarFlush({bool imediato = false}) {
+    if (_documentoAcessoId == null || _sessaoFinalizada) return;
+
+    _flushTimer?.cancel();
+    _flushTimer = Timer(
+      imediato ? Duration.zero : _flushDelay,
+      () => unawaited(flush()),
+    );
+  }
+
+  /// Envia eventos em lote, preservando o formato atual `eventos: []` usado
+  /// pelo Dashboard de Visitas. Se falhar, recoloca o lote no início da fila.
+  Future<void> flush({bool force = false}) async {
+    if (_flushEmAndamento ||
+        _documentoAcessoId == null ||
+        _sessaoFinalizada ||
+        _eventosPendentes.isEmpty) {
       return;
     }
 
-    await _registrarEventoNoFirestore(evento);
-  }
+    _flushTimer?.cancel();
+    _flushTimer = null;
+    _flushEmAndamento = true;
 
-  Future<void> _registrarEventoNoFirestore(Map<String, dynamic> evento) async {
-    if (_documentoAcessoId == null || _sessaoFinalizada) return;
+    final quantidade = force
+        ? _eventosPendentes.length
+        : _eventosPendentes.length.clamp(0, _maxEventosPorLote).toInt();
+    final lote = _eventosPendentes.take(quantidade).toList(growable: false);
+    _eventosPendentes.removeRange(0, lote.length);
+
+    final documentoId = _documentoAcessoId;
 
     try {
       await _firestore
           .collection('estatisticas_acessos')
-          .doc(_documentoAcessoId!)
+          .doc(documentoId)
           .update({
-            'eventos': FieldValue.arrayUnion([evento]),
+            'eventos': FieldValue.arrayUnion(lote),
             'ultima_atividade': FieldValue.serverTimestamp(),
-            'total_eventos': FieldValue.increment(1),
-            'ultimo_evento_tipo': evento['tipo'],
-            'ultimo_evento_nome': evento['nome'],
-            'ultimo_evento_origem': evento['origem'],
+            'total_eventos': FieldValue.increment(lote.length),
+            'ultimo_evento_tipo': lote.last['tipo'],
+            'ultimo_evento_nome': lote.last['nome'],
+            'ultimo_evento_origem': lote.last['origem'],
           });
+    } catch (_) {
+      // Não perde eventos por falha momentânea de rede/Firestore.
+      _eventosPendentes.insertAll(0, lote);
+      _flushTimer?.cancel();
+      _flushTimer = Timer(_retryDelay, () => unawaited(flush()));
+    } finally {
+      _flushEmAndamento = false;
+    }
 
-      print(
-        '✅ Evento registrado: '
-        '${evento['tipo']} | ${evento['nome']} | ${evento['origem']}',
-      );
-    } catch (e) {
-      print('❌ Erro ao registrar evento: $e');
-      if (e is FirebaseException) {
-        print('   Código: ${e.code}');
-        print('   Mensagem: ${e.message}');
-      }
+    if (_eventosPendentes.isNotEmpty && _documentoAcessoId != null) {
+      _agendarFlush(imediato: _eventosPendentes.length >= _maxEventosPorLote);
     }
   }
 
-  Future<void> _enviarEventosPendentes() async {
-    if (_documentoAcessoId == null || _eventosPendentes.isEmpty) return;
-
-    final eventos = List<Map<String, dynamic>>.from(_eventosPendentes);
-    _eventosPendentes.clear();
-
-    for (final evento in eventos) {
-      await _registrarEventoNoFirestore(evento);
-    }
-
-    print('✅ Eventos pendentes enviados: ${eventos.length}');
-  }
+  Future<void> _enviarEventosPendentes() => flush(force: true);
 
   Future<void> registrarDispositivo({
     required Map<String, dynamic> dispositivo,
@@ -241,7 +277,7 @@ class RastreioSiteService {
       nome: nome ?? marcador,
       origem: origem,
       metadata: {
-        if (segundos != null) 'duracao_segundos': segundos,
+        'duracao_segundos': ?segundos,
         'marcador': marcador,
         ...?metadata,
       },
@@ -280,7 +316,7 @@ class RastreioSiteService {
       metadata: {
         'formulario': formulario,
         'acao': acao,
-        if (etapa != null) 'etapa': etapa,
+        'etapa': ?etapa,
         ...?metadata,
       },
     );
@@ -309,8 +345,8 @@ class RastreioSiteService {
         'etapa': etapaValor,
         'nome_etapa': etapaNome,
         'acao': acao,
-        if (numeroEtapa != null) 'numero_etapa': numeroEtapa,
-        if (totalEtapas != null) 'total_etapas': totalEtapas,
+        'numero_etapa': ?numeroEtapa,
+        'total_etapas': ?totalEtapas,
         ...?metadata,
       },
     );
@@ -336,7 +372,7 @@ class RastreioSiteService {
       metadata: {
         'formulario': formulario,
         'local': localFinal,
-        if (etapa != null) 'etapa': etapa,
+        'etapa': ?etapa,
         'erros': listaErros,
         'total_erros': listaErros.length,
         ...?metadata,
@@ -354,7 +390,34 @@ class RastreioSiteService {
       tipo: 'conversao',
       nome: nome,
       origem: origem,
-      metadata: {if (valor != null) 'valor': valor, ...?metadata},
+      metadata: {'valor': ?valor, ...?metadata},
+    );
+  }
+
+  Future<void> registrarMarcoFunilInscricao({
+    required String marco,
+    String acao = 'atingiu',
+    String? origem,
+    int? etapaNumero,
+    String? etapaNome,
+    int? duracaoEtapaSegundos,
+    int? duracaoTotalSegundos,
+    Map<String, dynamic>? metadata,
+  }) async {
+    await registrarEvento(
+      tipo: 'funil_inscricao',
+      nome: marco,
+      origem: origem ?? acao,
+      paginaOrigem: 'inscricao_publica',
+      metadata: {
+        'formulario': 'inscricao_publica',
+        'acao': acao,
+        'etapa_numero': ?etapaNumero,
+        'etapa_nome': ?etapaNome,
+          'duracao_etapa_segundos': ?duracaoEtapaSegundos,
+          'duracao_total_segundos': ?duracaoTotalSegundos,
+        ...?metadata,
+      },
     );
   }
 
@@ -414,7 +477,7 @@ class RastreioSiteService {
         'vazio': valorTexto.trim().isEmpty,
         'suspeito': _textoSuspeito(valorTexto),
         'categoria_suspeita': _categoriaTextoSuspeito(valorTexto),
-        if (etapa != null) 'etapa': etapa,
+        'etapa': ?etapa,
         ...?metadata,
       },
     );
@@ -463,7 +526,7 @@ class RastreioSiteService {
         'total_campos': camposTratados.length,
         'campos_suspeitos': camposSuspeitos,
         'tem_conteudo_suspeito': camposSuspeitos.isNotEmpty,
-        if (etapa != null) 'etapa': etapa,
+        'etapa': ?etapa,
         ...?metadata,
       },
     );
@@ -486,7 +549,7 @@ class RastreioSiteService {
         'tela': tela,
         'item_tipo': itemTipo,
         'item_nome': itemNome,
-        if (itemId != null) 'item_id': itemId,
+        'item_id': ?itemId,
         ...?metadata,
       },
     );
@@ -540,23 +603,33 @@ class RastreioSiteService {
   }
 
   Future<void> finalizarSessao() async {
-    await _enviarEventosPendentes();
+    _flushTimer?.cancel();
+    await flush(force: true);
 
-    if (_documentoAcessoId != null && _inicioSessao != null) {
-      final duracao = DateTime.now().difference(_inicioSessao!).inSeconds;
-      try {
-        await _firestore
-            .collection('estatisticas_acessos')
-            .doc(_documentoAcessoId)
-            .update({
-              'fim_sessao': FieldValue.serverTimestamp(),
-              'duracao_segundos': duracao,
-            });
-        _sessaoFinalizada = true;
-        print('✅ Sessão finalizada. Duração: ${duracao}s');
-      } catch (e) {
-        print('❌ Erro ao finalizar sessão: $e');
-      }
+    final documentoId = _documentoAcessoId;
+    final inicio = _inicioSessao;
+    if (documentoId == null || inicio == null) return;
+
+    final duracao = DateTime.now().difference(inicio).inSeconds;
+    try {
+      await _firestore
+          .collection('estatisticas_acessos')
+          .doc(documentoId)
+          .update({
+            'fim_sessao': FieldValue.serverTimestamp(),
+            'ultima_atividade': FieldValue.serverTimestamp(),
+            'duracao_segundos': duracao,
+          });
+
+      _sessaoFinalizada = true;
+      _documentoAcessoId = null;
+      _inicioSessao = null;
+      _inicioTelaAtual = null;
+      _telaAtual = null;
+      _contadorEventos = 0;
+      _marcadoresTempo.clear();
+    } catch (_) {
+      // O rastreio nunca pode interromper o fluxo do usuário.
     }
   }
 
@@ -596,7 +669,6 @@ class RastreioSiteService {
         'resumo': _gerarResumoEventos(eventosMap),
       };
     } catch (e) {
-      print('❌ Erro ao buscar rastro: $e');
       return {'erro': e.toString()};
     }
   }

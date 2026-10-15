@@ -197,7 +197,7 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
   }
 
   String _colorToHex(Color color) {
-    return '#${color.value.toRadixString(16).substring(2).toUpperCase()}';
+    return '#${color.toARGB32().toRadixString(16).substring(2).toUpperCase()}';
   }
 
   Future<void> _pickColor({
@@ -239,7 +239,7 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
                             width: 46,
                             height: 46,
                             decoration: BoxDecoration(
-                              color: accent.withOpacity(0.12),
+                              color: accent.withAlpha(31),
                               borderRadius: BorderRadius.circular(
                                 t.buttonRadius,
                               ),
@@ -413,7 +413,7 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
       }
     } catch (e) {
       if (mounted)
-        _showSnack('Erro ao salvar graduação: $e', context.uai.error);
+        { _showSnack('Erro ao salvar graduação: $e', context.uai.error); }
     } finally {
       if (mounted) setState(() => _salvando = false);
     }
@@ -651,9 +651,9 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
             width: 54,
             height: 54,
             decoration: BoxDecoration(
-              color: onPrimary.withOpacity(0.13),
+              color: onPrimary.withAlpha(33),
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: onPrimary.withOpacity(0.14)),
+              border: Border.all(color: onPrimary.withAlpha(36)),
             ),
             child: Icon(
               Icons.workspace_premium_rounded,
@@ -677,7 +677,7 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
             'Veja como a corda e a descrição vão aparecer.',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: onPrimary.withOpacity(0.78),
+              color: onPrimary.withAlpha(199),
               fontSize: 12.5,
             ),
           ),
@@ -700,9 +700,9 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
             width: double.infinity,
             padding: const EdgeInsets.all(13),
             decoration: BoxDecoration(
-              color: onPrimary.withOpacity(0.12),
+              color: onPrimary.withAlpha(31),
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: onPrimary.withOpacity(0.14)),
+              border: Border.all(color: onPrimary.withAlpha(36)),
             ),
             child: Column(
               children: [
@@ -721,7 +721,7 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
                   _previewCorda,
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: onPrimary.withOpacity(0.78),
+                    color: onPrimary.withAlpha(199),
                     fontWeight: FontWeight.bold,
                     fontSize: 12,
                   ),
@@ -733,11 +733,11 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
                     padding: const EdgeInsets.all(11),
                     decoration: BoxDecoration(
                       color: Color.alphaBlend(
-                        onPrimary.withOpacity(0.10),
+                        onPrimary.withAlpha(26),
                         t.card,
                       ),
                       borderRadius: BorderRadius.circular(15),
-                      border: Border.all(color: onPrimary.withOpacity(0.12)),
+                      border: Border.all(color: onPrimary.withAlpha(31)),
                     ),
                     child: Text(
                       _previewDescricao,
@@ -998,9 +998,9 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
           width: 42,
           height: 42,
           decoration: BoxDecoration(
-            color: accent.withOpacity(0.10),
+            color: accent.withAlpha(26),
             borderRadius: BorderRadius.circular(t.buttonRadius),
-            border: Border.all(color: accent.withOpacity(0.14)),
+            border: Border.all(color: accent.withAlpha(36)),
           ),
           child: Icon(icon, color: accent),
         ),
@@ -1071,7 +1071,7 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(t.inputRadius),
-        borderSide: BorderSide(color: t.error.withOpacity(0.75)),
+        borderSide: BorderSide(color: t.error.withAlpha(191)),
       ),
       focusedErrorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(t.inputRadius),
@@ -1118,11 +1118,11 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
     final t = context.uai;
     final accent = _ensureVisible(t.primary, t.cardAlt);
 
-    final normalizedItems = <String>[
+    final normalizedItems = <String>{
       ...items,
       if (value != null && value.trim().isNotEmpty && !items.contains(value))
         value,
-    ].toSet().toList();
+    }.toList();
 
     final safeValue = value != null && normalizedItems.contains(value)
         ? value
@@ -1148,7 +1148,7 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
     }
 
     return DropdownButtonFormField<String>(
-      value: safeValue,
+      initialValue: safeValue,
       isExpanded: true,
       dropdownColor: t.surface,
       style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w700),
@@ -1225,7 +1225,7 @@ class _EditarGraduacaoScreenState extends State<EditarGraduacaoScreen> {
                   border: Border.all(color: t.surface, width: 3),
                   boxShadow: [
                     BoxShadow(
-                      color: visibleColor.withOpacity(0.22),
+                      color: visibleColor.withAlpha(56),
                       blurRadius: 6,
                       offset: const Offset(0, 2),
                     ),

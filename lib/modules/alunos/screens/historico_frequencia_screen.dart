@@ -6,6 +6,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:uai_capoeira/core/caca_bug/caca_bug_actions.dart';
+import 'package:uai_capoeira/core/caca_bug/caca_bug_service.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 
 Color _readableOn(Color background) {
@@ -97,6 +99,10 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
   DateTime? _ultimaBusca;
   String _fonteDados = 'Carregando...';
 
+  String? _cacaBugUltimoHashCarregamento;
+  String? _cacaBugUltimoHashFiltro;
+  bool _cacaBugAtualizacaoManualEmAndamento = false;
+
   final List<String> _periodos = const [
     'Últimos 30 dias',
     'Últimos 60 dias',
@@ -123,6 +129,181 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
 
   String get _cacheKey {
     return 'freq_inteligente_${widget.alunoId}_${_filtroPeriodo}_$_filtroTipoAula';
+  }
+
+  Map<String, dynamic> _cacaBugPayloadBase({Map<String, dynamic>? extra}) {
+    return {
+      'alunoId': widget.alunoId,
+      'alunoNome': widget.alunoNome,
+      'periodo': _filtroPeriodo,
+      'filtroPeriodo': _filtroPeriodo,
+      'tipoAula': _filtroTipoAula,
+      'filtroTipoAula': _filtroTipoAula,
+      'usaTempoReal': _usaTempoReal,
+      'origem': 'historico_frequencia_screen',
+      'modoAcesso': 'gestao',
+      ...?extra,
+    };
+  }
+
+  String _cacaBugErroResumo(Object erro) {
+    var texto = erro.toString();
+    texto = texto
+        .replaceAll(RegExp(r'https?:\/\/\S+'), '[url_redigida]')
+        .replaceAll(RegExp(r'wa\.me\/\S+'), '[whatsapp_redigido]')
+        .replaceAll(RegExp(r'api\.whatsapp\.com\/\S+'), '[whatsapp_redigido]')
+        .replaceAll(RegExp(r'tel:\S+'), '[telefone_redigido]')
+        .replaceAll(RegExp(r'\+?\d[\d\s\-\(\)]{7,}\d'), '[numero_redigido]')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (texto.length <= 180) return texto;
+    return '${texto.substring(0, 180)}...';
+  }
+
+  double _cacaBugPercentualSeguro(double value) {
+    return double.parse(value.toStringAsFixed(1));
+  }
+
+  void _registrarCacaBugCarregouFrequencia(
+    _ResumoFrequenciaInteligente resumo, {
+    required String fonte,
+    bool force = false,
+  }) {
+    final percentual = _cacaBugPercentualSeguro(resumo.percentualPresenca);
+    final hash = [
+      widget.alunoId,
+      _filtroPeriodo,
+      _filtroTipoAula,
+      fonte,
+      resumo.totalAulas,
+      resumo.totalPresencas,
+      resumo.totalFaltas,
+      percentual,
+      resumo.historicoItems.length,
+    ].join('|');
+
+    if (!force && _cacaBugUltimoHashCarregamento == hash) return;
+    _cacaBugUltimoHashCarregamento = hash;
+
+    unawaited(
+      CacaBugService.instance.registrarEvento(
+        tipo: 'sistema',
+        acao: CacaBugActions.carregouFrequenciaAluno,
+        descricao:
+            'Usuário carregou a frequência do aluno ${widget.alunoNome} no período $_filtroPeriodo',
+        tela: 'HistoricoFrequenciaScreen',
+        arquivo: 'lib/modules/alunos/screens/historico_frequencia_screen.dart',
+        rota: '/alunos/frequencia',
+        status: 'success',
+        dados: _cacaBugPayloadBase(
+          extra: {
+            'fonteDados': fonte,
+            'totalAulas': resumo.totalAulas,
+            'totalPresencas': resumo.totalPresencas,
+            'totalFaltas': resumo.totalFaltas,
+            'percentualPresenca': percentual,
+            'historicoCount': resumo.historicoItems.length,
+            'perfil': resumo.perfil.label,
+            'risco': resumo.risco.label,
+            'tendencia': resumo.tendencia.label,
+            'diasSemPresenca': resumo.diasSemPresenca,
+            'status': resumo.totalAulas == 0 ? 'vazio' : 'sucesso',
+          },
+        ),
+        force: force,
+      ),
+    );
+  }
+
+  void _registrarCacaBugErroFrequencia({
+    required Object erro,
+    required String erroEtapa,
+    required String fonteDados,
+    bool offline = false,
+  }) {
+    final erroResumo = _cacaBugErroResumo(erro);
+    unawaited(
+      CacaBugService.instance.registrarErro(
+        acao: CacaBugActions.erroCarregarFrequenciaAluno,
+        descricao: 'Erro ao carregar frequência do aluno ${widget.alunoNome}',
+        tela: 'HistoricoFrequenciaScreen',
+        arquivo: 'lib/modules/alunos/screens/historico_frequencia_screen.dart',
+        rota: '/alunos/frequencia',
+        erro: Exception(erroResumo),
+        dados: _cacaBugPayloadBase(
+          extra: {
+            'fonteDados': fonteDados,
+            'erroEtapa': erroEtapa,
+            'erroTipo': erro.runtimeType.toString(),
+            'erroResumo': erroResumo,
+            'offline': offline,
+            'status': 'erro',
+          },
+        ),
+      ),
+    );
+  }
+
+  void _registrarCacaBugFiltroFrequencia({
+    required String filtroAlterado,
+    required String periodoAnterior,
+    required String periodoNovo,
+    required String tipoAulaAnterior,
+    required String tipoAulaNovo,
+  }) {
+    final hash = [
+      widget.alunoId,
+      filtroAlterado,
+      periodoAnterior,
+      periodoNovo,
+      tipoAulaAnterior,
+      tipoAulaNovo,
+    ].join('|');
+    if (_cacaBugUltimoHashFiltro == hash) return;
+    _cacaBugUltimoHashFiltro = hash;
+
+    unawaited(
+      CacaBugService.instance.registrarEvento(
+        tipo: 'acao_usuario',
+        acao: CacaBugActions.aplicouFiltroFrequenciaAluno,
+        descricao:
+            'Usuário aplicou filtro de frequência $periodoNovo / $tipoAulaNovo para o aluno ${widget.alunoNome}',
+        tela: 'HistoricoFrequenciaScreen',
+        arquivo: 'lib/modules/alunos/screens/historico_frequencia_screen.dart',
+        rota: '/alunos/frequencia',
+        status: 'success',
+        dados: _cacaBugPayloadBase(
+          extra: {
+            'filtroAlterado': filtroAlterado,
+            'periodoAnterior': periodoAnterior,
+            'periodoNovo': periodoNovo,
+            'tipoAulaAnterior': tipoAulaAnterior,
+            'tipoAulaNovo': tipoAulaNovo,
+          },
+        ),
+        force: true,
+      ),
+    );
+  }
+
+  void _registrarCacaBugAtualizouFrequencia() {
+    unawaited(
+      CacaBugService.instance.registrarEvento(
+        tipo: 'acao_usuario',
+        acao: CacaBugActions.atualizouFrequenciaAluno,
+        descricao: 'Usuário atualizou a frequência do aluno ${widget.alunoNome}',
+        tela: 'HistoricoFrequenciaScreen',
+        arquivo: 'lib/modules/alunos/screens/historico_frequencia_screen.dart',
+        rota: '/alunos/frequencia',
+        status: 'success',
+        dados: _cacaBugPayloadBase(
+          extra: {
+            'origemAtualizacao': 'botao_refresh',
+          },
+        ),
+        force: true,
+      ),
+    );
   }
 
   @override
@@ -169,7 +350,8 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
   Future<bool> _temInternet() async {
     try {
       final result = await _connectivity.checkConnectivity();
-      return !result.contains(ConnectivityResult.none);
+      if (result.isEmpty) return false;
+      return !result.every((item) => item == ConnectivityResult.none);
     } catch (_) {
       return false;
     }
@@ -196,6 +378,13 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
         return;
       }
 
+      _registrarCacaBugErroFrequencia(
+        erro: 'Sem conexão e sem cache disponível para este filtro.',
+        erroEtapa: 'offline_sem_cache',
+        fonteDados: 'offline',
+        offline: true,
+      );
+      _cacaBugAtualizacaoManualEmAndamento = false;
       if (!mounted) return;
       setState(() {
         _carregando = false;
@@ -221,16 +410,23 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
         _aplicarResumo(resumo, fonte: 'Tempo real');
       },
       onError: (error) {
+        _registrarCacaBugErroFrequencia(
+          erro: error,
+          erroEtapa: 'tempo_real_on_error',
+          fonteDados: 'Tempo real',
+          offline: _isOffline,
+        );
         if (!mounted) return;
         final cacheado = _cache.loadFromCache(_cacheKey);
         if (cacheado is _ResumoFrequenciaInteligente) {
           _aplicarResumo(cacheado, fonte: 'Cache após erro');
           return;
         }
+        _cacaBugAtualizacaoManualEmAndamento = false;
         setState(() {
           _carregando = false;
           _temErro = true;
-          _mensagemErro = error.toString();
+          _mensagemErro = _cacaBugErroResumo(error);
         });
       },
     );
@@ -254,17 +450,24 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
       if (!mounted) return;
       _aplicarResumo(resumo, fonte: 'Busca única');
     } catch (e) {
+      _registrarCacaBugErroFrequencia(
+        erro: e,
+        erroEtapa: 'busca_unica_catch',
+        fonteDados: 'Busca única',
+        offline: _isOffline,
+      );
       final fallback = _cache.loadFromCache(_cacheKey);
       if (fallback is _ResumoFrequenciaInteligente) {
         _aplicarResumo(fallback, fonte: 'Cache após erro');
         return;
       }
 
+      _cacaBugAtualizacaoManualEmAndamento = false;
       if (!mounted) return;
       setState(() {
         _carregando = false;
         _temErro = true;
-        _mensagemErro = 'Erro ao carregar frequência: $e';
+        _mensagemErro = 'Erro ao carregar frequência: ${_cacaBugErroResumo(e)}';
       });
     }
   }
@@ -791,6 +994,7 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
   }) {
     if (!mounted) return;
 
+    final forceCacaBug = _cacaBugAtualizacaoManualEmAndamento;
     setState(() {
       _resumo = resumo;
       _ultimaBusca = resumo.carregadoEm;
@@ -799,6 +1003,12 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
       _temErro = false;
       _mensagemErro = '';
     });
+    _registrarCacaBugCarregouFrequencia(
+      resumo,
+      fonte: fonte,
+      force: forceCacaBug,
+    );
+    _cacaBugAtualizacaoManualEmAndamento = false;
   }
 
   DateTime? _toDate(dynamic value) {
@@ -836,20 +1046,27 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
         .replaceAll('ú', 'u')
         .replaceAll('ç', 'c');
 
-    if (semAcento.startsWith('seg') || semAcento.contains('segunda'))
+    if (semAcento.startsWith('seg') || semAcento.contains('segunda')) {
       return 'seg';
-    if (semAcento.startsWith('ter') || semAcento.contains('terca'))
+    }
+    if (semAcento.startsWith('ter') || semAcento.contains('terca')) {
       return 'ter';
-    if (semAcento.startsWith('qua') || semAcento.contains('quarta'))
+    }
+    if (semAcento.startsWith('qua') || semAcento.contains('quarta')) {
       return 'qua';
-    if (semAcento.startsWith('qui') || semAcento.contains('quinta'))
+    }
+    if (semAcento.startsWith('qui') || semAcento.contains('quinta')) {
       return 'qui';
-    if (semAcento.startsWith('sex') || semAcento.contains('sexta'))
+    }
+    if (semAcento.startsWith('sex') || semAcento.contains('sexta')) {
       return 'sex';
-    if (semAcento.startsWith('sab') || semAcento.contains('sabado'))
+    }
+    if (semAcento.startsWith('sab') || semAcento.contains('sabado')) {
       return 'sab';
-    if (semAcento.startsWith('dom') || semAcento.contains('domingo'))
+    }
+    if (semAcento.startsWith('dom') || semAcento.contains('domingo')) {
       return 'dom';
+    }
 
     return semAcento.length >= 3 ? semAcento.substring(0, 3) : semAcento;
   }
@@ -950,15 +1167,6 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
     }
   }
 
-  String _formatarDataStr(String? s) {
-    if (s == null || s.isEmpty) return 'Nunca';
-    try {
-      return DateFormat('dd/MM').format(DateTime.parse(s));
-    } catch (_) {
-      return s;
-    }
-  }
-
   String _formatHora(DateTime? data) {
     if (data == null) return '--:--';
     return _timeFormat.format(data);
@@ -981,6 +1189,8 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
   }
 
   Future<void> _atualizar() async {
+    _registrarCacaBugAtualizouFrequencia();
+    _cacaBugAtualizacaoManualEmAndamento = true;
     _cache.remove(_cacheKey);
     await _carregarDados(forcarAtualizacao: true);
   }
@@ -988,15 +1198,28 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
   void _aplicarFiltroPeriodo(String periodo) {
     if (_filtroPeriodo == periodo) return;
 
+    final periodoAnterior = _filtroPeriodo;
+    final tipoAnterior = _filtroTipoAula;
+
     if (periodo == 'Todos' &&
         _cache.loadFromCache(
               'freq_inteligente_${widget.alunoId}_Todos_$_filtroTipoAula',
             ) ==
             null) {
-      _confirmarFiltroTodos();
+      _confirmarFiltroTodos(
+        periodoAnterior: periodoAnterior,
+        tipoAulaAnterior: tipoAnterior,
+      );
       return;
     }
 
+    _registrarCacaBugFiltroFrequencia(
+      filtroAlterado: 'periodo',
+      periodoAnterior: periodoAnterior,
+      periodoNovo: periodo,
+      tipoAulaAnterior: tipoAnterior,
+      tipoAulaNovo: _filtroTipoAula,
+    );
     setState(() {
       _filtroPeriodo = periodo;
       _resumo = null;
@@ -1005,7 +1228,10 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
     _carregarDados();
   }
 
-  Future<void> _confirmarFiltroTodos() async {
+  Future<void> _confirmarFiltroTodos({
+    required String periodoAnterior,
+    required String tipoAulaAnterior,
+  }) async {
     final confirmar = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -1055,6 +1281,13 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
     );
 
     if (confirmar == true) {
+      _registrarCacaBugFiltroFrequencia(
+        filtroAlterado: 'periodo',
+        periodoAnterior: periodoAnterior,
+        periodoNovo: 'Todos',
+        tipoAulaAnterior: tipoAulaAnterior,
+        tipoAulaNovo: _filtroTipoAula,
+      );
       setState(() {
         _filtroPeriodo = 'Todos';
         _resumo = null;
@@ -1067,6 +1300,15 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
   void _aplicarFiltroTipoAula(String tipo) {
     if (_filtroTipoAula == tipo) return;
 
+    final periodoAnterior = _filtroPeriodo;
+    final tipoAnterior = _filtroTipoAula;
+    _registrarCacaBugFiltroFrequencia(
+      filtroAlterado: 'tipo_aula',
+      periodoAnterior: periodoAnterior,
+      periodoNovo: _filtroPeriodo,
+      tipoAulaAnterior: tipoAnterior,
+      tipoAulaNovo: tipo,
+    );
     setState(() {
       _filtroTipoAula = tipo;
       _resumo = null;
@@ -1100,7 +1342,7 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: _appBarFg().withOpacity(0.82),
+                color: _appBarFg().withAlpha(209),
               ),
             ),
           ],
@@ -1152,7 +1394,7 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
         border: Border(bottom: BorderSide(color: context.uai.border)),
         boxShadow: [
           BoxShadow(
-            color: context.uai.textPrimary.withOpacity(0.045),
+            color: context.uai.textPrimary.withAlpha(11),
             blurRadius: 10,
             offset: const Offset(0, 3),
           ),
@@ -1170,7 +1412,7 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
                     width: 34,
                     height: 34,
                     decoration: BoxDecoration(
-                      color: context.uai.primary.withOpacity(0.10),
+                      color: context.uai.primary.withAlpha(26),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Icon(
@@ -1243,9 +1485,9 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.10),
+        color: color.withAlpha(26),
         borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: color.withOpacity(0.20)),
+        border: Border.all(color: color.withAlpha(51)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1271,7 +1513,7 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
 
   Widget _buildFiltroDropdownPeriodo() {
     return DropdownButtonFormField<String>(
-      value: _filtroPeriodo,
+      initialValue: _filtroPeriodo,
       style: TextStyle(
         color: context.uai.textPrimary,
         fontWeight: FontWeight.w700,
@@ -1320,7 +1562,7 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
 
   Widget _buildFiltroDropdownTipoAula() {
     return DropdownButtonFormField<String>(
-      value: _filtroTipoAula,
+      initialValue: _filtroTipoAula,
       style: TextStyle(
         color: context.uai.textPrimary,
         fontWeight: FontWeight.w700,
@@ -1550,7 +1792,7 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
                   Icon(
                     Icons.check_circle_outline,
                     size: 28,
-                    color: context.uai.success.withOpacity(0.75),
+                    color: context.uai.success.withAlpha(191),
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -1575,13 +1817,13 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: _usaTempoReal
-            ? context.uai.success.withOpacity(0.10)
-            : context.uai.info.withOpacity(0.10),
+            ? context.uai.success.withAlpha(26)
+            : context.uai.info.withAlpha(26),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: _usaTempoReal
-              ? context.uai.success.withOpacity(0.18)
-              : context.uai.info.withOpacity(0.18),
+              ? context.uai.success.withAlpha(46)
+              : context.uai.info.withAlpha(46),
         ),
       ),
       child: Row(
@@ -1622,7 +1864,7 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
         borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: context.uai.primary.withOpacity(0.22),
+            color: context.uai.primary.withAlpha(56),
             blurRadius: 14,
             offset: const Offset(0, 6),
           ),
@@ -1636,7 +1878,7 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
-                color: _onPrimary().withOpacity(0.14),
+                color: _onPrimary().withAlpha(36),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Text(
@@ -1655,7 +1897,7 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
               _subtituloPeriodo(),
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: _onPrimary().withOpacity(0.78),
+                color: _onPrimary().withAlpha(199),
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
               ),
@@ -1672,7 +1914,7 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
                         ? resumo.percentualPresenca / 100
                         : 0,
                     strokeWidth: 12,
-                    backgroundColor: _onPrimary().withOpacity(0.18),
+                    backgroundColor: _onPrimary().withAlpha(46),
                     valueColor: AlwaysStoppedAnimation<Color>(perfilColor),
                   ),
                 ),
@@ -1692,7 +1934,7 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
                     Text(
                       'presença',
                       style: TextStyle(
-                        color: _onPrimary().withOpacity(0.74),
+                        color: _onPrimary().withAlpha(189),
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
                       ),
@@ -1716,7 +1958,7 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
               resumo.perfil.descricao,
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: _onPrimary().withOpacity(0.78),
+                color: _onPrimary().withAlpha(199),
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 height: 1.25,
@@ -1729,7 +1971,7 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
                   'Presenças',
                   '${resumo.totalPresencas}',
                   Icons.check_circle_rounded,
-                  context.uai.success.withOpacity(0.75),
+                  context.uai.success.withAlpha(191),
                 ),
                 const SizedBox(width: 8),
                 _buildHeaderMini(
@@ -1763,9 +2005,9 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 7),
         decoration: BoxDecoration(
-          color: _onPrimary().withOpacity(0.12),
+          color: _onPrimary().withAlpha(31),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: _onPrimary().withOpacity(0.14)),
+          border: Border.all(color: _onPrimary().withAlpha(36)),
         ),
         child: Column(
           children: [
@@ -1783,7 +2025,7 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
             Text(
               label,
               style: TextStyle(
-                color: _onPrimary().withOpacity(0.76),
+                color: _onPrimary().withAlpha(194),
                 fontSize: 10,
                 fontWeight: FontWeight.w600,
               ),
@@ -1801,9 +2043,9 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(riscoColor.withOpacity(0.06), context.uai.card),
+        color: Color.alphaBlend(riscoColor.withAlpha(15), context.uai.card),
         borderRadius: BorderRadius.circular(context.uai.cardRadius),
-        border: Border.all(color: riscoColor.withOpacity(0.18)),
+        border: Border.all(color: riscoColor.withAlpha(46)),
         boxShadow: context.uai.softShadow,
       ),
       child: Row(
@@ -1813,9 +2055,9 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: riscoColor.withOpacity(0.10),
+              color: riscoColor.withAlpha(26),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: riscoColor.withOpacity(0.16)),
+              border: Border.all(color: riscoColor.withAlpha(41)),
             ),
             child: Icon(Icons.psychology_rounded, color: riscoColor),
           ),
@@ -1949,9 +2191,9 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(color.withOpacity(0.06), context.uai.cardAlt),
+        color: Color.alphaBlend(color.withAlpha(15), context.uai.cardAlt),
         borderRadius: BorderRadius.circular(17),
-        border: Border.all(color: color.withOpacity(0.16)),
+        border: Border.all(color: color.withAlpha(41)),
       ),
       child: Row(
         children: [
@@ -1959,7 +2201,7 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
             width: 38,
             height: 38,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.10),
+              color: color.withAlpha(26),
               borderRadius: BorderRadius.circular(14),
             ),
             child: Icon(info.icone, color: color, size: 20),
@@ -2032,9 +2274,9 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(color.withOpacity(0.06), context.uai.cardAlt),
+        color: Color.alphaBlend(color.withAlpha(15), context.uai.cardAlt),
         borderRadius: BorderRadius.circular(17),
-        border: Border.all(color: color.withOpacity(0.16)),
+        border: Border.all(color: color.withAlpha(41)),
       ),
       child: Row(
         children: [
@@ -2042,7 +2284,7 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
             width: 38,
             height: 38,
             decoration: BoxDecoration(
-              color: color.withOpacity(0.10),
+              color: color.withAlpha(26),
               borderRadius: BorderRadius.circular(14),
             ),
             child: Icon(icon, color: color, size: 20),
@@ -2177,9 +2419,9 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 8),
         decoration: BoxDecoration(
-          color: Color.alphaBlend(color.withOpacity(0.07), context.uai.cardAlt),
+          color: Color.alphaBlend(color.withAlpha(18), context.uai.cardAlt),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withOpacity(0.16)),
+          border: Border.all(color: color.withAlpha(41)),
         ),
         child: Column(
           children: [
@@ -2225,8 +2467,9 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
   }
 
   Widget _buildPresencasPorDia(_ResumoFrequenciaInteligente resumo) {
-    if (resumo.presencasPorDia.values.every((v) => v == 0))
+    if (resumo.presencasPorDia.values.every((v) => v == 0)) {
       return const SizedBox.shrink();
+    }
 
     final dias = [
       ['seg', 'Seg'],
@@ -2296,12 +2539,12 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
       padding: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
         color: ativo
-            ? context.uai.primary.withOpacity(0.10)
+            ? context.uai.primary.withAlpha(26)
             : context.uai.cardAlt,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color: ativo
-              ? context.uai.primary.withOpacity(0.24)
+              ? context.uai.primary.withAlpha(61)
               : context.uai.border,
         ),
       ),
@@ -2370,9 +2613,9 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  color: cor.withOpacity(0.1),
+                  color: cor.withAlpha(26),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: cor.withOpacity(0.3)),
+                  border: Border.all(color: cor.withAlpha(77)),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -2465,7 +2708,7 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
                                 (presente
                                         ? context.uai.success
                                         : context.uai.error)
-                                    .withOpacity(0.4),
+                                    .withAlpha(102),
                             blurRadius: 6,
                           ),
                         ],
@@ -2503,8 +2746,8 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
                             ),
                             decoration: BoxDecoration(
                               color: presente
-                                  ? context.uai.success.withOpacity(0.10)
-                                  : context.uai.error.withOpacity(0.10),
+                                  ? context.uai.success.withAlpha(26)
+                                  : context.uai.error.withAlpha(26),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
@@ -2583,9 +2826,9 @@ class _HistoricoFrequenciaScreenState extends State<HistoricoFrequenciaScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.10),
+        color: accent.withAlpha(26),
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: accent.withOpacity(0.30)),
+        border: Border.all(color: accent.withAlpha(77)),
       ),
       child: Text(
         label,
@@ -2976,7 +3219,7 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog>
         gradient: LinearGradient(
           colors: [
             statusColor,
-            Color.alphaBlend(statusColor.withOpacity(0.80), t.primary),
+            Color.alphaBlend(statusColor.withAlpha(204), t.primary),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -2988,9 +3231,9 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog>
             width: 52,
             height: 52,
             decoration: BoxDecoration(
-              color: onStatus.withOpacity(0.14),
+              color: onStatus.withAlpha(36),
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: onStatus.withOpacity(0.16)),
+              border: Border.all(color: onStatus.withAlpha(41)),
             ),
             child: Icon(Icons.person_rounded, color: onStatus, size: 30),
           ),
@@ -3055,9 +3298,9 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(
-        color: onColor.withOpacity(0.14),
+        color: onColor.withAlpha(36),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: onColor.withOpacity(0.16)),
+        border: Border.all(color: onColor.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -3089,9 +3332,9 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog>
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(warning.withOpacity(0.08), t.card),
+        color: Color.alphaBlend(warning.withAlpha(20), t.card),
         borderRadius: BorderRadius.circular(t.inputRadius),
-        border: Border.all(color: warning.withOpacity(0.18)),
+        border: Border.all(color: warning.withAlpha(46)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3147,9 +3390,9 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog>
           width: double.infinity,
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Color.alphaBlend(t.error.withOpacity(0.08), t.card),
+            color: Color.alphaBlend(t.error.withAlpha(20), t.card),
             borderRadius: BorderRadius.circular(t.inputRadius),
-            border: Border.all(color: t.error.withOpacity(0.18)),
+            border: Border.all(color: t.error.withAlpha(46)),
           ),
           child: Text(
             _erro!,
@@ -3187,9 +3430,9 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog>
     return Container(
       padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(primary.withOpacity(0.07), t.card),
+        color: Color.alphaBlend(primary.withAlpha(18), t.card),
         borderRadius: BorderRadius.circular(t.inputRadius),
-        border: Border.all(color: primary.withOpacity(0.15)),
+        border: Border.all(color: primary.withAlpha(38)),
       ),
       child: Row(
         children: [
@@ -3197,7 +3440,7 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog>
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: primary.withOpacity(0.10),
+              color: primary.withAlpha(26),
               borderRadius: BorderRadius.circular(15),
             ),
             child: Icon(Icons.groups_rounded, color: primary),
@@ -3276,7 +3519,7 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog>
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               color: isDestaque
-                  ? Color.alphaBlend(statusColor.withOpacity(0.12), t.card)
+                  ? Color.alphaBlend(statusColor.withAlpha(31), t.card)
                   : t.cardAlt,
               borderRadius: BorderRadius.circular(t.inputRadius),
               border: Border.all(
@@ -3286,7 +3529,7 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog>
               boxShadow: isDestaque
                   ? [
                       BoxShadow(
-                        color: statusColor.withOpacity(0.22),
+                        color: statusColor.withAlpha(56),
                         blurRadius: 8,
                         offset: const Offset(0, 3),
                       ),
@@ -3344,11 +3587,11 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog>
                   ),
                   decoration: BoxDecoration(
                     color: Color.alphaBlend(
-                      statusColor.withOpacity(0.08),
+                      statusColor.withAlpha(20),
                       t.card,
                     ),
                     borderRadius: BorderRadius.circular(99),
-                    border: Border.all(color: statusColor.withOpacity(0.14)),
+                    border: Border.all(color: statusColor.withAlpha(36)),
                   ),
                   child: Text(
                     presente ? 'P' : 'A',
@@ -3374,9 +3617,9 @@ class _DetalheAulaDialogState extends State<_DetalheAulaDialog>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), t.card),
+        color: Color.alphaBlend(accent.withAlpha(20), t.card),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: accent.withOpacity(0.14)),
+        border: Border.all(color: accent.withAlpha(36)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

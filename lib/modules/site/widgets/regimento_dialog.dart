@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:uai_capoeira/core/theme/app_theme.dart';
 
 class RegimentoDialog extends StatefulWidget {
   const RegimentoDialog({super.key});
@@ -157,30 +158,63 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
 
   IconData _getIconFromName(dynamic iconName) {
     if (iconName is IconData) return iconName;
-
     switch (iconName?.toString()) {
-      case 'gavel':
-        return Icons.gavel_rounded;
-      case 'person_add':
-        return Icons.person_add_rounded;
-      case 'school':
-        return Icons.school_rounded;
-      case 'workspace_premium':
-        return Icons.workspace_premium_rounded;
+      case 'gavel': return Icons.gavel_rounded;
+      case 'rule': return Icons.rule_rounded;
+      case 'security': return Icons.security_rounded;
       case 'groups':
-        return Icons.groups_rounded;
-      case 'shield':
-        return Icons.shield_rounded;
-      case 'warning':
-        return Icons.warning_rounded;
-      case 'info':
-        return Icons.info_rounded;
-      default:
-        return Icons.description_rounded;
+      case 'group': return Icons.groups_rounded;
+      case 'person_add': return Icons.person_add_alt_1_rounded;
+      case 'military_tech': return Icons.military_tech_rounded;
+      case 'school': return Icons.school_rounded;
+      case 'workspace_premium': return Icons.workspace_premium_rounded;
+      case 'verified_user': return Icons.verified_user_rounded;
+      case 'handshake': return Icons.handshake_rounded;
+      case 'favorite': return Icons.favorite_rounded;
+      case 'fact_check': return Icons.fact_check_rounded;
+      case 'schedule': return Icons.schedule_rounded;
+      case 'checkroom': return Icons.checkroom_rounded;
+      case 'event': return Icons.event_rounded;
+      case 'emoji_events': return Icons.emoji_events_rounded;
+      case 'music_note': return Icons.music_note_rounded;
+      case 'album': return Icons.album_rounded;
+      case 'history_edu': return Icons.history_edu_rounded;
+      case 'menu_book': return Icons.menu_book_rounded;
+      case 'location_on': return Icons.location_on_rounded;
+      case 'travel_explore': return Icons.travel_explore_rounded;
+      case 'diversity_3': return Icons.diversity_3_rounded;
+      case 'family_restroom': return Icons.family_restroom_rounded;
+      case 'campaign': return Icons.campaign_rounded;
+      case 'block': return Icons.block_rounded;
+      case 'task_alt': return Icons.task_alt_rounded;
+      case 'warning': return Icons.warning_amber_rounded;
+      case 'badge': return Icons.badge_rounded;
+      case 'volunteer_activism': return Icons.volunteer_activism_rounded;
+      case 'track_changes': return Icons.track_changes_rounded;
+      case 'star': return Icons.star_rounded;
+      default: return Icons.description_rounded;
     }
   }
 
+  Color _readableOn(Color background) {
+    return background.computeLuminance() > 0.48
+        ? const Color(0xFF111827)
+        : const Color(0xFFFFFFFF);
+  }
+
+  Color _ensureVisible(Color color, Color background) {
+    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    if (diff >= 0.26) return color;
+    final bgIsDark = background.computeLuminance() < 0.45;
+    final hsl = HSLColor.fromColor(color);
+    return hsl
+        .withLightness(bgIsDark ? 0.72 : 0.32)
+        .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
+        .toColor();
+  }
+
   Color _resolveColor(dynamic value, {required Color fallback}) {
+    final t = context.uai;
     if (value is Color) return value;
 
     if (value is int) {
@@ -197,21 +231,35 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
       switch (normalized) {
         case 'blue':
         case 'azul':
-          return Colors.blue;
+        case 'info':
+          return t.info;
         case 'green':
         case 'verde':
-          return Colors.green;
+        case 'success':
+          return t.success;
         case 'orange':
         case 'laranja':
-          return Colors.orange;
+        case 'warning':
+          return t.warning;
         case 'purple':
         case 'roxo':
-          return Colors.purple;
+        case 'associacao':
+        case 'associação':
+          return t.associacao;
         case 'red':
         case 'vermelho':
-          return Colors.red;
+        case 'error':
+          return t.error;
         case 'teal':
-          return Colors.teal;
+        case 'inscricoes':
+        case 'inscrições':
+          return t.inscricoes;
+        case 'rifas':
+          return t.rifas;
+        case 'eventos':
+          return t.eventos;
+        case 'uniformes':
+          return t.uniformes;
       }
 
       try {
@@ -366,6 +414,7 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
+    final t = context.uai;
 
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
@@ -374,15 +423,15 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
         child: Container(
           width: double.infinity,
           constraints: BoxConstraints(
-            maxWidth: 760,
-            maxHeight: size.height * 0.92,
+            maxWidth: 1180,
+            maxHeight: size.height * 0.94,
           ),
           decoration: BoxDecoration(
-            color: Colors.grey.shade50,
+            color: t.background,
             borderRadius: BorderRadius.circular(28),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.18),
+                color: Colors.black.withAlpha(46),
                 blurRadius: 22,
                 offset: const Offset(0, 8),
               ),
@@ -414,22 +463,24 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
   }
 
   Widget _buildTopBar() {
+    final t = context.uai;
+    final onPrimary = _readableOn(t.primary);
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
-      decoration: BoxDecoration(color: Colors.red.shade900),
+      decoration: BoxDecoration(gradient: t.primaryGradient),
       child: Row(
         children: [
           Container(
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.14),
+              color: onPrimary.withAlpha(36),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withOpacity(0.16)),
+              border: Border.all(color: onPrimary.withAlpha(41)),
             ),
-            child: const Icon(
+            child: Icon(
               Icons.gavel_rounded,
-              color: Colors.white,
+              color: t.surface,
               size: 24,
             ),
           ),
@@ -454,7 +505,7 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.78),
+                    color: Colors.white.withAlpha(199),
                     fontSize: 11.5,
                     fontWeight: FontWeight.w600,
                   ),
@@ -465,7 +516,7 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
           IconButton(
             tooltip: 'Fechar',
             onPressed: () => Navigator.pop(context),
-            icon: const Icon(Icons.close_rounded, color: Colors.white),
+            icon: Icon(Icons.close_rounded, color: onPrimary),
           ),
         ],
       ),
@@ -473,12 +524,13 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
   }
 
   Widget _buildLoadingState() {
+    final t = context.uai;
     return Center(
       child: Container(
         padding: const EdgeInsets.all(22),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(t.cardRadius),
           border: Border.all(color: Colors.grey.shade100),
         ),
         child: Column(
@@ -502,21 +554,19 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
   Widget _buildContent() {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isCompact = constraints.maxWidth < 600;
+        final isCompact = constraints.maxWidth < 700;
 
         return ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: EdgeInsets.fromLTRB(
-            isCompact ? 12 : 16,
-            isCompact ? 12 : 16,
-            isCompact ? 12 : 16,
-            18,
+            isCompact ? 14 : 24,
+            isCompact ? 14 : 22,
+            isCompact ? 14 : 24,
+            24,
           ),
           children: [
             _buildHero(isCompact),
-            const SizedBox(height: 12),
-            _buildResumoCards(isCompact),
-            const SizedBox(height: 14),
+            const SizedBox(height: 18),
             _buildSectionIntro(isCompact),
             const SizedBox(height: 10),
             _buildSecoesLayout(isCompact),
@@ -527,105 +577,113 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
   }
 
   Widget _buildHero(bool isCompact) {
+    final t = context.uai;
+    final onPrimary = _readableOn(t.primary);
+
     return Container(
-      padding: EdgeInsets.all(isCompact ? 15 : 18),
+      padding: EdgeInsets.all(isCompact ? 18 : 24),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.red.shade900, Colors.red.shade700],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.red.shade900.withOpacity(0.10),
-            blurRadius: 9,
-            offset: const Offset(0, 3),
-          ),
-        ],
+        gradient: t.primaryGradient,
+        borderRadius: BorderRadius.circular(isCompact ? 24 : t.cardRadius + 6),
+        boxShadow: t.softShadow,
       ),
-      child: Column(
-        children: [
-          Container(
-            width: isCompact ? 58 : 66,
-            height: isCompact ? 58 : 66,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final narrow = constraints.maxWidth < 560;
+
+          final icon = Container(
+            width: 68,
+            height: 68,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.14),
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: Colors.white.withOpacity(0.16)),
+              color: onPrimary.withAlpha(36),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: onPrimary.withAlpha(41)),
             ),
-            child: const Icon(
-              Icons.menu_book_rounded,
-              color: Colors.white,
-              size: 34,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Leia antes de prosseguir',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: isCompact ? 22 : 26,
-              fontWeight: FontWeight.w900,
-              height: 1.05,
-            ),
-          ),
-          const SizedBox(height: 7),
-          Text(
-            'Normas, orientações e valores que fortalecem a organização do Grupo UAI Capoeira.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.82),
-              fontSize: isCompact ? 12.7 : 14,
-              height: 1.35,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            alignment: WrapAlignment.center,
-            spacing: 8,
-            runSpacing: 8,
+            child: Icon(Icons.gavel_rounded, color: onPrimary, size: 38),
+          );
+
+          final text = Column(
+            crossAxisAlignment: narrow
+                ? CrossAxisAlignment.center
+                : CrossAxisAlignment.start,
             children: [
-              _buildWhiteChip(
-                icon: Icons.article_rounded,
-                label:
-                    '${_secoesRegimento.length} ${_secoesRegimento.length == 1 ? 'seção' : 'seções'}',
+              Text(
+                'Regimento Interno',
+                textAlign: narrow ? TextAlign.center : TextAlign.left,
+                style: TextStyle(
+                  color: onPrimary,
+                  fontSize: narrow ? 25 : 32,
+                  fontWeight: FontWeight.w900,
+                  height: 1.03,
+                ),
               ),
-              _buildWhiteChip(
-                icon: Icons.checklist_rounded,
-                label: '$_totalOrientacoes orientações',
+              const SizedBox(height: 8),
+              Text(
+                'Normas e orientações que preservam a identidade, a disciplina e a convivência do Grupo UAI Capoeira.',
+                textAlign: narrow ? TextAlign.center : TextAlign.left,
+                style: TextStyle(
+                  color: onPrimary.withAlpha(209),
+                  fontSize: narrow ? 13.5 : 15,
+                  height: 1.38,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
-              _buildWhiteChip(
-                icon: Icons.verified_rounded,
-                label: 'Leitura oficial',
+              const SizedBox(height: 12),
+              Wrap(
+                alignment: narrow ? WrapAlignment.center : WrapAlignment.start,
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _buildWhiteChip(
+                    icon: Icons.article_rounded,
+                    label: '${_secoesRegimento.length} ${_secoesRegimento.length == 1 ? 'seção' : 'seções'}',
+                  ),
+                  _buildWhiteChip(
+                    icon: Icons.verified_rounded,
+                    label: 'Leitura oficial',
+                  ),
+                ],
               ),
             ],
-          ),
-        ],
+          );
+
+          if (narrow) {
+            return Column(children: [icon, const SizedBox(height: 14), text]);
+          }
+
+          return Row(
+            children: [
+              icon,
+              const SizedBox(width: 16),
+              Expanded(child: text),
+            ],
+          );
+        },
       ),
     );
   }
 
   Widget _buildWhiteChip({required IconData icon, required String label}) {
+    final t = context.uai;
+    final onPrimary = _readableOn(t.primary);
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.14),
+        color: onPrimary.withAlpha(36),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: Colors.white.withOpacity(0.16)),
+        border: Border.all(color: onPrimary.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: Colors.white, size: 13),
+          Icon(icon, color: onPrimary, size: 14),
           const SizedBox(width: 5),
           Text(
             label,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 10.5,
+            style: TextStyle(
+              color: onPrimary,
+              fontSize: 11,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -679,7 +737,7 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
     return Container(
       constraints: BoxConstraints(minHeight: compact ? 82 : 92),
       padding: EdgeInsets.all(compact ? 9 : 12),
-      decoration: _cardDecoration(borderColor: card.color.withOpacity(0.10)),
+      decoration: _cardDecoration(borderColor: card.color.withAlpha(26)),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -713,22 +771,22 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
   }
 
   Widget _buildSectionIntro(bool isCompact) {
+    final t = context.uai;
+    final primary = _ensureVisible(t.primary, t.background);
+
     return Row(
       children: [
         Container(
-          width: 39,
-          height: 39,
+          width: 42,
+          height: 42,
           decoration: BoxDecoration(
-            color: Colors.red.shade900.withOpacity(0.08),
-            borderRadius: BorderRadius.circular(14),
+            color: Color.alphaBlend(primary.withAlpha(23), t.cardAlt),
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(color: primary.withAlpha(36)),
           ),
-          child: Icon(
-            Icons.menu_book_rounded,
-            color: Colors.red.shade900,
-            size: 21,
-          ),
+          child: Icon(Icons.menu_book_rounded, color: primary),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 11),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -736,17 +794,17 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
               Text(
                 'Orientações do grupo',
                 style: TextStyle(
-                  color: Colors.grey.shade900,
-                  fontSize: isCompact ? 16 : 18,
+                  color: t.textPrimary,
+                  fontSize: isCompact ? 17 : 20,
                   fontWeight: FontWeight.w900,
                 ),
               ),
-              const SizedBox(height: 1),
+              const SizedBox(height: 2),
               Text(
                 'Leia com atenção cada seção do regimento.',
                 style: TextStyle(
-                  color: Colors.grey.shade600,
-                  fontSize: 11.8,
+                  color: t.textSecondary,
+                  fontSize: 12.5,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -758,14 +816,65 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
   }
 
   Widget _buildSecoesLayout(bool isCompact) {
-    return Column(
-      children: List.generate(_secoesRegimento.length, (index) {
-        return _buildSecaoLeitura(
-          secao: _secoesRegimento[index],
-          index: index,
-          isCompact: isCompact,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth >= 920;
+
+        if (!wide) {
+          return Column(
+            children: List.generate(_secoesRegimento.length, (index) {
+              return _buildSecaoLeitura(
+                secao: _secoesRegimento[index],
+                index: index,
+                isCompact: isCompact,
+                featured: index == 0,
+              );
+            }),
+          );
+        }
+
+        const spacing = 16.0;
+        final children = <Widget>[];
+        if (_secoesRegimento.isNotEmpty) {
+          children.add(
+            _buildSecaoLeitura(
+              secao: _secoesRegimento.first,
+              index: 0,
+              isCompact: false,
+              featured: true,
+            ),
+          );
+          if (_secoesRegimento.length > 1) {
+            children.add(const SizedBox(height: spacing));
+          }
+        }
+
+        if (_secoesRegimento.length > 1) {
+          final itemWidth = (constraints.maxWidth - spacing) / 2;
+          children.add(
+            Wrap(
+              spacing: spacing,
+              runSpacing: spacing,
+              children: List.generate(_secoesRegimento.length - 1, (offset) {
+                final index = offset + 1;
+                return SizedBox(
+                  width: itemWidth,
+                  child: _buildSecaoLeitura(
+                    secao: _secoesRegimento[index],
+                    index: index,
+                    isCompact: false,
+                  ),
+                );
+              }),
+            ),
+          );
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: children,
         );
-      }),
+      },
     );
   }
 
@@ -773,47 +882,57 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
     required Map<String, dynamic> secao,
     required int index,
     required bool isCompact,
+    bool featured = false,
   }) {
     final tituloOriginal = secao['titulo']?.toString() ?? 'Seção';
     final titulo = _limparTitulo(tituloOriginal);
     final icone = secao['icone'] is IconData
         ? secao['icone'] as IconData
         : _getIconFromName(secao['icone']);
-    final cor = _resolveColor(secao['cor'], fallback: _fallbackColor(index));
+    final t = context.uai;
+    final cor = _ensureVisible(
+      _resolveColor(secao['cor'], fallback: _fallbackColor(index)),
+      t.card,
+    );
     final conteudo = secao['conteudo']?.toString() ?? '';
     final linhas = _linhasConteudo(conteudo);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: _cardDecoration(borderColor: cor.withOpacity(0.12)),
+      margin: EdgeInsets.only(bottom: isCompact ? 14 : 0),
+      decoration: _cardDecoration(borderColor: cor.withAlpha(33)),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(22),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Container(
-              padding: EdgeInsets.all(isCompact ? 13 : 15),
+              padding: EdgeInsets.all(
+                featured ? (isCompact ? 16 : 20) : (isCompact ? 15 : 17),
+              ),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [cor.withOpacity(0.13), cor.withOpacity(0.05)],
+                  colors: [
+                    Color.alphaBlend(cor.withAlpha(28), t.cardAlt),
+                    t.card,
+                  ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
                 border: Border(
-                  bottom: BorderSide(color: cor.withOpacity(0.10)),
+                  bottom: BorderSide(color: cor.withAlpha(26)),
                 ),
               ),
               child: Row(
                 children: [
                   Container(
-                    width: isCompact ? 42 : 46,
-                    height: isCompact ? 42 : 46,
+                    width: featured ? 54 : 48,
+                    height: featured ? 54 : 48,
                     decoration: BoxDecoration(
-                      color: cor.withOpacity(0.10),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: cor.withOpacity(0.12)),
+                      color: cor.withAlpha(26),
+                      borderRadius: BorderRadius.circular(17),
+                      border: Border.all(color: cor.withAlpha(31)),
                     ),
-                    child: Icon(icone, color: cor, size: isCompact ? 22 : 24),
+                    child: Icon(icone, color: cor, size: featured ? 28 : 25),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
@@ -822,10 +941,12 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: isCompact ? 15.3 : 17,
+                        fontSize: featured
+                            ? (isCompact ? 18 : 21)
+                            : (isCompact ? 16 : 18),
                         height: 1.08,
                         fontWeight: FontWeight.w900,
-                        color: Colors.grey.shade900,
+                        color: t.textPrimary,
                       ),
                     ),
                   ),
@@ -835,9 +956,9 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
                       vertical: 5,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.75),
+                      color: t.cardAlt,
                       borderRadius: BorderRadius.circular(99),
-                      border: Border.all(color: cor.withOpacity(0.12)),
+                      border: Border.all(color: cor.withAlpha(31)),
                     ),
                     child: Text(
                       '${index + 1}',
@@ -889,9 +1010,9 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
         margin: const EdgeInsets.only(top: 7, bottom: 8),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
-          color: cor.withOpacity(0.08),
+          color: cor.withAlpha(20),
           borderRadius: BorderRadius.circular(15),
-          border: Border.all(color: cor.withOpacity(0.12)),
+          border: Border.all(color: cor.withAlpha(31)),
         ),
         child: Text(
           _limparTitulo(linha),
@@ -921,7 +1042,7 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
               width: isCompact ? 25 : 27,
               height: isCompact ? 25 : 27,
               decoration: BoxDecoration(
-                color: cor.withOpacity(0.09),
+                color: cor.withAlpha(23),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(
@@ -997,6 +1118,7 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
   }
 
   Widget _buildBottomBar() {
+    final t = context.uai;
     return SafeArea(
       top: false,
       child: Container(
@@ -1006,7 +1128,7 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
           border: Border(top: BorderSide(color: Colors.grey.shade200)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.045),
+              color: Colors.black.withAlpha(11),
               blurRadius: 8,
               offset: const Offset(0, -2),
             ),
@@ -1019,7 +1141,7 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
             icon: const Icon(Icons.check_rounded),
             label: const Text('ENTENDI'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red.shade900,
+              backgroundColor: t.primary,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 13),
               textStyle: const TextStyle(fontWeight: FontWeight.w900),
@@ -1040,7 +1162,7 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
       border: Border.all(color: borderColor ?? Colors.grey.shade100),
       boxShadow: [
         BoxShadow(
-          color: Colors.black.withOpacity(0.032),
+          color: Colors.black.withAlpha(8),
           blurRadius: 7,
           offset: const Offset(0, 3),
         ),

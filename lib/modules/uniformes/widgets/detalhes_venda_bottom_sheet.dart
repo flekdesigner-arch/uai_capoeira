@@ -10,7 +10,8 @@ class DetalhesVendaBottomSheet extends StatefulWidget {
   final NumberFormat realFormat;
   final Function(String, Map<String, dynamic>, double) onRegistrarPagamento;
   final Function(String, Map<String, dynamic>)? onEditar;
-  final Function(String, Map<String, dynamic>)? onExcluir;
+  final Function(String, Map<String, dynamic>)? onCancelar;
+  final Function(String, Map<String, dynamic>)? onExcluirDefinitivamente;
   final bool podeEditar;
   final bool podeExcluir;
 
@@ -21,7 +22,8 @@ class DetalhesVendaBottomSheet extends StatefulWidget {
     required this.realFormat,
     required this.onRegistrarPagamento,
     this.onEditar,
-    this.onExcluir,
+    this.onCancelar,
+    this.onExcluirDefinitivamente,
     this.podeEditar = false,
     this.podeExcluir = false,
   });
@@ -51,19 +53,7 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
         : const Color(0xFFFFFFFF);
   }
 
-  Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance())
-        .abs();
-    if (diff >= 0.26) return color;
 
-    final bgIsDark = background.computeLuminance() < 0.45;
-    final hsl = HSLColor.fromColor(color);
-
-    return hsl
-        .withLightness(bgIsDark ? 0.72 : 0.32)
-        .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
-        .toColor();
-  }
 
   // ---------------------------------------------------------------------------
   // Carregamento do vendedor (mantido igual)
@@ -100,55 +90,6 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
       return 'Data inválida';
     }
     return 'Data inválida';
-  }
-
-  // 🔥 MÉTODO DE EXCLUSÃO (mantido igual)
-  void _confirmarExclusao(BuildContext context) {
-    final bottomSheetContext = context;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: context.uai.surface,
-        title: Text(
-          '🗑️ Confirmar Exclusão',
-          style: TextStyle(
-            color: context.uai.textPrimary,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        content: Text(
-          'Tem certeza que deseja excluir esta venda?\n\n'
-          'Aluno: ${widget.data['aluno_nome']}\n'
-          'Valor: ${widget.realFormat.format(widget.data['valor_total'] ?? 0)}',
-          style: TextStyle(color: context.uai.textSecondary),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(dialogContext);
-            },
-            child: Text(
-              'CANCELAR',
-              style: TextStyle(color: context.uai.textPrimary),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(dialogContext);
-              Navigator.pop(bottomSheetContext);
-              widget.onExcluir?.call(widget.docId, widget.data);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: context.uai.error,
-              foregroundColor: _readableOn(context.uai.error),
-            ),
-            child: const Text('EXCLUIR'),
-          ),
-        ],
-      ),
-    );
   }
 
   // ---------------------------------------------------------------------------
@@ -188,7 +129,6 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
     String status = widget.data['status_pagamento'] ?? 'pendente';
 
     final Color statusColor = _statusColor(context, status);
-    final Color onStatus = _readableOn(statusColor);
 
     return DraggableScrollableSheet(
       initialChildSize: 0.9,
@@ -225,7 +165,7 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: context.uai.success.withOpacity(0.15),
+                      color: context.uai.success.withAlpha(38),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Icon(Icons.receipt, color: context.uai.success),
@@ -252,12 +192,25 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
                       tooltip: 'Editar venda',
                     ),
 
-                  // 🔥 BOTÃO EXCLUIR
-                  if (widget.podeExcluir && widget.onExcluir != null)
+                  if (widget.podeExcluir && widget.onCancelar != null &&
+                      (widget.data['status'] ?? 'ativa') != 'cancelada')
                     IconButton(
-                      icon: Icon(Icons.delete, color: context.uai.error),
-                      onPressed: () => _confirmarExclusao(context),
-                      tooltip: 'Excluir venda',
+                      icon: Icon(Icons.block_rounded, color: context.uai.warning),
+                      onPressed: () {
+                        Navigator.pop(context);
+                        widget.onCancelar!.call(widget.docId, widget.data);
+                      },
+                      tooltip: 'Cancelar venda',
+                    ),
+
+                  if (widget.podeExcluir && widget.onExcluirDefinitivamente != null)
+                    IconButton(
+                      icon: Icon(Icons.delete_forever_rounded, color: context.uai.error),
+                      onPressed: () {
+                        Navigator.pop(context);
+                        widget.onExcluirDefinitivamente!.call(widget.docId, widget.data);
+                      },
+                      tooltip: 'Excluir definitivamente',
                     ),
 
                   IconButton(
@@ -319,6 +272,17 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
                           'Observações',
                           widget.data['observacoes'] ?? 'Sem observações',
                         ),
+                        _buildInfoRow(
+                          context,
+                          'Entrega',
+                          (widget.data['status_entrega'] ?? 'aguardando').toString() == 'entregue'
+                              ? 'Entregue'
+                              : (widget.data['status_entrega'] ?? 'aguardando').toString() == 'parcial'
+                                  ? 'Entrega parcial'
+                                  : (widget.data['status_entrega'] ?? 'aguardando').toString() == 'cancelado'
+                                      ? 'Cancelada'
+                                      : 'Aguardando entrega',
+                        ),
                       ],
                     ),
 
@@ -333,10 +297,10 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
                         Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: statusColor.withOpacity(0.15),
+                            color: statusColor.withAlpha(38),
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
-                              color: statusColor.withOpacity(0.3),
+                              color: statusColor.withAlpha(77),
                             ),
                           ),
                           child: Row(
@@ -430,7 +394,7 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
                               ],
                             ),
                           );
-                        }).toList(),
+                        }),
                       ],
                     ),
 
@@ -494,7 +458,7 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
                                       vertical: 4,
                                     ),
                                     decoration: BoxDecoration(
-                                      color: context.uai.info.withOpacity(0.15),
+                                      color: context.uai.info.withAlpha(38),
                                       borderRadius: BorderRadius.circular(12),
                                     ),
                                     child: Text(
@@ -512,7 +476,7 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
                                 ],
                               ),
                             );
-                          }).toList(),
+                          }),
                         ],
                       ),
 

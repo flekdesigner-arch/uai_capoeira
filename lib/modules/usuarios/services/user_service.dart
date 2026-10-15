@@ -12,6 +12,7 @@ class UserService {
     bool isGoogleLogin = false,
     String origem = 'auth',
     String? plataforma,
+    String fluxo = '',
   }) async {
     final provider = isGoogleLogin ? 'google.com' : 'password';
 
@@ -27,6 +28,7 @@ class UserService {
         'contato': contato ?? '',
         'provider': provider,
         'origem': origem,
+        if (fluxo.isNotEmpty) 'fluxo': fluxo,
         if (plataforma != null && plataforma.isNotEmpty)
           'plataforma': plataforma,
       });
@@ -45,13 +47,15 @@ class UserService {
     String? nomeCompleto,
     String? contato,
     bool isGoogleLogin = false,
+    String origem = 'cadastro_gestao',
   }) async {
     await ensureInitialUserProfile(
       user,
       nomeCompleto: nomeCompleto,
       contato: contato,
       isGoogleLogin: isGoogleLogin,
-      origem: isGoogleLogin ? 'login_google' : 'cadastro',
+      origem: origem,
+      fluxo: 'gestao',
     );
   }
 

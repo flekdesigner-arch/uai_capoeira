@@ -1,22 +1,3 @@
-// lib/modules/sistema/atualizacoes/services/local_publish_runner_windows.dart
-//
-// =====================================================
-// 🖥️ EXECUTOR WINDOWS DA AUTOMAÇÃO LOCAL - UAI
-// =====================================================
-//
-// ATENÇÃO:
-// Este arquivo usa dart:io.
-// Ele NÃO pode ser importado diretamente em telas/serviços que compilam Web.
-//
-// O import seguro será feito depois por um arquivo factory com import condicional.
-//
-// Função:
-// - executar PowerShell em modo automatico;
-// - acompanhar stdout/stderr;
-// - atualizar etapas da automação;
-// - localizar APK final gerado.
-// =====================================================
-
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -29,11 +10,41 @@ class LocalPublishRunnerWindows extends LocalPublishRunner {
   final LocalPublishPlatformInfo _platformInfo;
 
   LocalPublishRunnerWindows({LocalPublishPlatformInfo? platformInfo})
-    : _platformInfo =
-          platformInfo ?? const LocalPublishPlatformService().getInfo();
+      : _platformInfo = platformInfo ?? const LocalPublishPlatformService().getInfo();
 
   @override
   LocalPublishPlatformInfo get platformInfo => _platformInfo;
+
+  @override
+  Future<LocalProjectVersionPlan?> readProjectVersionPlan({
+    required String projectDir,
+  }) async {
+    final pubspec = File('$projectDir\\pubspec.yaml');
+    if (!pubspec.existsSync()) return null;
+
+    final content = await pubspec.readAsString();
+    final match = RegExp(
+      r'^version:\s*([0-9]+)\.([0-9]+)\.([0-9]+)\+([0-9]+)\s*$',
+      multiLine: true,
+    ).firstMatch(content);
+
+    if (match == null) return null;
+
+    final major = int.tryParse(match.group(1) ?? '');
+    final minor = int.tryParse(match.group(2) ?? '');
+    final patch = int.tryParse(match.group(3) ?? '');
+    final build = int.tryParse(match.group(4) ?? '');
+    if (major == null || minor == null || patch == null || build == null) {
+      return null;
+    }
+
+    return LocalProjectVersionPlan(
+      currentVersion: '$major.$minor.$patch',
+      currentBuild: build,
+      nextVersion: '$major.$minor.${patch + 1}',
+      nextBuild: build + 1,
+    );
+  }
 
   @override
   Future<LocalPublishRunnerResult> run({
@@ -41,382 +52,149 @@ class LocalPublishRunnerWindows extends LocalPublishRunner {
     LocalPublishStateCallback? onState,
     LocalPublishLogCallback? onLog,
   }) async {
-    var state =
-        LocalPublishAutomationState.initial(
-          available: platformInfo.canRunLocalAutomation,
-          platformLabel: platformInfo.platformLabel,
-        ).copyWith(
-          running: true,
-          startedAt: DateTime.now(),
-          clearError: true,
-          clearFinalApkPath: true,
-        );
+    var state = LocalPublishAutomationState.initial(
+      available: platformInfo.canRunLocalAutomation,
+      platformLabel: platformInfo.platformLabel,
+    ).copyWith(running: true, startedAt: DateTime.now(), clearError: true, clearFinalApkPath: true);
 
     void emit() => onState?.call(state);
-
-    void log(String line) {
-      if (line.trim().isEmpty) return;
-      onLog?.call(line);
-    }
-
-    void setStep(
-      String stepId,
-      LocalPublishStepStatus status, {
-      String? stepLog,
-    }) {
-      state = state.updateStep(stepId: stepId, status: status, log: stepLog);
+    void log(String value) { if (value.trim().isNotEmpty) onLog?.call(value); }
+    void setStep(String id, LocalPublishStepStatus status, [String? detail]) {
+      state = state.updateStep(stepId: id, status: status, log: detail);
       emit();
     }
 
     emit();
-
     if (!platformInfo.canRunLocalAutomation) {
       final message = platformInfo.blockedReason;
-
-      state = state.copyWith(
-        running: false,
-        errorMessage: message,
-        finishedAt: DateTime.now(),
-      );
-
+      state = state.copyWith(running: false, errorMessage: message, finishedAt: DateTime.now());
       emit();
-      log(message);
-
-      return LocalPublishRunnerResult(
-        success: false,
-        exitCode: -1,
-        finalApkPath: '',
-        output: '',
-        errorOutput: message,
-        state: state,
-      );
+      return LocalPublishRunnerResult(success: false, exitCode: -1, output: '', errorOutput: message, state: state);
     }
 
-    final scriptFile = File(config.scriptPath);
-    final projectDir = Directory(config.projectDir);
-
-    if (!projectDir.existsSync()) {
+    if (!Directory(config.projectDir).existsSync()) {
       final message = 'Pasta do projeto não encontrada: ${config.projectDir}';
-
-      state = state.copyWith(
-        running: false,
-        errorMessage: message,
-        finishedAt: DateTime.now(),
-      );
-
+      state = state.copyWith(running: false, errorMessage: message, finishedAt: DateTime.now());
       emit();
-      log(message);
-
-      return LocalPublishRunnerResult(
-        success: false,
-        exitCode: -1,
-        finalApkPath: '',
-        output: '',
-        errorOutput: message,
-        state: state,
-      );
+      return LocalPublishRunnerResult(success: false, exitCode: -1, output: '', errorOutput: message, state: state);
     }
-
-    if (!scriptFile.existsSync()) {
+    if (!File(config.scriptPath).existsSync()) {
       final message = 'Script não encontrado: ${config.scriptPath}';
-
-      state = state.copyWith(
-        running: false,
-        errorMessage: message,
-        finishedAt: DateTime.now(),
-      );
-
+      state = state.copyWith(running: false, errorMessage: message, finishedAt: DateTime.now());
       emit();
-      log(message);
-
-      return LocalPublishRunnerResult(
-        success: false,
-        exitCode: -1,
-        finalApkPath: '',
-        output: '',
-        errorOutput: message,
-        state: state,
-      );
+      return LocalPublishRunnerResult(success: false, exitCode: -1, output: '', errorOutput: message, state: state);
     }
 
     final stdoutBuffer = StringBuffer();
     final stderrBuffer = StringBuffer();
-
-    Process? process;
+    final artifacts = <String, String>{};
+    String windowsInstallDir = '';
+    String windowsPackagePath = '';
+    int windowsPackageSizeBytes = 0;
+    int pwaBuildSizeBytes = 0;
 
     try {
-      log('Iniciando automação local no Windows...');
-      log('Projeto: ${config.projectDir}');
-      log('Script: ${config.scriptPath}');
-      log('Versão: ${config.version}');
+      log('🚀 Release UAI ${config.version}+${config.build}');
+      final args = <String>[
+        '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', config.scriptPath,
+        '-Auto', '-Version', config.version, '-Build', '${config.build}',
+        if (!config.deployPwa) '-SkipPwa',
+        if (!config.buildAndroid) '-SkipAndroid',
+        if (!config.buildWindows) '-SkipWindows',
+        if (config.skipPrepare) '-SkipPrepare',
+      ];
+      final process = await Process.start('powershell.exe', args, workingDirectory: config.projectDir, runInShell: false);
 
-      process = await Process.start(
-        'powershell.exe',
-        [
-          '-NoProfile',
-          '-ExecutionPolicy',
-          'Bypass',
-          '-File',
-          config.scriptPath,
-          '-Auto',
-        ],
-        workingDirectory: config.projectDir,
-        runInShell: false,
-      );
-
-      final stdoutDone = _listenProcessOutput(
-        stream: process.stdout,
-        buffer: stdoutBuffer,
-        onLine: (line) {
+      Future<void> consume(Stream<List<int>> stream, StringBuffer buffer, {required bool stderr}) async {
+        await for (final line in stream.transform(const Utf8Decoder(allowMalformed: true)).transform(const LineSplitter())) {
+          buffer.writeln(line);
           log(line);
-          _updateStateFromOutputLine(line: line, setStep: setStep);
-        },
-      );
+          if (stderr) continue;
+          if (line.startsWith('[UAI_STEP]|')) {
+            final parts = line.split('|');
+            if (parts.length >= 4) {
+              final status = switch (parts[2]) {
+                'running' => LocalPublishStepStatus.running,
+                'success' => LocalPublishStepStatus.success,
+                'error' => LocalPublishStepStatus.error,
+                'skipped' => LocalPublishStepStatus.skipped,
+                _ => LocalPublishStepStatus.pending,
+              };
+              setStep(parts[1], status, parts.sublist(3).join('|'));
+            }
+          } else if (line.startsWith('[UAI_ARTIFACT]|')) {
+            final parts = line.split('|');
+            if (parts.length >= 5 && parts[1] == 'android') {
+              artifacts[parts[2]] = parts[3];
+            } else if (parts.length >= 5 && parts[1] == 'windows') {
+              if (parts[2] == 'install') {
+                windowsInstallDir = parts[3];
+              } else if (parts[2] == 'package') {
+                windowsPackagePath = parts[3];
+                windowsPackageSizeBytes = int.tryParse(parts[4]) ?? 0;
+              }
+            } else if (parts.length >= 5 && parts[1] == 'pwa') {
+              pwaBuildSizeBytes = int.tryParse(parts[4]) ?? 0;
+            }
+          }
+        }
+      }
 
-      final stderrDone = _listenProcessOutput(
-        stream: process.stderr,
-        buffer: stderrBuffer,
-        onLine: log,
-      );
-
+      final outFuture = consume(process.stdout, stdoutBuffer, stderr: false);
+      final errFuture = consume(process.stderr, stderrBuffer, stderr: true);
       final exitCode = await process.exitCode;
+      await Future.wait([outFuture, errFuture]);
 
-      await Future.wait([stdoutDone, stderrDone]);
+      final expected = config.expectedAndroidApkPaths;
+      for (final entry in expected.entries) {
+        if (File(entry.value).existsSync()) artifacts[entry.key] = entry.value;
+      }
+      final allApksOk = !config.buildAndroid || expected.keys.every(artifacts.containsKey);
+      final success = exitCode == 0 && allApksOk;
 
-      final finalApkFile = File(config.expectedApkPath);
-      final apkExists = finalApkFile.existsSync();
-
-      if (exitCode == 0 && apkExists) {
-        setStep(
-          'locate_apk',
-          LocalPublishStepStatus.success,
-          stepLog: config.expectedApkPath,
-        );
-
+      if (success) {
         state = state.copyWith(
           running: false,
-          finalApkPath: config.expectedApkPath,
+          finalApkPath: artifacts['arm64-v8a'] ?? '',
           finishedAt: DateTime.now(),
           clearError: true,
         );
-
-        emit();
-
-        return LocalPublishRunnerResult(
-          success: true,
-          exitCode: exitCode,
-          finalApkPath: config.expectedApkPath,
-          output: stdoutBuffer.toString(),
-          errorOutput: stderrBuffer.toString(),
-          state: state,
-        );
+      } else {
+        final message = exitCode != 0
+            ? 'Pipeline Windows falhou com código $exitCode.'
+            : 'Pipeline terminou, mas nem todos os APKs por arquitetura foram localizados.';
+        state = state.copyWith(running: false, errorMessage: message, finishedAt: DateTime.now());
       }
-
-      final message = exitCode == 0
-          ? 'Script finalizou, mas o APK final não foi encontrado em: ${config.expectedApkPath}'
-          : 'Script finalizou com erro. Código de saída: $exitCode';
-
-      if (!apkExists) {
-        setStep('locate_apk', LocalPublishStepStatus.error, stepLog: message);
-      }
-
-      state = state.copyWith(
-        running: false,
-        errorMessage: message,
-        finishedAt: DateTime.now(),
-      );
-
       emit();
-
       return LocalPublishRunnerResult(
-        success: false,
+        success: success,
         exitCode: exitCode,
-        finalApkPath: apkExists ? config.expectedApkPath : '',
+        androidApkPaths: artifacts,
+        windowsInstallDir: windowsInstallDir,
+        windowsPackagePath: windowsPackagePath,
+        windowsPackageSizeBytes: windowsPackageSizeBytes,
+        pwaBuildSizeBytes: pwaBuildSizeBytes,
         output: stdoutBuffer.toString(),
-        errorOutput: stderrBuffer.toString().trim().isEmpty
-            ? message
-            : stderrBuffer.toString(),
+        errorOutput: stderrBuffer.toString(),
         state: state,
       );
     } catch (e) {
-      try {
-        process?.kill();
-      } catch (_) {}
-
-      final message = 'Erro ao executar automação Windows: $e';
-
-      state = state.copyWith(
-        running: false,
-        errorMessage: message,
-        finishedAt: DateTime.now(),
-      );
-
+      final message = 'Erro ao executar Central de Release Windows: $e';
+      state = state.copyWith(running: false, errorMessage: message, finishedAt: DateTime.now());
       emit();
       log(message);
-
       return LocalPublishRunnerResult(
         success: false,
         exitCode: -1,
-        finalApkPath: '',
+        androidApkPaths: artifacts,
+        windowsInstallDir: windowsInstallDir,
+        windowsPackagePath: windowsPackagePath,
+        windowsPackageSizeBytes: windowsPackageSizeBytes,
+        pwaBuildSizeBytes: pwaBuildSizeBytes,
         output: stdoutBuffer.toString(),
         errorOutput: message,
         state: state,
       );
-    }
-  }
-
-  Future<void> _listenProcessOutput({
-    required Stream<List<int>> stream,
-    required StringBuffer buffer,
-    required void Function(String line) onLine,
-  }) {
-    final completer = Completer<void>();
-    final pending = StringBuffer();
-
-    late final StreamSubscription<List<int>> subscription;
-    subscription = stream.listen(
-      (bytes) {
-        final text = _decodeProcessOutput(bytes);
-        if (text.isEmpty) return;
-
-        pending.write(text);
-        final content = pending.toString();
-        final lines = const LineSplitter().convert(content);
-
-        pending.clear();
-
-        final endsWithLineBreak =
-            content.endsWith('\n') || content.endsWith('\r');
-        final completedCount = endsWithLineBreak
-            ? lines.length
-            : lines.length - 1;
-
-        for (var i = 0; i < completedCount; i++) {
-          final line = lines[i];
-          buffer.writeln(line);
-          onLine(line);
-        }
-
-        if (!endsWithLineBreak && lines.isNotEmpty) {
-          pending.write(lines.last);
-        }
-      },
-      onError: (Object error, StackTrace stackTrace) {
-        final line = 'Falha ao ler saída do processo: $error';
-        buffer.writeln(line);
-        onLine(line);
-      },
-      onDone: () {
-        final rest = pending.toString();
-        if (rest.trim().isNotEmpty) {
-          buffer.writeln(rest);
-          onLine(rest);
-        }
-        completer.complete();
-      },
-      cancelOnError: false,
-    );
-
-    return completer.future.whenComplete(subscription.cancel);
-  }
-
-  String _decodeProcessOutput(List<int> bytes) {
-    if (bytes.isEmpty) return '';
-
-    try {
-      return utf8.decode(bytes, allowMalformed: true);
-    } catch (_) {
-      try {
-        return latin1.decode(bytes, allowInvalid: true);
-      } catch (_) {
-        return String.fromCharCodes(bytes);
-      }
-    }
-  }
-
-  void _updateStateFromOutputLine({
-    required String line,
-    required void Function(
-      String stepId,
-      LocalPublishStepStatus status, {
-      String? stepLog,
-    })
-    setStep,
-  }) {
-    final lower = line.toLowerCase();
-
-    if (lower.contains('limpando build antigo')) {
-      setStep('flutter_clean', LocalPublishStepStatus.running);
-      return;
-    }
-
-    if (lower.contains('deleting build') ||
-        lower.contains('deleting .dart_tool')) {
-      return;
-    }
-
-    if (lower.contains('baixando dependencias')) {
-      setStep('flutter_clean', LocalPublishStepStatus.success);
-      setStep('flutter_pub_get', LocalPublishStepStatus.running);
-      return;
-    }
-
-    if (lower.contains('got dependencies')) {
-      setStep('flutter_pub_get', LocalPublishStepStatus.success);
-      return;
-    }
-
-    if (lower.contains('gerando build web')) {
-      setStep('build_web', LocalPublishStepStatus.running);
-      return;
-    }
-
-    if (lower.contains('compiled') && lower.contains('web')) {
-      setStep('build_web', LocalPublishStepStatus.success);
-      return;
-    }
-
-    if (lower.contains('publicando pwa') ||
-        lower.contains('firebase deploy --only hosting')) {
-      setStep('build_web', LocalPublishStepStatus.success);
-      setStep('deploy_hosting', LocalPublishStepStatus.running);
-      return;
-    }
-
-    if (lower.contains('pwa publicado com sucesso') ||
-        lower.contains('deploy complete') ||
-        lower.contains('hosting url')) {
-      setStep('deploy_hosting', LocalPublishStepStatus.success);
-      return;
-    }
-
-    if (lower.contains('gerando apk release')) {
-      setStep('deploy_hosting', LocalPublishStepStatus.success);
-      setStep('build_apk', LocalPublishStepStatus.running);
-      return;
-    }
-
-    if (lower.contains(
-          'built build\\app\\outputs\\flutter-apk\\app-release.apk',
-        ) ||
-        lower.contains('built build/app/outputs/flutter-apk/app-release.apk')) {
-      setStep('build_apk', LocalPublishStepStatus.success);
-      setStep('locate_apk', LocalPublishStepStatus.running);
-      return;
-    }
-
-    if (lower.contains('apk menor gerado') ||
-        lower.contains('apk pronto para subir')) {
-      setStep('build_apk', LocalPublishStepStatus.success);
-      setStep('locate_apk', LocalPublishStepStatus.success);
-      return;
-    }
-
-    if (lower.contains('erro:') ||
-        lower.contains('build failed') ||
-        lower.contains('exception')) {
-      setStep('build_apk', LocalPublishStepStatus.error, stepLog: line);
-      return;
     }
   }
 }

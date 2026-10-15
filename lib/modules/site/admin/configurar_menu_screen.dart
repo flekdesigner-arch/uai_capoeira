@@ -111,7 +111,6 @@ class _ConfigurarMenuScreenState extends State<ConfigurarMenuScreen> {
 
   void _onReorder(int oldIndex, int newIndex) {
     setState(() {
-      if (oldIndex < newIndex) newIndex -= 1;
 
       final item = _itensVisiveis.removeAt(oldIndex);
       _itensVisiveis.insert(newIndex, item);
@@ -156,7 +155,7 @@ class _ConfigurarMenuScreenState extends State<ConfigurarMenuScreen> {
             child: ReorderableListView.builder(
               padding: const EdgeInsets.fromLTRB(14, 12, 14, 104),
               itemCount: _itensVisiveis.length,
-              onReorder: _onReorder,
+              onReorderItem: _onReorder,
               proxyDecorator: (child, index, animation) {
                 return AnimatedBuilder(
                   animation: animation,
@@ -167,7 +166,7 @@ class _ConfigurarMenuScreenState extends State<ConfigurarMenuScreen> {
                       child: Material(
                         elevation: 8,
                         color: Colors.transparent,
-                        shadowColor: Colors.black.withOpacity(0.20),
+                        shadowColor: Colors.black.withAlpha(51),
                         borderRadius: BorderRadius.circular(t.cardRadius),
                         child: child,
                       ),
@@ -245,9 +244,9 @@ class _ConfigurarMenuScreenState extends State<ConfigurarMenuScreen> {
                   width: 54,
                   height: 54,
                   decoration: BoxDecoration(
-                    color: onPrimary.withOpacity(0.14),
+                    color: onPrimary.withAlpha(36),
                     borderRadius: BorderRadius.circular(t.buttonRadius + 4),
-                    border: Border.all(color: onPrimary.withOpacity(0.16)),
+                    border: Border.all(color: onPrimary.withAlpha(41)),
                   ),
                   child: Icon(
                     Icons.swap_vert_rounded,
@@ -276,7 +275,7 @@ class _ConfigurarMenuScreenState extends State<ConfigurarMenuScreen> {
                       'Arraste as seções para definir a ordem dos botões no site público.',
                       textAlign: narrow ? TextAlign.center : TextAlign.left,
                       style: TextStyle(
-                        color: onPrimary.withOpacity(0.84),
+                        color: onPrimary.withAlpha(214),
                         fontSize: 12.5,
                         height: 1.35,
                         fontWeight: FontWeight.w600,
@@ -331,9 +330,9 @@ class _ConfigurarMenuScreenState extends State<ConfigurarMenuScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: onPrimary.withOpacity(0.14),
+        color: onPrimary.withAlpha(36),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: onPrimary.withOpacity(0.16)),
+        border: Border.all(color: onPrimary.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -377,10 +376,10 @@ class _ConfigurarMenuScreenState extends State<ConfigurarMenuScreen> {
               borderRadius: BorderRadius.circular(t.cardRadius),
               splashColor: isInicio
                   ? Colors.transparent
-                  : color.withOpacity(0.08),
+                  : color.withAlpha(20),
               highlightColor: isInicio
                   ? Colors.transparent
-                  : color.withOpacity(0.04),
+                  : color.withAlpha(10),
               child: Container(
                 constraints: const BoxConstraints(minHeight: 78),
                 padding: const EdgeInsets.symmetric(
@@ -390,7 +389,7 @@ class _ConfigurarMenuScreenState extends State<ConfigurarMenuScreen> {
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(t.cardRadius),
                   border: Border.all(
-                    color: isInicio ? t.border : color.withOpacity(0.16),
+                    color: isInicio ? t.border : color.withAlpha(41),
                   ),
                   boxShadow: t.softShadow,
                 ),
@@ -420,9 +419,9 @@ class _ConfigurarMenuScreenState extends State<ConfigurarMenuScreen> {
                       width: 48,
                       height: 48,
                       decoration: BoxDecoration(
-                        color: color.withOpacity(isInicio ? 0.08 : 0.12),
+                        color: color.withAlpha(isInicio ? 20 : 31),
                         borderRadius: BorderRadius.circular(t.buttonRadius),
-                        border: Border.all(color: color.withOpacity(0.14)),
+                        border: Border.all(color: color.withAlpha(36)),
                       ),
                       child: Icon(icon, color: color, size: 23),
                     ),
@@ -477,9 +476,9 @@ class _ConfigurarMenuScreenState extends State<ConfigurarMenuScreen> {
                           vertical: 5,
                         ),
                         decoration: BoxDecoration(
-                          color: color.withOpacity(0.09),
+                          color: color.withAlpha(23),
                           borderRadius: BorderRadius.circular(99),
-                          border: Border.all(color: color.withOpacity(0.13)),
+                          border: Border.all(color: color.withAlpha(33)),
                         ),
                         child: Text(
                           '#${index + 1}',
@@ -512,9 +511,9 @@ class _ConfigurarMenuScreenState extends State<ConfigurarMenuScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
-        color: t.primary.withOpacity(0.10),
+        color: t.primary.withAlpha(26),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: t.primary.withOpacity(0.14)),
+        border: Border.all(color: t.primary.withAlpha(36)),
       ),
       child: Text(
         'FIXO',

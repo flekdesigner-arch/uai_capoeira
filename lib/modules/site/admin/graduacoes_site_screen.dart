@@ -77,8 +77,9 @@ class _GraduacoesSiteScreenState extends State<GraduacoesSiteScreen> {
       final document = xml.XmlDocument.parse(_svgContent!);
 
       Color colorFromHex(String? hexColor) {
-        if (hexColor == null || hexColor.length < 7)
+        if (hexColor == null || hexColor.length < 7) {
           return context.uai.textMuted;
+        }
 
         try {
           return Color(
@@ -102,7 +103,7 @@ class _GraduacoesSiteScreenState extends State<GraduacoesSiteScreen> {
 
           final style = element.getAttribute('style') ?? '';
           final hex =
-              '#${color.value.toRadixString(16).substring(2).toUpperCase()}';
+              '#${color.toARGB32().toRadixString(16).substring(2).toUpperCase()}';
           final newStyle = style.contains('fill:')
               ? style.replaceAll(RegExp(r'fill:#[0-9a-fA-F]{6}'), 'fill:$hex')
               : 'fill:$hex;$style';
@@ -192,10 +193,10 @@ class _GraduacoesSiteScreenState extends State<GraduacoesSiteScreen> {
                           width: 42,
                           height: 42,
                           decoration: BoxDecoration(
-                            color: onPrimary.withOpacity(0.14),
+                            color: onPrimary.withAlpha(36),
                             borderRadius: BorderRadius.circular(t.buttonRadius),
                             border: Border.all(
-                              color: onPrimary.withOpacity(0.16),
+                              color: onPrimary.withAlpha(41),
                             ),
                           ),
                           child: Icon(Icons.people_rounded, color: onPrimary),
@@ -219,7 +220,7 @@ class _GraduacoesSiteScreenState extends State<GraduacoesSiteScreen> {
                               Text(
                                 '${alunos.length} aluno(s) nesta graduação',
                                 style: TextStyle(
-                                  color: onPrimary.withOpacity(0.82),
+                                  color: onPrimary.withAlpha(209),
                                   fontSize: 12,
                                   fontWeight: FontWeight.w700,
                                 ),
@@ -262,9 +263,8 @@ class _GraduacoesSiteScreenState extends State<GraduacoesSiteScreen> {
                                   ),
                                   leading: CircleAvatar(
                                     radius: 21,
-                                    backgroundColor: t.primary.withOpacity(
-                                      0.12,
-                                    ),
+                                    backgroundColor: t.primary.withAlpha((255.0 * (
+                                      0.12)).round()),
                                     backgroundImage: foto.isNotEmpty
                                         ? NetworkImage(foto)
                                         : null,
@@ -492,9 +492,9 @@ class _GraduacoesSiteScreenState extends State<GraduacoesSiteScreen> {
           final logo = Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Color.alphaBlend(onPrimary.withOpacity(0.94), t.primary),
+              color: Color.alphaBlend(onPrimary.withAlpha(240), t.primary),
               borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: onPrimary.withOpacity(0.18)),
+              border: Border.all(color: onPrimary.withAlpha(46)),
             ),
             child: _logoService.buildLogo(height: 58),
           );
@@ -519,7 +519,7 @@ class _GraduacoesSiteScreenState extends State<GraduacoesSiteScreen> {
                 'Catálogo visual das graduações cadastradas. Toque em uma corda para ver os alunos vinculados.',
                 textAlign: narrow ? TextAlign.center : TextAlign.left,
                 style: TextStyle(
-                  color: onPrimary.withOpacity(0.82),
+                  color: onPrimary.withAlpha(209),
                   fontSize: 13,
                   height: 1.35,
                   fontWeight: FontWeight.w600,
@@ -560,9 +560,9 @@ class _GraduacoesSiteScreenState extends State<GraduacoesSiteScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: onPrimary.withOpacity(0.14),
+        color: onPrimary.withAlpha(36),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: onPrimary.withOpacity(0.16)),
+        border: Border.all(color: onPrimary.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -609,12 +609,12 @@ class _GraduacoesSiteScreenState extends State<GraduacoesSiteScreen> {
 
           _mostrarAlunosDialog(context, nome, alunos);
         },
-        splashColor: accent.withOpacity(0.10),
-        highlightColor: accent.withOpacity(0.05),
+        splashColor: accent.withAlpha(26),
+        highlightColor: accent.withAlpha(13),
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(t.cardRadius),
-            border: Border.all(color: accent.withOpacity(0.18)),
+            border: Border.all(color: accent.withAlpha(46)),
             boxShadow: t.softShadow,
           ),
           child: Column(
@@ -626,11 +626,11 @@ class _GraduacoesSiteScreenState extends State<GraduacoesSiteScreen> {
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
                     color: Color.alphaBlend(
-                      accent.withOpacity(0.06),
+                      accent.withAlpha(15),
                       t.cardAlt,
                     ),
                     border: Border(
-                      bottom: BorderSide(color: accent.withOpacity(0.10)),
+                      bottom: BorderSide(color: accent.withAlpha(26)),
                     ),
                   ),
                   child: SvgPicture.string(modifiedSvg, fit: BoxFit.contain),
@@ -644,7 +644,7 @@ class _GraduacoesSiteScreenState extends State<GraduacoesSiteScreen> {
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
-                        Color.alphaBlend(accent.withOpacity(0.10), t.card),
+                        Color.alphaBlend(accent.withAlpha(26), t.card),
                         t.card,
                       ],
                       begin: Alignment.topLeft,
@@ -707,9 +707,9 @@ class _GraduacoesSiteScreenState extends State<GraduacoesSiteScreen> {
       constraints: const BoxConstraints(maxWidth: 120),
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.10),
+        color: accent.withAlpha(26),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: accent.withOpacity(0.14)),
+        border: Border.all(color: accent.withAlpha(36)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

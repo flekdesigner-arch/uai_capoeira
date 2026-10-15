@@ -44,7 +44,14 @@ class AreaAlunoConfig {
   }
 
   String? _scopedKey(String key) {
-    if (modoAcesso == 'google') return 'com_google_$key';
+    if (modoAcesso == 'google' ||
+        modoAcesso == 'email' ||
+        modoAcesso == 'conta_uai') {
+      // Prefixos com_google_/sem_google_ são mantidos apenas por compatibilidade
+      // com configurações já salvas. Semanticamente, com_google_ significa
+      // "com conta vinculada" (Google OU e-mail/Conta UAI verificada).
+      return 'com_google_$key';
+    }
     if (modoAcesso == 'basico') return 'sem_google_$key';
     return null;
   }
@@ -52,6 +59,16 @@ class AreaAlunoConfig {
   String get modoAcesso => _string('modo_acesso', 'basico').toLowerCase();
 
   bool get acessoGoogle => modoAcesso == 'google';
+
+  bool get acessoEmail => modoAcesso == 'email' || modoAcesso == 'conta_uai';
+
+  bool get emailConfirmado => _bool('email_confirmado', defaultValue: false);
+
+  String get emailContaUaiMascarado =>
+      _string('email_conta_uai_mascarado', '');
+
+  bool get acessoIdentidadeCompleta =>
+      _bool('acesso_identidade_completa', defaultValue: acessoGoogle || acessoEmail || emailConfirmado);
 
   bool get googleLoginAtivo => _bool('google_login_ativo', defaultValue: false);
 
@@ -67,7 +84,9 @@ class AreaAlunoConfig {
       _bool('permitir_vincular_google_no_primeiro_acesso', defaultValue: true);
 
   bool get deveMostrarCardGoogle {
-    if (!googleLoginAtivo || acessoGoogle) return false;
+    if (acessoGoogle) return false;
+    if (emailConfirmado) return true;
+    if (!googleLoginAtivo) return false;
     if (!permitirVincularGoogleNoPrimeiroAcesso && !googleVinculado) {
       return false;
     }
@@ -97,6 +116,8 @@ class AreaAlunoConfig {
   bool get mostrarEventos => _boolEfetivo('mostrar_eventos');
 
   bool get mostrarCertificados => _boolEfetivo('mostrar_certificados');
+
+  bool get mostrarPedidos => _boolEfetivo('mostrar_pedidos', defaultValue: true);
 
   bool get mostrarFinanceiroEventos =>
       _boolEfetivo('mostrar_financeiro_eventos') && modoFinanceiro != 'oculto';

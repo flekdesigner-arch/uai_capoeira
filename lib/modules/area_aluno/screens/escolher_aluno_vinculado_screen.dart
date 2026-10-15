@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:uai_capoeira/core/image_cache/uai_student_photo.dart';
 
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/area_aluno/services/area_aluno_google_service.dart';
@@ -167,13 +168,23 @@ class _EscolherAlunoVinculadoScreenState
             children: [
               CircleAvatar(
                 radius: 31,
-                backgroundColor: t.primary.withOpacity(0.10),
-                backgroundImage: aluno.foto.isNotEmpty
-                    ? NetworkImage(aluno.foto)
-                    : null,
+                backgroundColor: t.primary.withAlpha(26),
                 child: aluno.foto.isEmpty
                     ? Icon(Icons.person_rounded, color: t.primary)
-                    : null,
+                    : ClipOval(
+                        child: UaiStudentPhoto(
+                          studentId: aluno.alunoId,
+                          imageUrl: aluno.foto,
+                          profile: UaiStudentPhotoProfile.compact,
+                          width: 62,
+                          height: 62,
+                          fit: BoxFit.cover,
+                          fallback: Icon(
+                            Icons.person_rounded,
+                            color: t.primary,
+                          ),
+                        ),
+                      ),
               ),
               const SizedBox(width: 13),
               Expanded(

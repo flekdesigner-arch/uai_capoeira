@@ -24,15 +24,50 @@ class RemessaService {
     await _firestore.collection('remessas').doc(remessaId).update(dados);
   }
 
-  Future<void> excluirRemessa(String remessaId) async {
+  /// Exclusão definitiva e consistente.
+  ///
+  /// Remove os pedidos vinculados e a remessa no mesmo batch (até 499
+  /// pedidos por remessa). Assim a UI nunca fica com remessa órfã ou pedido
+  /// apontando para um documento que já não existe.
+  Future<int> excluirRemessaComPedidos(String remessaId) async {
     final pedidos = await _firestore
         .collection('pedidos_uniformes')
         .where('remessa_id', isEqualTo: remessaId)
         .get();
-    for (var doc in pedidos.docs) {
-      await doc.reference.update({'remessa_id': FieldValue.delete()});
+
+    if (pedidos.docs.length > 499) {
+      throw StateError(
+        'Esta remessa possui pedidos demais para exclusão em uma única operação.',
+      );
     }
-    await _firestore.collection('remessas').doc(remessaId).delete();
+
+    final batch = _firestore.batch();
+    for (final doc in pedidos.docs) {
+      batch.delete(doc.reference);
+    }
+    batch.delete(_firestore.collection('remessas').doc(remessaId));
+    await batch.commit();
+    return pedidos.docs.length;
+  }
+
+  Future<void> excluirRemessa(String remessaId) async {
+    await excluirRemessaComPedidos(remessaId);
+  }
+
+  Future<void> excluirPedidoDefinitivamente(
+    String pedidoId, {
+    String? remessaId,
+  }) async {
+    final batch = _firestore.batch();
+
+    if (remessaId != null && remessaId.trim().isNotEmpty) {
+      batch.update(_firestore.collection('remessas').doc(remessaId), {
+        'pedidos_ids': FieldValue.arrayRemove([pedidoId]),
+      });
+    }
+
+    batch.delete(_firestore.collection('pedidos_uniformes').doc(pedidoId));
+    await batch.commit();
   }
 
   Future<void> vincularPedido(String pedidoId, String remessaId) async {

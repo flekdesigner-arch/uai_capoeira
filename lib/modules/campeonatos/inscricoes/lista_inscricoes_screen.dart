@@ -3,7 +3,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:uai_capoeira/modules/campeonatos/services/campeonato_service.dart';
-import 'package:uai_capoeira/modules/campeonatos/models/campeonato_model.dart';
 import 'detalhe_inscricao_screen.dart';
 
 class ListaInscricoesScreen extends StatefulWidget {
@@ -155,7 +154,7 @@ class _ListaInscricoesScreenState extends State<ListaInscricoesScreen>
                 ),
                 const SizedBox(height: 20),
                 DropdownButtonFormField<String>(
-                  value: _filtroCategoria,
+                  initialValue: _filtroCategoria,
                   decoration: InputDecoration(
                     labelText: 'Categoria',
                     border: OutlineInputBorder(
@@ -174,7 +173,7 @@ class _ListaInscricoesScreenState extends State<ListaInscricoesScreen>
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
-                  value: _filtroGrupo,
+                  initialValue: _filtroGrupo,
                   decoration: InputDecoration(
                     labelText: 'Grupo',
                     border: OutlineInputBorder(
@@ -193,7 +192,7 @@ class _ListaInscricoesScreenState extends State<ListaInscricoesScreen>
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
-                  value: _filtroPagamento,
+                  initialValue: _filtroPagamento,
                   decoration: InputDecoration(
                     labelText: 'Pagamento',
                     border: OutlineInputBorder(

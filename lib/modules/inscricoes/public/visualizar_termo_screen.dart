@@ -51,7 +51,7 @@ class VisualizarTermoScreen extends StatelessWidget {
       context.uai.error,
       context.uai.cardAlt,
     );
-    final containerWarnBg = context.uai.warning.withOpacity(0.1);
+    final containerWarnBg = context.uai.warning.withAlpha(26);
     final corTextoWarn = _ensureVisible(context.uai.warning, containerWarnBg);
 
     return Scaffold(
@@ -79,10 +79,10 @@ class VisualizarTermoScreen extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: context.uai.info.withOpacity(0.1),
+                    color: context.uai.info.withAlpha(26),
                     borderRadius: BorderRadius.circular(context.uai.cardRadius),
                     border: Border.all(
-                      color: context.uai.info.withOpacity(0.2),
+                      color: context.uai.info.withAlpha(51),
                     ),
                   ),
                   child: Column(
@@ -93,7 +93,7 @@ class VisualizarTermoScreen extends StatelessWidget {
                           Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
-                              color: context.uai.info.withOpacity(0.2),
+                              color: context.uai.info.withAlpha(51),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Icon(
@@ -246,7 +246,7 @@ class VisualizarTermoScreen extends StatelessWidget {
                               color: context.uai.card,
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
-                                color: context.uai.success.withOpacity(0.3),
+                                color: context.uai.success.withAlpha(77),
                               ),
                             ),
                             child: Column(
@@ -302,7 +302,7 @@ class VisualizarTermoScreen extends StatelessWidget {
                                     vertical: 6,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: context.uai.success.withOpacity(0.1),
+                                    color: context.uai.success.withAlpha(26),
                                     borderRadius: BorderRadius.circular(20),
                                   ),
                                   child: Row(
@@ -340,7 +340,7 @@ class VisualizarTermoScreen extends StatelessWidget {
                               color: containerWarnBg,
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
-                                color: context.uai.warning.withOpacity(0.2),
+                                color: context.uai.warning.withAlpha(51),
                               ),
                             ),
                             child: Row(
@@ -365,7 +365,7 @@ class VisualizarTermoScreen extends StatelessWidget {
                                         'O termo foi aceito, mas não foi recolhida assinatura digital.',
                                         style: TextStyle(
                                           fontSize: 12,
-                                          color: corTextoWarn.withOpacity(0.8),
+                                          color: corTextoWarn.withAlpha(204),
                                         ),
                                       ),
                                     ],
@@ -437,7 +437,7 @@ class VisualizarTermoScreen extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withAlpha(26),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(

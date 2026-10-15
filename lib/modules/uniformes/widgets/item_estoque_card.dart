@@ -98,10 +98,10 @@ class ItemEstoqueCard extends StatelessWidget {
               child: CachedNetworkImage(
                 imageUrl: fotoUrl,
                 fit: BoxFit.contain,
-                placeholder: (_, __) => const Center(
+                placeholder: (_, _) => const Center(
                   child: CircularProgressIndicator(color: Colors.white),
                 ),
-                errorWidget: (_, __, ___) => const Center(
+                errorWidget: (_, _, _) => const Center(
                   child: Icon(
                     Icons.broken_image,
                     color: Colors.white,
@@ -183,7 +183,7 @@ class ItemEstoqueCard extends StatelessWidget {
             width: 50,
             height: 50,
             decoration: BoxDecoration(
-              color: visibleCatColor.withOpacity(0.1),
+              color: visibleCatColor.withAlpha(26),
               borderRadius: BorderRadius.circular(8),
             ),
             child: fotoUrl != null && fotoUrl.isNotEmpty
@@ -192,11 +192,11 @@ class ItemEstoqueCard extends StatelessWidget {
                     child: CachedNetworkImage(
                       imageUrl: fotoUrl,
                       fit: BoxFit.cover,
-                      placeholder: (_, __) => Icon(
+                      placeholder: (_, _) => Icon(
                         _getCategoriaIcon(categoria),
                         color: visibleCatColor,
                       ),
-                      errorWidget: (_, __, ___) => Icon(
+                      errorWidget: (_, _, _) => Icon(
                         _getCategoriaIcon(categoria),
                         color: visibleCatColor,
                       ),
@@ -221,9 +221,9 @@ class ItemEstoqueCard extends StatelessWidget {
               decoration: BoxDecoration(
                 color: controlaEstoque
                     ? (baixoEstoque
-                          ? context.uai.warning.withOpacity(0.1)
-                          : context.uai.success.withOpacity(0.1))
-                    : context.uai.textMuted.withOpacity(0.1),
+                          ? context.uai.warning.withAlpha(26)
+                          : context.uai.success.withAlpha(26))
+                    : context.uai.textMuted.withAlpha(26),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
@@ -329,7 +329,7 @@ class ItemEstoqueCard extends StatelessWidget {
                       style: OutlinedButton.styleFrom(
                         foregroundColor: context.uai.primary,
                         side: BorderSide(
-                          color: context.uai.primary.withOpacity(0.5),
+                          color: context.uai.primary.withAlpha(128),
                         ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(
@@ -412,7 +412,7 @@ class ItemEstoqueCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withAlpha(26),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Row(

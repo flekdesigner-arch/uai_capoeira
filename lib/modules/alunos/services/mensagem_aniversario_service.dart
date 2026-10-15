@@ -1,3 +1,4 @@
+import 'dart:developer' as developer;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/mensagem_aniversario_model.dart';
 
@@ -17,7 +18,7 @@ class MensagemAniversarioService {
           .map((doc) => MensagemAniversario.fromFirestore(doc))
           .toList();
     } catch (e) {
-      print('❌ Erro ao buscar mensagens: $e');
+      developer.log('❌ Erro ao buscar mensagens: $e');
       return [];
     }
   }
@@ -40,7 +41,7 @@ class MensagemAniversarioService {
           DateTime.now().millisecondsSinceEpoch % snapshot.docs.length;
       return MensagemAniversario.fromFirestore(snapshot.docs[randomIndex]);
     } catch (e) {
-      print('❌ Erro ao buscar mensagem aleatória: $e');
+      developer.log('❌ Erro ao buscar mensagem aleatória: $e');
       return null;
     }
   }
@@ -60,7 +61,7 @@ class MensagemAniversarioService {
           .map((doc) => MensagemAniversario.fromFirestore(doc))
           .toList();
     } catch (e) {
-      print('❌ Erro ao buscar mensagens por categoria: $e');
+      developer.log('❌ Erro ao buscar mensagens por categoria: $e');
       return [];
     }
   }
@@ -69,7 +70,7 @@ class MensagemAniversarioService {
   Future<void> inicializarMensagensPadrao() async {
     final snapshot = await _firestore.collection(_collectionPath).get();
     if (snapshot.docs.isNotEmpty) {
-      print('✅ Mensagens já existem no banco!');
+      developer.log('✅ Mensagens já existem no banco!');
       return;
     }
 
@@ -185,6 +186,6 @@ class MensagemAniversarioService {
       });
     }
 
-    print('✅ ${mensagensPadrao.length} mensagens padrão inicializadas!');
+    developer.log('✅ ${mensagensPadrao.length} mensagens padrão inicializadas!');
   }
 }

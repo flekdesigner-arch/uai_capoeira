@@ -6,9 +6,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:xml/xml.dart' as xml;
+import 'package:uai_capoeira/core/image_cache/uai_student_photo.dart';
 
 import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'package:uai_capoeira/core/services/uai_callable_client.dart';
 import 'package:uai_capoeira/core/theme/app_theme_controller.dart';
+import 'package:uai_capoeira/shared/widgets/uai_theme_selector.dart';
 import 'package:uai_capoeira/core/theme/app_theme_preset.dart';
 import 'package:uai_capoeira/core/theme/app_theme_tokens.dart';
 import 'package:uai_capoeira/core/theme/tema_global_service.dart';
@@ -20,6 +23,8 @@ import 'package:uai_capoeira/modules/area_aluno/services/area_aluno_google_servi
 import 'package:uai_capoeira/modules/area_aluno/widgets/area_aluno_meus_eventos_section.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/screens/estudos_home_screen.dart';
 import 'package:uai_capoeira/modules/estudos_fundamentos/services/estudos_config_service.dart';
+import 'package:uai_capoeira/modules/rhythm_studio/student/rhythm_guide_config.dart';
+import 'package:uai_capoeira/modules/rhythm_studio/student/rhythm_student_preview_screen.dart';
 import 'package:uai_capoeira/modules/usuarios/services/user_service.dart';
 import 'package:uai_capoeira/modules/rastreio/services/rastreio_site.dart';
 import 'package:uai_capoeira/modules/site/screens/biografia_screen.dart';
@@ -32,17 +37,21 @@ import 'area_aluno_certificados_screen.dart';
 import 'area_aluno_evento_detalhe_screen.dart';
 import 'area_aluno_frequencia_screen.dart';
 import 'area_aluno_solicitar_alteracao_screen.dart';
+import 'area_aluno_meus_pedidos_screen.dart';
+import 'area_aluno_vincular_email_dialog.dart';
 
 class AreaAlunoDashboardScreen extends StatefulWidget {
   final Map<String, dynamic> aluno;
   final Map<String, dynamic> config;
   final Map<String, dynamic> authPayload;
+  final bool adminPreview;
 
   const AreaAlunoDashboardScreen({
     super.key,
     required this.aluno,
     required this.config,
     required this.authPayload,
+    this.adminPreview = false,
   });
 
   @override
@@ -53,9 +62,11 @@ class AreaAlunoDashboardScreen extends StatefulWidget {
 class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
   String? _cordaSvg;
   bool _vinculandoGoogle = false;
+  bool _vinculandoEmail = false;
   bool _tutorialPosVinculoMostrado = false;
   bool _carregandoConfigEstudos = true;
   bool _mostrarEstudosFundamentos = false;
+  bool _mostrarGuiaInstrumentacao = false;
 
   final RastreioSiteService _rastreioService = RastreioSiteService();
   final AreaAlunoSessionService _sessionService = AreaAlunoSessionService();
@@ -76,7 +87,29 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
     return {};
   }
 
-  AreaAlunoConfig get _areaConfig => AreaAlunoConfig.fromMap(widget.config);
+  AreaAlunoConfig get _areaConfig {
+    // As Cloud Functions já devolvem uma configuração EFETIVA para o método
+    // de acesso atual (básico, Google ou Conta UAI/e-mail), copiando as
+    // permissões do perfil correto para as chaves canônicas mostrar_*.
+    //
+    // O dashboard não deve aplicar novamente com_google_* / sem_google_*.
+    // Essa segunda seleção fazia a Web/PWA poder reutilizar flags legadas e
+    // ocultar os módulos mesmo quando o backend havia liberado o acesso.
+    final modoAcesso = _safeText(
+      widget.config['modo_acesso'] ?? widget.authPayload['modo_acesso'],
+      'basico',
+    ).toLowerCase();
+    final configEfetiva = Map<String, dynamic>.from(widget.config)
+      ..removeWhere(
+        (key, _) =>
+            key.startsWith('com_google_') || key.startsWith('sem_google_'),
+      );
+
+    return AreaAlunoConfig.fromMap({
+      ...configEfetiva,
+      'modo_acesso': modoAcesso,
+    });
+  }
 
   bool get _sessaoGoogleValidada {
     final modoAcesso = _safeText(
@@ -99,10 +132,45 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
         alunoPayloadId == _alunoId;
   }
 
+  bool get _sessaoIdentidadeCompletaValidada {
+    if (widget.adminPreview) return true;
+    final modoAcesso = _safeText(
+      widget.config['modo_acesso'] ?? widget.authPayload['modo_acesso'],
+      '',
+    ).toLowerCase();
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return false;
+
+    if (modoAcesso == 'google') {
+      return _sessaoGoogleValidada;
+    }
+
+    if (modoAcesso == 'conta_uai' || modoAcesso == 'email') {
+      final contaUid = _safeText(widget.authPayload['conta_uai_uid'], '');
+      final alunoPayloadId = _safeText(
+        widget.authPayload['alunoSelecionadoId'] ??
+            widget.authPayload['aluno_id_login'] ??
+            widget.authPayload['aluno_id'],
+        '',
+      );
+
+      // Conta UAI é uma identidade autenticada própria. Quando o UID está no
+      // payload, ele precisa coincidir. Para sessões antigas sem o UID salvo,
+      // aceitamos somente se o backend já marcou a configuração como identidade
+      // completa e o aluno do payload coincide com o dashboard atual.
+      final uidOk = contaUid.isEmpty || contaUid == user.uid;
+      final alunoOk = alunoPayloadId.isEmpty || alunoPayloadId == _alunoId;
+      return uidOk && alunoOk && _areaConfig.acessoIdentidadeCompleta;
+    }
+
+    return false;
+  }
+
   bool get _podeMostrarEstudosFundamentos =>
-      _mostrarEstudosFundamentos && _sessaoGoogleValidada;
+      _mostrarEstudosFundamentos && _sessaoIdentidadeCompletaValidada;
 
   bool get _temAcoesDashboard =>
+      (_alunoId.isNotEmpty && _sessaoIdentidadeCompletaValidada) ||
       _areaConfig.mostrarDadosBasicos ||
       _areaConfig.mostrarSolicitacaoAlteracao ||
       _areaConfig.mostrarFrequencia ||
@@ -129,11 +197,13 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
     super.initState();
     _loadCordaSvg();
     _carregarConfigEstudosFundamentos();
+    _carregarConfigGuiaInstrumentacao();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _talvezMostrarTutorialPosVinculo();
     });
 
-    _rastreioService.iniciarTela(
+    if (!widget.adminPreview) {
+      _rastreioService.iniciarTela(
       'area_aluno_dashboard',
       origem: 'area_aluno_login',
       metadata: {
@@ -147,19 +217,22 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
         if (_dispositivoLogin.isNotEmpty) 'dispositivo': _dispositivoLogin,
       },
     );
-    _rastreioService.marcarTempo('area_aluno_dashboard_tempo');
+      _rastreioService.marcarTempo('area_aluno_dashboard_tempo');
+    }
   }
 
   @override
   void dispose() {
-    _rastreioService.registrarTempoMarcador(
+    if (!widget.adminPreview) {
+      _rastreioService.registrarTempoMarcador(
       chave: 'area_aluno_dashboard_tempo',
       tipo: 'tempo_tela',
       nome: 'area_aluno_dashboard',
       origem: 'dispose',
       limparMarcador: true,
     );
-    _rastreioService.finalizarTela(destino: 'saida_area_aluno_dashboard');
+      _rastreioService.finalizarTela(destino: 'saida_area_aluno_dashboard');
+    }
     super.dispose();
   }
 
@@ -401,6 +474,15 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
     return text;
   }
 
+  Future<void> _carregarConfigGuiaInstrumentacao() async {
+    try {
+      final config = await RhythmGuideConfigService().load();
+      if (mounted) setState(() => _mostrarGuiaInstrumentacao = config.mostrarCardAluno);
+    } catch (_) {
+      if (mounted) setState(() => _mostrarGuiaInstrumentacao = false);
+    }
+  }
+
   Future<void> _carregarConfigEstudosFundamentos() async {
     try {
       final disponivel = await _estudosConfigService
@@ -523,12 +605,12 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
                             height: 52,
                             decoration: BoxDecoration(
                               color: Color.alphaBlend(
-                                accent.withOpacity(0.12),
+                                accent.withAlpha(31),
                                 t.surface,
                               ),
                               borderRadius: BorderRadius.circular(18),
                               border: Border.all(
-                                color: accent.withOpacity(0.18),
+                                color: accent.withAlpha(46),
                               ),
                             ),
                             child: Icon(
@@ -670,16 +752,15 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
         return;
       }
 
-      final result = await FirebaseFunctions.instance
-          .httpsCallable('vincularGoogleAreaAluno')
-          .call({
-            'alunoId': _alunoId,
-            'authPayload': widget.authPayload,
-            'dispositivo': _dispositivoLogin,
-            'origem': 'area_aluno_dashboard',
-          });
-
-      final data = Map<String, dynamic>.from(result.data as Map);
+      final data = await UaiCallableClient.instance.call(
+        'vincularGoogleAreaAluno',
+        {
+          'alunoId': _alunoId,
+          'authPayload': widget.authPayload,
+          'dispositivo': _dispositivoLogin,
+          'origem': 'area_aluno_dashboard',
+        },
+      );
       if (data['success'] != true) {
         _mostrarSnack(
           data['message']?.toString() ??
@@ -740,6 +821,70 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
     }
   }
 
+  Future<void> _vincularContaEmail() async {
+    if (_vinculandoEmail || _alunoId.isEmpty) return;
+
+    setState(() => _vinculandoEmail = true);
+    try {
+      final data = await showDialog<Map<String, dynamic>>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => AreaAlunoVincularEmailDialog(
+          alunoId: _alunoId,
+          authPayload: widget.authPayload,
+          jaVinculado: _areaConfig.emailConfirmado,
+          emailMascarado: _areaConfig.emailContaUaiMascarado,
+        ),
+      );
+
+      if (data == null || !mounted) return;
+
+      final aluno = Map<String, dynamic>.from(data['aluno'] as Map? ?? {});
+      final config = Map<String, dynamic>.from(data['config'] as Map? ?? {});
+      final user = FirebaseAuth.instance.currentUser;
+      final vinculoId = data['vinculo_id']?.toString() ?? '';
+
+      final authPayload = <String, dynamic>{
+        ...widget.authPayload,
+        'modo_acesso': 'conta_uai',
+        'conta_uai_uid': user?.uid ?? '',
+        'conta_uai_email': user?.email ?? '',
+        'vinculo_id': vinculoId,
+        'aluno_id_login': aluno['aluno_id']?.toString() ?? _alunoId,
+        'mostrar_tutorial_pos_vinculo': true,
+      };
+
+      await _sessionService.salvarSessao(
+        aluno: aluno,
+        config: config,
+        authPayload: authPayload,
+        alunoSelecionadoId: aluno['aluno_id']?.toString() ?? _alunoId,
+      );
+
+      if (!mounted) return;
+
+      _mostrarSnack(
+        _areaConfig.emailConfirmado
+            ? 'E-mail confirmado. Acesso completo liberado!'
+            : 'E-mail vinculado com sucesso. Acesso completo liberado!',
+        context.uai.success,
+      );
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => AreaAlunoDashboardScreen(
+            aluno: aluno,
+            config: config,
+            authPayload: authPayload,
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _vinculandoEmail = false);
+    }
+  }
+
   Future<void> _talvezMostrarTutorialPosVinculo() async {
     if (_tutorialPosVinculoMostrado || !mounted) return;
 
@@ -783,7 +928,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
         icon: Icons.verified_user_rounded,
         title: 'Acesso completo liberado!',
         text:
-            'Pronto! O cadastro foi vinculado à conta Google e a Área do Aluno está liberada conforme as permissões definidas pela coordenação.',
+            'Pronto! O cadastro foi vinculado a uma conta confirmada e a Área do Aluno está liberada conforme as permissões definidas pela coordenação.',
       ),
       _TutorialAreaAlunoPage(
         icon: Icons.person_search_rounded,
@@ -807,7 +952,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
         icon: Icons.security_rounded,
         title: 'Mais segurança no acesso',
         text:
-            'Nas próximas vezes, use a conta Google vinculada para acessar com mais segurança e praticidade.',
+            'Nas próximas vezes, use a conta vinculada — Google ou e-mail verificado — para acessar com mais segurança e praticidade.',
       ),
     ];
 
@@ -844,9 +989,9 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), t.surface),
+        color: Color.alphaBlend(accent.withAlpha(20), t.surface),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: accent.withOpacity(0.14)),
+        border: Border.all(color: accent.withAlpha(36)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1064,11 +1209,11 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
   }
 
   Future<void> _abrirEstudosFundamentos() async {
-    if (!_sessaoGoogleValidada) {
+    if (!_sessaoIdentidadeCompletaValidada) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Entre com Google para acessar os Estudos e Fundamentos.',
+            'Entre com uma Conta UAI verificada e vinculada a este aluno para acessar os Estudos e Fundamentos.',
           ),
           behavior: SnackBarBehavior.floating,
         ),
@@ -1221,7 +1366,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
                         shrinkWrap: true,
                         padding: const EdgeInsets.fromLTRB(14, 6, 14, 16),
                         itemCount: presets.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 9),
+                        separatorBuilder: (_, _) => const SizedBox(height: 9),
                         itemBuilder: (context, index) {
                           final preset = presets[index];
                           final selected =
@@ -1239,14 +1384,15 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
                                 return;
                               }
 
-                              await controller.apply(
-                                preset: preset,
-                                mode: preset.isDark
-                                    ? ThemeMode.dark
-                                    : ThemeMode.light,
+                              await fecharDialogoAposSalvarTema(
+                                context,
+                                () => controller.apply(
+                                  preset: preset,
+                                  mode: preset.isDark
+                                      ? ThemeMode.dark
+                                      : ThemeMode.light,
+                                ),
                               );
-
-                              if (mounted) Navigator.pop(context);
                             },
                           );
                         },
@@ -1272,7 +1418,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
 
     return Material(
       color: selected
-          ? Color.alphaBlend(accent.withOpacity(0.11), t.cardAlt)
+          ? Color.alphaBlend(accent.withAlpha(28), t.cardAlt)
           : t.card,
       borderRadius: BorderRadius.circular(t.cardRadius),
       clipBehavior: Clip.antiAlias,
@@ -1284,7 +1430,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(t.cardRadius),
             border: Border.all(
-              color: selected ? accent.withOpacity(0.35) : t.border,
+              color: selected ? accent.withAlpha(89) : t.border,
               width: selected ? 1.4 : 1,
             ),
           ),
@@ -1393,13 +1539,23 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
               children: [
                 CircleAvatar(
                   radius: 27,
-                  backgroundColor: onPrimary.withOpacity(0.15),
-                  backgroundImage: _foto.isNotEmpty
-                      ? NetworkImage(_foto)
-                      : null,
+                  backgroundColor: onPrimary.withAlpha(38),
                   child: _foto.isEmpty
                       ? Icon(Icons.person_rounded, color: onPrimary)
-                      : null,
+                      : ClipOval(
+                          child: UaiStudentPhoto(
+                            studentId: _alunoId,
+                            imageUrl: _foto,
+                            profile: UaiStudentPhotoProfile.compact,
+                            width: 54,
+                            height: 54,
+                            fit: BoxFit.cover,
+                            fallback: Icon(
+                              Icons.person_rounded,
+                              color: onPrimary,
+                            ),
+                          ),
+                        ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -1420,7 +1576,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: onPrimary.withOpacity(0.78),
+                          color: onPrimary.withAlpha(199),
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
@@ -1435,7 +1591,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
             child: ListView.separated(
               padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
               itemCount: itens.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 3),
+              separatorBuilder: (_, _) => const SizedBox(height: 3),
               itemBuilder: (context, index) {
                 final item = itens[index];
                 final color = item.selecionado ? t.primary : t.textPrimary;
@@ -1443,7 +1599,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
 
                 return Material(
                   color: item.selecionado
-                      ? Color.alphaBlend(visible.withOpacity(0.08), t.surface)
+                      ? Color.alphaBlend(visible.withAlpha(20), t.surface)
                       : Colors.transparent,
                   borderRadius: BorderRadius.circular(14),
                   clipBehavior: Clip.antiAlias,
@@ -1464,7 +1620,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
                               color: item.selecionado
                                   ? visible
                                   : Color.alphaBlend(
-                                      visible.withOpacity(0.08),
+                                      visible.withAlpha(20),
                                       t.card,
                                     ),
                               borderRadius: BorderRadius.circular(13),
@@ -1526,7 +1682,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
               label: const Text('SAIR DA ÁREA DO ALUNO'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: _ensureVisible(t.error, t.cardAlt),
-                side: BorderSide(color: t.error.withOpacity(0.25)),
+                side: BorderSide(color: t.error.withAlpha(64)),
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 textStyle: const TextStyle(fontWeight: FontWeight.w900),
                 shape: RoundedRectangleBorder(
@@ -1588,7 +1744,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
             label: const Text('TROCAR ALUNO'),
             style: OutlinedButton.styleFrom(
               foregroundColor: _ensureVisible(t.info, t.cardAlt),
-              side: BorderSide(color: t.info.withOpacity(0.25)),
+              side: BorderSide(color: t.info.withAlpha(64)),
               padding: const EdgeInsets.symmetric(vertical: 12),
               textStyle: const TextStyle(fontWeight: FontWeight.w900),
               shape: RoundedRectangleBorder(
@@ -1609,35 +1765,43 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
 
     return Scaffold(
       backgroundColor: t.background,
-      drawer: Drawer(
-        backgroundColor: t.surface,
-        width: MediaQuery.of(context).size.width.clamp(280.0, 330.0),
-        child: _buildDrawerMenu(),
-      ),
+      drawer: widget.adminPreview
+          ? null
+          : Drawer(
+              backgroundColor: t.surface,
+              width: MediaQuery.of(context).size.width.clamp(280.0, 330.0),
+              child: _buildDrawerMenu(),
+            ),
       appBar: AppBar(
-        title: const Text(
-          'Minha Área',
-          style: TextStyle(fontWeight: FontWeight.w900),
+        title: Text(
+          widget.adminPreview ? 'Prévia • Minha Área' : 'Minha Área',
+          style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         centerTitle: true,
         backgroundColor: appBarBg,
         foregroundColor: appBarFg,
         iconTheme: IconThemeData(color: appBarFg),
         elevation: 0,
-        leading: Builder(
-          builder: (context) => IconButton(
-            tooltip: 'Abrir menu',
-            icon: const Icon(Icons.menu_rounded),
-            onPressed: () => Scaffold.of(context).openDrawer(),
-          ),
-        ),
+        leading: widget.adminPreview
+            ? IconButton(
+                tooltip: 'Voltar ao Admin',
+                icon: const Icon(Icons.arrow_back_rounded),
+                onPressed: () => Navigator.pop(context),
+              )
+            : Builder(
+                builder: (context) => IconButton(
+                  tooltip: 'Abrir menu',
+                  icon: const Icon(Icons.menu_rounded),
+                  onPressed: () => Scaffold.of(context).openDrawer(),
+                ),
+              ),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: Tooltip(
               message: 'Escolher tema',
               child: Material(
-                color: appBarFg.withOpacity(0.12),
+                color: appBarFg.withAlpha(31),
                 borderRadius: BorderRadius.circular(13),
                 clipBehavior: Clip.antiAlias,
                 child: InkWell(
@@ -1648,7 +1812,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
                     height: 42,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(13),
-                      border: Border.all(color: appBarFg.withOpacity(0.14)),
+                      border: Border.all(color: appBarFg.withAlpha(36)),
                     ),
                     child: Icon(
                       Icons.palette_rounded,
@@ -1683,10 +1847,14 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
                     30,
                   ),
                   children: [
+                    if (widget.adminPreview) ...[
+                      _buildAdminPreviewBanner(),
+                      const SizedBox(height: 12),
+                    ],
                     _buildHeader(isMobile),
                     const SizedBox(height: 14),
                     _buildResumoCards(isMobile),
-                    if (_areaConfig.deveMostrarCardGoogle) ...[
+                    if (!_sessaoIdentidadeCompletaValidada) ...[
                       const SizedBox(height: 16),
                       _buildGoogleAccessCard(),
                     ],
@@ -1696,7 +1864,9 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
                         aluno: widget.aluno,
                         authPayload: widget.authPayload,
                         config: widget.config,
-                        onAbrirEvento: _abrirDetalhesEventoAluno,
+                        onAbrirEvento: widget.adminPreview
+                            ? (_) => _bloquearAcaoPreview()
+                            : _abrirDetalhesEventoAluno,
                       ),
                     ],
                     if (_temAcoesDashboard) ...[
@@ -1717,6 +1887,51 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
             ),
           );
         },
+      ),
+    );
+  }
+
+  void _bloquearAcaoPreview() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Prévia administrativa: ações do aluno estão desativadas.',
+        ),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Widget _buildAdminPreviewBanner() {
+    final t = context.uai;
+    final accent = _ensureVisible(t.warning, t.card);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(accent.withAlpha(26), t.card),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: accent.withAlpha(71)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.visibility_rounded, color: accent, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'VISUALIZAÇÃO ADMINISTRATIVA • Você está vendo as permissões '
+              'e o dashboard deste aluno. Nenhuma ação será executada em nome dele.',
+              style: TextStyle(
+                color: t.textPrimary,
+                fontSize: 11.5,
+                height: 1.3,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1747,7 +1962,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: onPrimary.withOpacity(0.82),
+                    color: onPrimary.withAlpha(209),
                     fontSize: isMobile ? 11.5 : 12.5,
                     fontWeight: FontWeight.w600,
                   ),
@@ -1771,7 +1986,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: onPrimary.withOpacity(0.78),
+                      color: onPrimary.withAlpha(199),
                       fontSize: 13,
                     ),
                   ),
@@ -1805,27 +2020,27 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
     if (_foto.isEmpty) {
       return CircleAvatar(
         radius: size / 2,
-        backgroundColor: onPrimary.withOpacity(0.16),
+        backgroundColor: onPrimary.withAlpha(41),
         child: Icon(Icons.person_rounded, color: onPrimary, size: size * 0.55),
       );
     }
 
     return CircleAvatar(
       radius: size / 2,
-      backgroundColor: onPrimary.withOpacity(0.20),
+      backgroundColor: onPrimary.withAlpha(51),
       child: ClipOval(
-        child: Image.network(
-          _foto,
+        child: UaiStudentPhoto(
+          studentId: _alunoId,
+          imageUrl: _foto,
+          profile: UaiStudentPhotoProfile.list,
           width: size,
           height: size,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) {
-            return Icon(
-              Icons.person_rounded,
-              color: onPrimary,
-              size: size * 0.55,
-            );
-          },
+          fallback: Icon(
+            Icons.person_rounded,
+            color: onPrimary,
+            size: size * 0.55,
+          ),
         ),
       ),
     );
@@ -1839,10 +2054,10 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
       decoration: BoxDecoration(
         color: ativo
-            ? Colors.green.withOpacity(0.20)
-            : Colors.orange.withOpacity(0.20),
+            ? Colors.green.withAlpha(51)
+            : Colors.orange.withAlpha(51),
         borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: onPrimary.withOpacity(0.20)),
+        border: Border.all(color: onPrimary.withAlpha(51)),
       ),
       child: Text(
         ativo
@@ -1863,9 +2078,9 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
       decoration: BoxDecoration(
-        color: onPrimary.withOpacity(0.14),
+        color: onPrimary.withAlpha(36),
         borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: onPrimary.withOpacity(0.12)),
+        border: Border.all(color: onPrimary.withAlpha(31)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1940,7 +2155,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
           padding: const EdgeInsets.all(13),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: color.withOpacity(0.13)),
+            border: Border.all(color: color.withAlpha(33)),
             boxShadow: t.softShadow,
           ),
           child: Row(
@@ -2002,7 +2217,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
       width: 58,
       height: 58,
       decoration: BoxDecoration(
-        color: Color.alphaBlend(color.withOpacity(0.10), t.cardAlt),
+        color: Color.alphaBlend(color.withAlpha(26), t.cardAlt),
         borderRadius: BorderRadius.circular(18),
       ),
       child: logo.isNotEmpty
@@ -2011,7 +2226,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
               child: Image.network(
                 logo,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) {
+                errorBuilder: (_, _, _) {
                   return Icon(Icons.school_rounded, color: color, size: 30);
                 },
               ),
@@ -2029,7 +2244,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
       decoration: BoxDecoration(
         color: t.card,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: accent.withOpacity(0.13)),
+        border: Border.all(color: accent.withAlpha(33)),
         boxShadow: t.softShadow,
       ),
       child: Row(
@@ -2038,7 +2253,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
             width: 54,
             height: 54,
             decoration: BoxDecoration(
-              color: Color.alphaBlend(accent.withOpacity(0.10), t.cardAlt),
+              color: Color.alphaBlend(accent.withAlpha(26), t.cardAlt),
               borderRadius: BorderRadius.circular(17),
             ),
             child: Icon(
@@ -2102,7 +2317,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
           width: 39,
           height: 39,
           decoration: BoxDecoration(
-            color: Color.alphaBlend(primary.withOpacity(0.09), t.cardAlt),
+            color: Color.alphaBlend(primary.withAlpha(23), t.cardAlt),
             borderRadius: BorderRadius.circular(14),
           ),
           child: Icon(icon, color: primary, size: 21),
@@ -2135,6 +2350,16 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
     final t = context.uai;
 
     final cards = [
+      if (_alunoId.isNotEmpty &&
+          _sessaoIdentidadeCompletaValidada &&
+          _areaConfig.mostrarPedidos)
+        _DashboardCardData(
+          icon: Icons.shopping_bag_rounded,
+          title: 'Meus pedidos',
+          subtitle: 'Pedidos, remessas e compras',
+          color: t.success,
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => AreaAlunoMeusPedidosScreen(alunoId: _alunoId))),
+        ),
       if (_areaConfig.mostrarDadosBasicos)
         _DashboardCardData(
           icon: Icons.person_search_rounded,
@@ -2166,6 +2391,16 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
           subtitle: 'Eventos e certificados',
           color: t.warning,
           onTap: _abrirCertificados,
+        ),
+      if (_mostrarGuiaInstrumentacao && _sessaoIdentidadeCompletaValidada)
+        _DashboardCardData(
+          icon: Icons.music_note_rounded,
+          title: 'Guia de Instrumentação',
+          subtitle: 'Aprenda, ouça e toque os instrumentos',
+          color: t.warning,
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => RhythmStudentPreviewScreen(alunoId: _alunoId),
+          )),
         ),
       if (!_carregandoConfigEstudos && _podeMostrarEstudosFundamentos)
         _DashboardCardData(
@@ -2232,6 +2467,10 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
             origem: 'area_aluno_dashboard',
             metadata: {'titulo': card.title, 'subtitulo': card.subtitle},
           );
+          if (widget.adminPreview) {
+            _bloquearAcaoPreview();
+            return;
+          }
           card.onTap();
         },
         borderRadius: BorderRadius.circular(22),
@@ -2240,7 +2479,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
           padding: EdgeInsets.all(compact ? 12 : 14),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: accent.withOpacity(0.13)),
+            border: Border.all(color: accent.withAlpha(33)),
             boxShadow: t.softShadow,
           ),
           child: compact
@@ -2254,7 +2493,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
                           height: 46,
                           decoration: BoxDecoration(
                             color: Color.alphaBlend(
-                              accent.withOpacity(0.10),
+                              accent.withAlpha(26),
                               t.cardAlt,
                             ),
                             borderRadius: BorderRadius.circular(16),
@@ -2301,7 +2540,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
                       height: 54,
                       decoration: BoxDecoration(
                         color: Color.alphaBlend(
-                          accent.withOpacity(0.10),
+                          accent.withAlpha(26),
                           t.cardAlt,
                         ),
                         borderRadius: BorderRadius.circular(18),
@@ -2358,9 +2597,9 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), t.card),
+        color: Color.alphaBlend(accent.withAlpha(20), t.card),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: accent.withOpacity(0.14)),
+        border: Border.all(color: accent.withAlpha(36)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2386,118 +2625,173 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
   Widget _buildGoogleAccessCard() {
     final t = context.uai;
     final accent = _ensureVisible(t.primary, t.card);
-    final jaVinculado = _areaConfig.googleVinculado;
-    final email = _areaConfig.googleEmailMascarado;
+    final googleVinculado = _areaConfig.googleVinculado;
+    final emailConfirmado = _areaConfig.emailConfirmado;
+    final googleEmail = _areaConfig.googleEmailMascarado;
+    final contaEmail = _areaConfig.emailContaUaiMascarado;
+    final jaTemVinculo = googleVinculado || emailConfirmado;
+
+    final titulo = jaTemVinculo
+        ? 'Confirme sua conta para liberar o acesso completo'
+        : 'Proteja e complete seu acesso';
+
+    final descricao = jaTemVinculo
+        ? 'Este aluno já possui uma conta vinculada. Você entrou pelos dados tradicionais; confirme a conta já cadastrada para liberar pedidos e os recursos protegidos.'
+        : 'Você já está na área correta do aluno. Agora escolha como deseja vincular esta área: Google ou e-mail com código de 6 dígitos.';
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), t.card),
+        color: Color.alphaBlend(accent.withAlpha(20), t.card),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: accent.withOpacity(0.16)),
+        border: Border.all(color: accent.withAlpha(46)),
         boxShadow: t.softShadow,
       ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final compact = constraints.maxWidth < 620;
-          final content = Column(
-            crossAxisAlignment: compact
-                ? CrossAxisAlignment.stretch
-                : CrossAxisAlignment.start,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                jaVinculado
-                    ? 'Conta Google vinculada'
-                    : 'Libere o acesso completo',
-                style: TextStyle(
-                  color: t.textPrimary,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w900,
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: Color.alphaBlend(accent.withAlpha(26), t.card),
+                  borderRadius: BorderRadius.circular(14),
                 ),
+                child: Icon(Icons.shield_outlined, color: accent),
               ),
-              const SizedBox(height: 5),
-              Text(
-                jaVinculado
-                    ? 'Este cadastro já está conectado a uma conta Google${email.isNotEmpty ? '. Conta vinculada: $email' : '.'}'
-                    : 'Vincule uma conta Google do aluno ou responsável para conectar este cadastro ao e-mail escolhido.',
-                style: TextStyle(
-                  color: t.textSecondary,
-                  fontSize: 12.5,
-                  height: 1.35,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                jaVinculado
-                    ? 'Use a conta vinculada nas próximas vezes para entrar com mais segurança.'
-                    : 'Depois disso, a Área do Aluno poderá mostrar eventos, certificados, frequência e demais informações liberadas pela coordenação.',
-                style: TextStyle(
-                  color: accent,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          );
-
-          final button = FilledButton.icon(
-            onPressed: _vinculandoGoogle
-                ? null
-                : jaVinculado
-                ? _vincularContaGoogle
-                : _confirmarVinculoGoogle,
-            icon: _vinculandoGoogle
-                ? const SizedBox(
-                    width: 17,
-                    height: 17,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.g_mobiledata_rounded),
-            label: Text(
-              _vinculandoGoogle
-                  ? 'Conectando...'
-                  : jaVinculado
-                  ? 'Entrar com Google'
-                  : 'Vincular conta Google',
-            ),
-            style: FilledButton.styleFrom(
-              backgroundColor: accent,
-              foregroundColor: _readableOn(accent),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(t.buttonRadius),
-              ),
-            ),
-          );
-
-          if (compact) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.verified_user_rounded, color: accent),
-                    const SizedBox(width: 10),
-                    Expanded(child: content),
+                    Text(
+                      titulo,
+                      style: TextStyle(
+                        color: t.textPrimary,
+                        fontSize: 16.5,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      descricao,
+                      style: TextStyle(
+                        color: t.textSecondary,
+                        fontSize: 12.3,
+                        height: 1.35,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ],
                 ),
-                const SizedBox(height: 12),
-                button,
-              ],
-            );
-          }
-
-          return Row(
-            children: [
-              Icon(Icons.verified_user_rounded, color: accent, size: 34),
-              const SizedBox(width: 13),
-              Expanded(child: content),
-              const SizedBox(width: 14),
-              button,
+              ),
             ],
-          );
-        },
+          ),
+          if (googleVinculado && googleEmail.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _buildVinculoInfoBlock(
+              icon: Icons.g_mobiledata_rounded,
+              title: 'Google já vinculado',
+              text: googleEmail,
+              color: t.info,
+            ),
+          ],
+          if (emailConfirmado && contaEmail.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _buildVinculoInfoBlock(
+              icon: Icons.alternate_email_rounded,
+              title: 'E-mail já vinculado',
+              text: contaEmail,
+              color: t.success,
+            ),
+          ],
+          const SizedBox(height: 14),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final compact = constraints.maxWidth < 520;
+
+              final googleButton = FilledButton.icon(
+                onPressed: _vinculandoGoogle || _vinculandoEmail
+                    ? null
+                    : (googleVinculado
+                          ? _vincularContaGoogle
+                          : _confirmarVinculoGoogle),
+                icon: _vinculandoGoogle
+                    ? const SizedBox(
+                        width: 17,
+                        height: 17,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.g_mobiledata_rounded),
+                label: Text(
+                  _vinculandoGoogle
+                      ? 'Conectando...'
+                      : (googleVinculado
+                            ? 'ENTRAR COM GOOGLE VINCULADO'
+                            : 'VINCULAR COM GOOGLE'),
+                ),
+              );
+
+              final emailButton = OutlinedButton.icon(
+                onPressed: _vinculandoGoogle || _vinculandoEmail
+                    ? null
+                    : _vincularContaEmail,
+                icon: _vinculandoEmail
+                    ? const SizedBox(
+                        width: 17,
+                        height: 17,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.mark_email_read_rounded),
+                label: Text(
+                  _vinculandoEmail
+                      ? 'Confirmando...'
+                      : (emailConfirmado
+                            ? 'ENTRAR COM E-MAIL VINCULADO'
+                            : 'VINCULAR E-MAIL COM CÓDIGO'),
+                ),
+              );
+
+              if (compact) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (_areaConfig.googleLoginAtivo || googleVinculado)
+                      googleButton,
+                    if (_areaConfig.googleLoginAtivo || googleVinculado)
+                      const SizedBox(height: 9),
+                    emailButton,
+                  ],
+                );
+              }
+
+              return Row(
+                children: [
+                  if (_areaConfig.googleLoginAtivo || googleVinculado) ...[
+                    Expanded(child: googleButton),
+                    const SizedBox(width: 10),
+                  ],
+                  Expanded(child: emailButton),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'O acesso tradicional continua disponível. Pedidos e outros dados protegidos só aparecem depois que a conta vinculada é autenticada.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: t.textMuted,
+              fontSize: 10.8,
+              height: 1.3,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2610,7 +2904,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [color, color.withOpacity(0.78)],
+          colors: [color, color.withAlpha(199)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -2622,7 +2916,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
             width: 64,
             height: 64,
             decoration: BoxDecoration(
-              color: onColor.withOpacity(0.18),
+              color: onColor.withAlpha(46),
               borderRadius: BorderRadius.circular(20),
             ),
             child: logo.isNotEmpty
@@ -2631,7 +2925,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
                     child: Image.network(
                       logo,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) {
+                      errorBuilder: (_, _, _) {
                         return Icon(
                           Icons.school_rounded,
                           color: onColor,
@@ -2684,9 +2978,9 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: onPrimary.withOpacity(0.16),
+        color: onPrimary.withAlpha(41),
         borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: onPrimary.withOpacity(0.16)),
+        border: Border.all(color: onPrimary.withAlpha(41)),
       ),
       child: Text(
         text,
@@ -2919,7 +3213,7 @@ class _AreaAlunoDashboardScreenState extends State<AreaAlunoDashboardScreen> {
           width: 45,
           height: 45,
           decoration: BoxDecoration(
-            color: Color.alphaBlend(accent.withOpacity(0.10), t.card),
+            color: Color.alphaBlend(accent.withAlpha(26), t.card),
             borderRadius: BorderRadius.circular(16),
           ),
           child: Icon(icon, color: accent),
@@ -3114,11 +3408,11 @@ class _AreaAlunoTutorialSheetState extends State<_AreaAlunoTutorialSheet> {
                           height: 76,
                           decoration: BoxDecoration(
                             color: Color.alphaBlend(
-                              accent.withOpacity(0.12),
+                              accent.withAlpha(31),
                               t.surface,
                             ),
                             borderRadius: BorderRadius.circular(26),
-                            border: Border.all(color: accent.withOpacity(0.18)),
+                            border: Border.all(color: accent.withAlpha(46)),
                           ),
                           child: Icon(page.icon, color: accent, size: 38),
                         ),

@@ -281,7 +281,7 @@ class _ConfigurarAssistenteScreenState
                   ),
                   Switch(
                     value: _config['ativo'] == true,
-                    activeColor: t.success,
+                    activeThumbColor: t.success,
                     onChanged: (value) async {
                       setState(() => _config['ativo'] = value);
                       await _salvarConfiguracoes();
@@ -319,7 +319,7 @@ class _ConfigurarAssistenteScreenState
                   indicatorColor: _onPrimary(),
                   indicatorWeight: 3,
                   labelColor: _onPrimary(),
-                  unselectedLabelColor: _onPrimary().withOpacity(0.70),
+                  unselectedLabelColor: _onPrimary().withAlpha(179),
                   labelStyle: const TextStyle(
                     fontSize: 11.5,
                     fontWeight: FontWeight.w900,
@@ -490,7 +490,7 @@ class _ConfigurarAssistenteScreenState
               style: TextStyle(color: context.uai.textSecondary),
             ),
             value: _config['ativo'] == true,
-            activeColor: context.uai.success,
+            activeThumbColor: context.uai.success,
             onChanged: (value) async {
               setState(() => _config['ativo'] = value);
               await _salvarConfiguracoes();
@@ -624,7 +624,7 @@ class _ConfigurarAssistenteScreenState
               style: TextStyle(color: context.uai.textSecondary),
             ),
             value: regras['limitar_assuntos'] ?? true,
-            activeColor: context.uai.warning,
+            activeThumbColor: context.uai.warning,
             onChanged: (value) {
               setState(() => regras['limitar_assuntos'] = value);
             },
@@ -675,7 +675,7 @@ class _ConfigurarAssistenteScreenState
                 contentPadding: EdgeInsets.zero,
                 title: Text('Ativar ação ${entry.key}'),
                 value: active,
-                activeColor: context.uai.success,
+                activeThumbColor: context.uai.success,
                 onChanged: (value) {
                   setState(() {
                     _section('acoes')[entry.key] ??= <String, dynamic>{};
@@ -752,7 +752,7 @@ class _ConfigurarAssistenteScreenState
             contentPadding: EdgeInsets.zero,
             title: const Text('Mostrar Avatar'),
             value: aparencia['mostrar_avatar'] ?? true,
-            activeColor: context.uai.associacao,
+            activeThumbColor: context.uai.associacao,
             onChanged: (value) {
               setState(() => aparencia['mostrar_avatar'] = value);
             },
@@ -761,7 +761,7 @@ class _ConfigurarAssistenteScreenState
             contentPadding: EdgeInsets.zero,
             title: const Text('Animações'),
             value: aparencia['animacao'] ?? true,
-            activeColor: context.uai.associacao,
+            activeThumbColor: context.uai.associacao,
             onChanged: (value) {
               setState(() => aparencia['animacao'] = value);
             },
@@ -873,7 +873,7 @@ class _ConfigurarAssistenteScreenState
               label: const Text('ADICIONAR RESPOSTA'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: context.uai.success,
-                side: BorderSide(color: context.uai.success.withOpacity(0.28)),
+                side: BorderSide(color: context.uai.success.withAlpha(71)),
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 textStyle: const TextStyle(fontWeight: FontWeight.w900),
                 shape: RoundedRectangleBorder(
@@ -930,7 +930,7 @@ class _ConfigurarAssistenteScreenState
     final ativos = _asInt(turma['alunos_ativos']);
     final vagasDisponiveis = vagas - ativos;
     final bg = selecionada
-        ? Color.alphaBlend(cor.withOpacity(0.08), t.card)
+        ? Color.alphaBlend(cor.withAlpha(20), t.card)
         : t.cardAlt;
 
     return Padding(
@@ -943,12 +943,12 @@ class _ConfigurarAssistenteScreenState
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(t.inputRadius),
             border: Border.all(
-              color: selecionada ? cor.withOpacity(0.32) : t.border,
+              color: selecionada ? cor.withAlpha(82) : t.border,
             ),
           ),
           child: SwitchListTile(
             value: selecionada,
-            activeColor: cor,
+            activeThumbColor: cor,
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 12,
               vertical: 4,
@@ -1063,9 +1063,9 @@ class _ConfigurarAssistenteScreenState
             width: 62,
             height: 62,
             decoration: BoxDecoration(
-              color: onPrimary.withOpacity(0.14),
+              color: onPrimary.withAlpha(36),
               borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: onPrimary.withOpacity(0.16)),
+              border: Border.all(color: onPrimary.withAlpha(41)),
             ),
             child: Icon(icon, color: onPrimary, size: 34),
           );
@@ -1090,7 +1090,7 @@ class _ConfigurarAssistenteScreenState
                 subtitle,
                 textAlign: narrow ? TextAlign.center : TextAlign.left,
                 style: TextStyle(
-                  color: onPrimary.withOpacity(0.82),
+                  color: onPrimary.withAlpha(209),
                   fontSize: 13,
                   height: 1.35,
                 ),
@@ -1129,9 +1129,9 @@ class _ConfigurarAssistenteScreenState
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: onPrimary.withOpacity(0.14),
+        color: onPrimary.withAlpha(36),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: onPrimary.withOpacity(0.16)),
+        border: Border.all(color: onPrimary.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1165,13 +1165,13 @@ class _ConfigurarAssistenteScreenState
       color: t.card,
       borderRadius: BorderRadius.circular(t.cardRadius),
       clipBehavior: Clip.antiAlias,
-      shadowColor: t.textPrimary.withOpacity(0.16),
+      shadowColor: t.textPrimary.withAlpha(41),
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(t.cardRadius),
-          border: Border.all(color: accent.withOpacity(0.14)),
+          border: Border.all(color: accent.withAlpha(36)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1182,9 +1182,9 @@ class _ConfigurarAssistenteScreenState
                   width: 46,
                   height: 46,
                   decoration: BoxDecoration(
-                    color: accent.withOpacity(0.12),
+                    color: accent.withAlpha(31),
                     borderRadius: BorderRadius.circular(t.buttonRadius),
-                    border: Border.all(color: accent.withOpacity(0.16)),
+                    border: Border.all(color: accent.withAlpha(41)),
                   ),
                   child: Icon(icon, color: accent, size: 25),
                 ),
@@ -1409,14 +1409,14 @@ class _ConfigurarAssistenteScreenState
               return Chip(
                 label: Text(tag),
                 backgroundColor: Color.alphaBlend(
-                  accent.withOpacity(0.10),
+                  accent.withAlpha(26),
                   context.uai.cardAlt,
                 ),
                 labelStyle: TextStyle(
                   color: _ensureVisible(accent, context.uai.cardAlt),
                   fontWeight: FontWeight.w800,
                 ),
-                side: BorderSide(color: accent.withOpacity(0.16)),
+                side: BorderSide(color: accent.withAlpha(41)),
                 deleteIconColor: context.uai.error,
                 onDeleted: () {
                   setState(() {
@@ -1481,9 +1481,9 @@ class _ConfigurarAssistenteScreenState
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), context.uai.card),
+        color: Color.alphaBlend(accent.withAlpha(20), context.uai.card),
         borderRadius: BorderRadius.circular(context.uai.cardRadius),
-        border: Border.all(color: accent.withOpacity(0.16)),
+        border: Border.all(color: accent.withAlpha(41)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1567,9 +1567,9 @@ class _ConfigurarAssistenteScreenState
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.10),
+        color: color.withAlpha(26),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: color.withOpacity(0.14)),
+        border: Border.all(color: color.withAlpha(36)),
       ),
       child: Text(
         label,
@@ -1613,7 +1613,7 @@ class _ConfigurarAssistenteScreenState
                         width: 46,
                         height: 46,
                         decoration: BoxDecoration(
-                          color: t.success.withOpacity(0.12),
+                          color: t.success.withAlpha(31),
                           borderRadius: BorderRadius.circular(t.buttonRadius),
                         ),
                         child: Icon(Icons.add_rounded, color: t.success),
@@ -1717,7 +1717,7 @@ class _ConfigurarAssistenteScreenState
   }
 
   String _colorToHex(Color color) {
-    return '#${color.value.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
+    return '#${color.toARGB32().toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
   }
 }
 
@@ -1805,7 +1805,7 @@ class _ColorPickerDialog extends StatelessWidget {
               ),
               itemBuilder: (context, index) {
                 final color = colors[index];
-                final selected = color.value == initialColor.value;
+                final selected = color.toARGB32() == initialColor.toARGB32();
 
                 return InkWell(
                   onTap: () => Navigator.pop(context, color),

@@ -45,6 +45,37 @@ service firebase.storage {
         );
     }
 
+    function permissoesUsuarioDoc() {
+      return /databases/(default)/documents/usuarios/$(request.auth.uid)/permissoes_usuario/configuracoes;
+    }
+
+    function canManageControleAtualizacoes() {
+      return isAdmin()
+        || (
+          signedIn()
+          && firestore.exists(permissoesUsuarioDoc())
+          && firestore.get(permissoesUsuarioDoc()).data.pode_controle_atualizacoes == true
+        );
+    }
+
+
+    function certPerm(chave) {
+      return signedIn()
+        && firestore.exists(permissoesUsuarioDoc())
+        && firestore.get(permissoesUsuarioDoc()).data[chave] == true;
+    }
+
+    function canWriteCertStudio() {
+      return isAdmin() || certPerm('pode_criar_templates_certificados')
+        || certPerm('pode_editar_templates_certificados')
+        || certPerm('pode_configurar_certificados')
+        || certPerm('pode_configurar_certificados_evento');
+    }
+
+    function canDeleteCertStudio() {
+      return isAdmin() || certPerm('pode_excluir_templates_certificados');
+    }
+
     match /{allPaths=**} {
       allow read: if true;
     }
@@ -107,6 +138,38 @@ service firebase.storage {
       allow delete: if signedIn();
     }
 
+    // Releases novas organizadas por versao/plataforma/arquitetura.
+    // Ex.: releases/2.0.116/android/arm64-v8a/uai_capoeira_2.0.116_arm64-v8a.apk
+    match /releases/{version}/android/{abi}/{fileName} {
+      allow write: if canManageControleAtualizacoes()
+        && request.resource != null
+        && request.resource.size < 200 * 1024 * 1024
+        && request.resource.contentType == 'application/vnd.android.package-archive';
+      allow delete: if canManageControleAtualizacoes();
+    }
+
+
+    // Capas/miniaturas da Biblioteca visual da Associação.
+    // O arquivo principal pode continuar no Google Drive; aqui guardamos
+    // somente uma imagem leve usada como capa dentro do app.
+    match /associacao_arquivos/capas/{fileName} {
+      allow create, update: if signedIn()
+        && isImage()
+        && isUnderSize(8 * 1024 * 1024);
+      allow delete: if signedIn();
+    }
+
+
+    // Fotos de identificação visual dos bens do Inventário e Patrimônio.
+    // Documentos (nota fiscal, garantia, manual etc.) continuam no módulo
+    // Arquivos Úteis / Google Drive; aqui ficam somente as fotos dos bens.
+    match /associacao_patrimonio/fotos/{fileName} {
+      allow create, update: if signedIn()
+        && isImage()
+        && isUnderSize(10 * 1024 * 1024);
+      allow delete: if signedIn();
+    }
+
     match /estudos_fundamentos/ciclos/{cicloId}/capa/{fileName} {
       allow create, update: if canManageEstudosFundamentos()
         && isImage()
@@ -126,6 +189,16 @@ service firebase.storage {
         && isImage()
         && isUnderSize(15 * 1024 * 1024);
       allow delete: if false;
+    }
+
+    // Studio de Certificados: bases e camadas SVG sanitizadas importadas
+    // por administradores. Leitura segue a regra publica geral acima.
+    match /certificados/studio/{allPaths=**} {
+      allow create, update: if canWriteCertStudio()
+        && request.resource != null
+        && request.resource.size <= 8 * 1024 * 1024
+        && request.resource.contentType == 'image/svg+xml';
+      allow delete: if canDeleteCertStudio();
     }
 
     // Compatibilidade temporaria com fluxos legados encontrados no app.
@@ -166,6 +239,15 @@ service firebase.storage {
 
     match /timeline/{allPaths=**} {
       allow write: if signedIn();
+      allow delete: if signedIn();
+    }
+
+
+    // Portfólio V3: imagens editoriais organizadas por publicação.
+    match /portfolio/publications/{publicationId}/images/{fileName} {
+      allow create, update: if signedIn()
+        && isImage()
+        && isUnderSize(12 * 1024 * 1024);
       allow delete: if signedIn();
     }
 

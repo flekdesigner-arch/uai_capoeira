@@ -183,7 +183,7 @@ class CertificadoPreviewData {
 
     palavras.forEach((from, to) {
       out = out.replaceAll(
-        RegExp('(?<![A-ZÀ-Ú])' + RegExp.escape(from) + '(?![A-ZÀ-Ú])'),
+        RegExp('(?<![A-ZÀ-Ú])${RegExp.escape(from)}(?![A-ZÀ-Ú])'),
         to,
       );
     });

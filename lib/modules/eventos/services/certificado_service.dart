@@ -2,7 +2,6 @@
 
 import 'dart:io';
 import 'dart:typed_data';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
@@ -97,7 +96,7 @@ class CertificadoService {
 
   // Converte cor Flutter para PdfColor
   PdfColor _colorToPdfColor(Color color) {
-    return PdfColor.fromInt(color.value);
+    return PdfColor.fromInt(color.toARGB32());
   }
 
   // Converte TextAlign para pw.TextAlign

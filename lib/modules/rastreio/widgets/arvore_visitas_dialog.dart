@@ -214,9 +214,9 @@ class _ArvoreVisitasDialogState extends State<ArvoreVisitasDialog> {
             width: 48,
             height: 48,
             decoration: BoxDecoration(
-              color: onPrimary.withOpacity(0.14),
+              color: onPrimary.withAlpha(36),
               borderRadius: BorderRadius.circular(t.buttonRadius),
-              border: Border.all(color: onPrimary.withOpacity(0.16)),
+              border: Border.all(color: onPrimary.withAlpha(41)),
             ),
             child: Icon(
               Icons.travel_explore_rounded,
@@ -244,7 +244,7 @@ class _ArvoreVisitasDialogState extends State<ArvoreVisitasDialog> {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: onPrimary.withOpacity(0.78),
+                    color: onPrimary.withAlpha(199),
                     fontSize: 12.5,
                     height: 1.22,
                     fontWeight: FontWeight.w600,
@@ -257,9 +257,9 @@ class _ArvoreVisitasDialogState extends State<ArvoreVisitasDialog> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
             decoration: BoxDecoration(
-              color: onPrimary.withOpacity(0.14),
+              color: onPrimary.withAlpha(36),
               borderRadius: BorderRadius.circular(99),
-              border: Border.all(color: onPrimary.withOpacity(0.16)),
+              border: Border.all(color: onPrimary.withAlpha(41)),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -390,7 +390,7 @@ class _ArvoreVisitasDialogState extends State<ArvoreVisitasDialog> {
       padding: const EdgeInsets.only(bottom: 12),
       child: Material(
         color: expandido
-            ? Color.alphaBlend(countryAccent.withOpacity(0.08), t.card)
+            ? Color.alphaBlend(countryAccent.withAlpha(20), t.card)
             : t.card,
         borderRadius: BorderRadius.circular(t.cardRadius),
         clipBehavior: Clip.antiAlias,
@@ -398,7 +398,7 @@ class _ArvoreVisitasDialogState extends State<ArvoreVisitasDialog> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(t.cardRadius),
             border: Border.all(
-              color: expandido ? countryAccent.withOpacity(0.28) : t.border,
+              color: expandido ? countryAccent.withAlpha(71) : t.border,
               width: expandido ? 1.4 : 1,
             ),
             boxShadow: expandido ? t.softShadow : null,
@@ -422,12 +422,12 @@ class _ArvoreVisitasDialogState extends State<ArvoreVisitasDialog> {
                         height: 48,
                         decoration: BoxDecoration(
                           color: Color.alphaBlend(
-                            countryAccent.withOpacity(0.13),
+                            countryAccent.withAlpha(33),
                             t.cardAlt,
                           ),
                           borderRadius: BorderRadius.circular(t.buttonRadius),
                           border: Border.all(
-                            color: countryAccent.withOpacity(0.16),
+                            color: countryAccent.withAlpha(41),
                           ),
                         ),
                         child: Center(
@@ -487,7 +487,7 @@ class _ArvoreVisitasDialogState extends State<ArvoreVisitasDialog> {
                         decoration: BoxDecoration(
                           color: expandido
                               ? Color.alphaBlend(
-                                  countryAccent.withOpacity(0.11),
+                                  countryAccent.withAlpha(28),
                                   t.cardAlt,
                                 )
                               : t.cardAlt,
@@ -552,7 +552,7 @@ class _ArvoreVisitasDialogState extends State<ArvoreVisitasDialog> {
       padding: const EdgeInsets.only(top: 8),
       child: Material(
         color: expandido
-            ? Color.alphaBlend(stateAccent.withOpacity(0.09), t.cardAlt)
+            ? Color.alphaBlend(stateAccent.withAlpha(23), t.cardAlt)
             : t.cardAlt,
         borderRadius: BorderRadius.circular(t.inputRadius),
         clipBehavior: Clip.antiAlias,
@@ -560,7 +560,7 @@ class _ArvoreVisitasDialogState extends State<ArvoreVisitasDialog> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(t.inputRadius),
             border: Border.all(
-              color: expandido ? stateAccent.withOpacity(0.26) : t.border,
+              color: expandido ? stateAccent.withAlpha(66) : t.border,
             ),
           ),
           child: Column(
@@ -584,12 +584,12 @@ class _ArvoreVisitasDialogState extends State<ArvoreVisitasDialog> {
                         height: 36,
                         decoration: BoxDecoration(
                           color: Color.alphaBlend(
-                            stateAccent.withOpacity(0.12),
+                            stateAccent.withAlpha(31),
                             t.card,
                           ),
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
-                            color: stateAccent.withOpacity(0.14),
+                            color: stateAccent.withAlpha(36),
                           ),
                         ),
                         child: Icon(
@@ -673,9 +673,9 @@ class _ArvoreVisitasDialogState extends State<ArvoreVisitasDialog> {
             width: 30,
             height: 30,
             decoration: BoxDecoration(
-              color: Color.alphaBlend(cityAccent.withOpacity(0.11), t.cardAlt),
+              color: Color.alphaBlend(cityAccent.withAlpha(28), t.cardAlt),
               borderRadius: BorderRadius.circular(9),
-              border: Border.all(color: cityAccent.withOpacity(0.14)),
+              border: Border.all(color: cityAccent.withAlpha(36)),
             ),
             child: Icon(
               Icons.location_city_rounded,
@@ -823,9 +823,9 @@ class _ArvoreVisitasDialogState extends State<ArvoreVisitasDialog> {
         Container(
           padding: const EdgeInsets.all(7),
           decoration: BoxDecoration(
-            color: Color.alphaBlend(accent.withOpacity(0.10), t.cardAlt),
+            color: Color.alphaBlend(accent.withAlpha(26), t.cardAlt),
             borderRadius: BorderRadius.circular(9),
-            border: Border.all(color: accent.withOpacity(0.14)),
+            border: Border.all(color: accent.withAlpha(36)),
           ),
           child: Icon(data.icon, color: accent, size: compact ? 14 : 16),
         ),

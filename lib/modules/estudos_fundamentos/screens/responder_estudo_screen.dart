@@ -176,7 +176,7 @@ class _ResponderEstudoScreenState extends State<ResponderEstudoScreen> {
   String _mensagemFunction(FirebaseFunctionsException error) {
     switch (error.code) {
       case 'unauthenticated':
-        return 'Entre novamente com Google para enviar a atividade.';
+        return 'Entre novamente na sua Conta UAI para enviar a atividade.';
       case 'permission-denied':
         return 'Seu acesso de aluno não foi confirmado para esta atividade.';
       case 'failed-precondition':

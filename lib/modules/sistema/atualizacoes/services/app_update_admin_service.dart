@@ -28,6 +28,8 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart' as crypto;
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -146,6 +148,19 @@ class AppUpdateAdminService {
     return AppVersionModel.fromFirestore(snapshot.docs.first);
   }
 
+  /// Fonte de verdade para o sequenciamento global de releases.
+  ///
+  /// Produção, BETA e teste interno compartilham a MESMA sequência de
+  /// versão/build. Ex.: produção 146 -> BETA 147 -> produção 148.
+  /// Não usamos somente configuracoes/app porque ele aponta apenas para a
+  /// produção e faria a Central tentar reutilizar o número de uma BETA.
+  Future<List<AppVersionModel>> listarVersoesParaSequenciamento({int limit = 500}) async {
+    final snapshot = await _versoesRef.limit(limit).get(
+      const GetOptions(source: Source.server),
+    );
+    return snapshot.docs.map(AppVersionModel.fromFirestore).toList();
+  }
+
   Future<bool> versaoExiste(String versao) async {
     final versionId = AppVersionModel.gerarVersionId(versao);
 
@@ -202,6 +217,8 @@ class AppUpdateAdminService {
           : storagePath,
       downloadUrl: antigo?.downloadUrl ?? '',
       tamanhoBytes: antigo?.tamanhoBytes ?? 0,
+      androidArtifacts: antigo?.androidArtifacts ?? const {},
+      platformArtifacts: antigo?.platformArtifacts ?? const {},
       obrigatoria: obrigatoria,
       publicada: antigo?.publicada ?? false,
       canal: canal.trim().isEmpty ? 'producao' : canal.trim(),
@@ -367,6 +384,191 @@ class AppUpdateAdminService {
   }
 
   // =====================================================
+  // 📦 UPLOAD ANDROID POR ARQUITETURA (ABI)
+  // =====================================================
+
+  Future<AppVersionModel> uploadAndroidArtifactBytes({
+    required String versao,
+    required String architecture,
+    required Uint8List bytes,
+    required void Function(double progress) onProgress,
+  }) async {
+    final usuario = await _usuarioObrigatorio();
+    final versaoLimpa = versao.trim();
+    final abi = architecture.trim();
+
+    const allowed = {'arm64-v8a', 'armeabi-v7a', 'x86_64'};
+    if (!AppVersionModel.versaoValida(versaoLimpa)) {
+      throw Exception('Versão inválida. Use o formato 2.0.116.');
+    }
+    if (!allowed.contains(abi)) {
+      throw Exception('Arquitetura Android inválida: $abi');
+    }
+    if (bytes.length < 1024 * 1024) {
+      throw Exception('APK $abi muito pequeno ou inválido.');
+    }
+
+    final versionId = AppVersionModel.gerarVersionId(versaoLimpa);
+    final nomeArquivo = AppVersionModel.gerarNomeArquivoPorAbi(versaoLimpa, abi);
+    final storagePath = AppVersionModel.gerarStoragePathPorAbi(versaoLimpa, abi);
+    final ref = _storage.ref().child(storagePath);
+    final sha256 = crypto.sha256.convert(bytes).toString();
+
+    final uploadTask = ref.putData(
+      bytes,
+      SettableMetadata(
+        contentType: 'application/vnd.android.package-archive',
+        customMetadata: {
+          'versao': versaoLimpa,
+          'architecture': abi,
+          'platform': 'android',
+          'nomeArquivo': nomeArquivo,
+          'enviadoPor': usuario.uid,
+          'enviadoPorNome': usuario.nome,
+          'sha256': sha256,
+        },
+      ),
+    );
+
+    final sub = uploadTask.snapshotEvents.listen((snapshot) {
+      if (snapshot.totalBytes > 0) {
+        onProgress((snapshot.bytesTransferred / snapshot.totalBytes).clamp(0.0, 1.0));
+      }
+    });
+    try {
+      await uploadTask.timeout(const Duration(minutes: 10));
+    } finally {
+      await sub.cancel();
+    }
+
+    final url = await ref.getDownloadURL();
+    final metadata = await ref.getMetadata();
+    final docRef = _versoesRef.doc(versionId);
+    final doc = await docRef.get();
+    final antigo = doc.exists
+        ? AppVersionModel.fromFirestore(doc)
+        : AppVersionModel.empty(versao: versaoLimpa);
+
+    final artifacts = Map<String, AppReleaseArtifact>.from(antigo.androidArtifacts);
+    artifacts[abi] = AppReleaseArtifact(
+      platform: 'android',
+      architecture: abi,
+      nomeArquivo: nomeArquivo,
+      storagePath: storagePath,
+      downloadUrl: url,
+      tamanhoBytes: metadata.size ?? bytes.length,
+      sha256: sha256,
+    );
+
+    // ARM64 vira o artefato legado/primário, mantendo compatibilidade com
+    // versões antigas do cliente que ainda leem apk_url/apk_path.
+    final primary = artifacts['arm64-v8a'] ?? artifacts.values.first;
+    final model = antigo.copyWith(
+      versionId: versionId,
+      versao: versaoLimpa,
+      androidArtifacts: artifacts,
+      nomeArquivo: primary.nomeArquivo,
+      storagePath: primary.storagePath,
+      downloadUrl: primary.downloadUrl,
+      tamanhoBytes: primary.tamanhoBytes,
+      atualizadoEm: DateTime.now(),
+    );
+
+    final payload = model.toMap();
+    payload['androidArtifacts'] = artifacts.map((key, value) => MapEntry(key, value.toMap()));
+    payload['nomeArquivo'] = primary.nomeArquivo;
+    payload['storagePath'] = primary.storagePath;
+    payload['downloadUrl'] = primary.downloadUrl;
+    payload['tamanhoBytes'] = primary.tamanhoBytes;
+    payload['atualizadoEm'] = FieldValue.serverTimestamp();
+    if (!doc.exists) {
+      payload['criadoEm'] = FieldValue.serverTimestamp();
+      payload['criadoPor'] = usuario.uid;
+      payload['criadoPorNome'] = usuario.nome;
+    }
+    await docRef.set(payload, SetOptions(merge: true));
+    final salvo = await docRef.get();
+    return AppVersionModel.fromFirestore(salvo);
+  }
+
+  // =====================================================
+  // 🌐 METADADOS MULTIPLATAFORMA DA RELEASE
+  // =====================================================
+
+  Future<AppVersionModel> registrarPlataformasRelease({
+    required String versao,
+    required bool pwaPublicado,
+    required int pwaTamanhoBytes,
+    required bool windowsGerado,
+    required int windowsTamanhoBytes,
+    String windowsInstallDir = '',
+    String windowsPackagePath = '',
+  }) async {
+    final versionId = AppVersionModel.gerarVersionId(versao);
+    final ref = _versoesRef.doc(versionId);
+    final doc = await ref.get();
+    if (!doc.exists) throw Exception('Release $versao não encontrada.');
+
+    final atual = AppVersionModel.fromFirestore(doc);
+    final platforms = Map<String, dynamic>.from(atual.platformArtifacts);
+    platforms['pwa'] = {
+      'platform': 'pwa',
+      'publicado': pwaPublicado,
+      'hosting': pwaPublicado ? 'firebase_hosting' : '',
+      'tamanhoBytes': pwaTamanhoBytes,
+      'atualizadoEmIso': DateTime.now().toIso8601String(),
+    };
+    platforms['windows'] = {
+      'platform': 'windows',
+      'architecture': 'x64',
+      'gerado': windowsGerado,
+      'instalado': windowsGerado && windowsInstallDir.trim().isNotEmpty,
+      'installDir': windowsInstallDir.trim(),
+      'packagePath': windowsPackagePath.trim(),
+      'tamanhoBytes': windowsTamanhoBytes,
+      'atualizadoEmIso': DateTime.now().toIso8601String(),
+    };
+
+    await ref.set({
+      'platformArtifacts': platforms,
+      'atualizadoEm': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    final salvo = await ref.get();
+    return AppVersionModel.fromFirestore(salvo);
+  }
+
+  /// Reconsulta o Firebase Storage para que o histórico use o tamanho físico
+  /// real de cada APK, em vez de um valor antigo gravado no Firestore.
+  Future<AppVersionModel> sincronizarTamanhosStorage(AppVersionModel model) async {
+    if (model.androidArtifacts.isEmpty) return model;
+    final updated = <String, AppReleaseArtifact>{};
+    for (final entry in model.androidArtifacts.entries) {
+      final artifact = entry.value;
+      var size = artifact.tamanhoBytes;
+      try {
+        final metadata = await _storage.ref().child(artifact.storagePath).getMetadata();
+        size = metadata.size ?? size;
+      } catch (_) {}
+      updated[entry.key] = AppReleaseArtifact(
+        platform: artifact.platform,
+        architecture: artifact.architecture,
+        nomeArquivo: artifact.nomeArquivo,
+        storagePath: artifact.storagePath,
+        downloadUrl: artifact.downloadUrl,
+        tamanhoBytes: size,
+        sha256: artifact.sha256,
+      );
+    }
+    final primary = updated['arm64-v8a'] ?? updated.values.first;
+    await _versoesRef.doc(model.versionId).set({
+      'androidArtifacts': updated.map((k, v) => MapEntry(k, v.toMap())),
+      'tamanhoBytes': primary.tamanhoBytes,
+      'atualizadoEm': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    return model.copyWith(androidArtifacts: updated, tamanhoBytes: primary.tamanhoBytes);
+  }
+
+  // =====================================================
   // 🚀 PUBLICAR VERSÃO
   // =====================================================
 
@@ -389,12 +591,53 @@ class AppUpdateAdminService {
       throw Exception('Versão inválida.');
     }
 
-    if (model.storagePath.trim().isEmpty || model.downloadUrl.trim().isEmpty) {
-      throw Exception('Envie o APK antes de publicar a versão.');
+    if (model.androidArtifacts.isEmpty &&
+        (model.storagePath.trim().isEmpty || model.downloadUrl.trim().isEmpty)) {
+      throw Exception('Envie ao menos um APK Android antes de publicar a versão.');
     }
 
     if (model.tamanhoBytes <= 0) {
       throw Exception('Tamanho do APK inválido.');
+    }
+
+    if (model.publicada) {
+      throw Exception(
+        'A versão ${model.versao} já foi publicada no canal ${model.canalLabel}. '
+        'Uma release publicada não pode ser reutilizada; gere a próxima versão.',
+      );
+    }
+
+    // Android usa build como versionCode. Ele precisa crescer globalmente,
+    // inclusive entre produção, BETA e teste interno. Também impedimos uma
+    // versão semanticamente antiga de ser publicada por engano. Rollback é um
+    // fluxo separado e não passa por este método.
+    final sequencia = await listarVersoesParaSequenciamento();
+    AppVersionModel? maiorPublicada;
+    var maiorBuildPublicado = 0;
+    for (final release in sequencia) {
+      if (!release.publicada || release.versionId == model.versionId) continue;
+      if (release.build > maiorBuildPublicado) maiorBuildPublicado = release.build;
+      if (maiorPublicada == null ||
+          AppVersionModel.compararVersoes(
+                maiorPublicada.versao,
+                release.versao,
+              ) ==
+              1) {
+        maiorPublicada = release;
+      }
+    }
+    if (model.build <= maiorBuildPublicado) {
+      throw Exception(
+        'Build ${model.build} não pode ser publicado: o maior versionCode já publicado é '
+        '$maiorBuildPublicado. Gere build ${maiorBuildPublicado + 1} ou superior.',
+      );
+    }
+    if (maiorPublicada != null &&
+        AppVersionModel.compararVersoes(maiorPublicada.versao, model.versao) != 1) {
+      throw Exception(
+        'A versão ${model.versao} não é maior que a última release global '
+        '${maiorPublicada.versao}. Produção/BETA/Teste compartilham a mesma sequência.',
+      );
     }
 
     final publicada = model.copyWith(obrigatoria: obrigatoria, publicada: true);
@@ -408,14 +651,21 @@ class AppUpdateAdminService {
       'atualizadoEm': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 
-    batch.set(
-      _configAppRef,
-      publicada.toConfigAppMap(
-        usuarioId: usuario.uid,
-        usuarioNome: usuario.nome,
-      ),
-      SetOptions(merge: true),
-    );
+    if (publicada.isProducao) {
+      batch.set(
+        _configAppRef,
+        publicada.toConfigAppMap(
+          usuarioId: usuario.uid,
+          usuarioNome: usuario.nome,
+        ),
+        SetOptions(merge: true),
+      );
+    } else {
+      batch.set(docRef, {
+        'betaAtiva': true,
+        'canalPublicadoEm': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    }
 
     await batch.commit();
 
@@ -450,6 +700,38 @@ class AppUpdateAdminService {
     }
 
     await _versoesRef.doc(versionId).delete();
+  }
+
+
+  // =====================================================
+  // 🧠 CENTRAL V3 - METADADOS DE RELEASE
+  // =====================================================
+
+  Future<AppVersionModel> salvarCompatibilidade({
+    required String versao,
+    int minAndroidSdk = 23,
+    String versaoMinimaOrigem = '',
+    List<String> abis = const ['arm64-v8a', 'armeabi-v7a', 'x86_64'],
+  }) async {
+    final ref = _versoesRef.doc(AppVersionModel.gerarVersionId(versao));
+    await ref.set({
+      'compatibilidade': {
+        'minAndroidSdk': minAndroidSdk,
+        'versaoMinimaOrigem': versaoMinimaOrigem.trim(),
+        'abis': abis,
+        'plataformas': const ['android', 'windows', 'pwa'],
+      },
+      'atualizadoEm': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    final doc = await ref.get();
+    return AppVersionModel.fromFirestore(doc);
+  }
+
+  Future<void> definirProtecaoRelease(String versao, bool protegida) async {
+    await _versoesRef.doc(AppVersionModel.gerarVersionId(versao)).set({
+      'protegida': protegida,
+      'atualizadoEm': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 
   // =====================================================

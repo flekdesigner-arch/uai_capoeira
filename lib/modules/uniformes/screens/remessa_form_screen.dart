@@ -1,5 +1,9 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/uniformes/services/remessa_service.dart';
@@ -27,6 +31,9 @@ class _RemessaFormScreenState extends State<RemessaFormScreen> {
   List<String> _pedidosSelecionados = [];
   bool _isLoading = false;
 
+  XFile? _capaArquivo;
+  String? _capaUrl;
+
   String? _fornecedorId;
   String? _fornecedorNome;
   Map<String, dynamic>? _fornecedorDetalhes;
@@ -38,19 +45,7 @@ class _RemessaFormScreenState extends State<RemessaFormScreen> {
         : const Color(0xFFFFFFFF);
   }
 
-  Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance())
-        .abs();
-    if (diff >= 0.26) return color;
 
-    final bgIsDark = background.computeLuminance() < 0.45;
-    final hsl = HSLColor.fromColor(color);
-
-    return hsl
-        .withLightness(bgIsDark ? 0.72 : 0.32)
-        .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
-        .toColor();
-  }
 
   @override
   void initState() {
@@ -59,6 +54,10 @@ class _RemessaFormScreenState extends State<RemessaFormScreen> {
       _nomeController.text = widget.remessaData!['nome'] ?? '';
       _observacoesController.text = widget.remessaData!['observacoes'] ?? '';
       _status = widget.remessaData!['status'] ?? 'pendente';
+      _capaUrl = (widget.remessaData!['capa_url'] ?? '').toString().trim();
+      if (_capaUrl != null && _capaUrl!.isEmpty) {
+        _capaUrl = null;
+      }
       if (widget.remessaData!['data_envio'] != null) {
         _dataEnvio = (widget.remessaData!['data_envio'] as Timestamp).toDate();
       }
@@ -94,12 +93,126 @@ class _RemessaFormScreenState extends State<RemessaFormScreen> {
     super.dispose();
   }
 
+  Future<void> _selecionarCapa() async {
+    try {
+      final picker = ImagePicker();
+      final imagem = await picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 82,
+        maxWidth: 1600,
+      );
+
+      if (imagem != null && mounted) {
+        setState(() => _capaArquivo = imagem);
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Não foi possível selecionar a capa.'),
+            backgroundColor: context.uai.error,
+          ),
+        );
+      }
+    }
+  }
+
+  void _removerCapa() {
+    setState(() {
+      _capaArquivo = null;
+      _capaUrl = null;
+    });
+  }
+
+  Widget _capaPlaceholder(BuildContext context) {
+    return Container(
+      height: 150,
+      width: double.infinity,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: context.uai.cardAlt,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.local_shipping_rounded,
+            size: 42,
+            color: context.uai.textMuted,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Sem capa • será usado o caminhão',
+            style: TextStyle(
+              color: context.uai.textMuted,
+              fontSize: 11,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _previewCapa(BuildContext context) {
+    if (_capaArquivo != null) {
+      return FutureBuilder<List<int>>(
+        future: _capaArquivo!.readAsBytes(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) {
+            return Container(
+              height: 150,
+              alignment: Alignment.center,
+              child: const CircularProgressIndicator(strokeWidth: 2),
+            );
+          }
+
+          return Image.memory(
+            Uint8List.fromList(snapshot.data!),
+            fit: BoxFit.cover,
+            width: double.infinity,
+            height: 150,
+          );
+        },
+      );
+    }
+
+    if (_capaUrl != null && _capaUrl!.isNotEmpty) {
+      return Image.network(
+        _capaUrl!,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: 150,
+        errorBuilder: (_, _, _) => _capaPlaceholder(context),
+      );
+    }
+
+    return _capaPlaceholder(context);
+  }
+
   Future<void> _salvar() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
     try {
+      String? capaFinal = _capaUrl;
+
+      if (_capaArquivo != null) {
+        final bytes = await _capaArquivo!.readAsBytes();
+        final storageRef = FirebaseStorage.instance.ref().child(
+          'uniformes/remessas/${widget.remessaId ?? DateTime.now().millisecondsSinceEpoch}.jpg',
+        );
+
+        await storageRef.putData(
+          bytes,
+          SettableMetadata(contentType: 'image/jpeg'),
+        );
+
+        capaFinal = await storageRef.getDownloadURL();
+      }
+
       final dados = {
         'nome': _nomeController.text.trim(),
+        'capa_url': capaFinal,
         'data_envio': _dataEnvio != null
             ? Timestamp.fromDate(_dataEnvio!)
             : null,
@@ -356,7 +469,7 @@ class _RemessaFormScreenState extends State<RemessaFormScreen> {
                   ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
-                    value: _status,
+                    initialValue: _status,
                     style: TextStyle(color: textPrimary),
                     decoration: InputDecoration(
                       labelText: 'Status',
@@ -549,7 +662,7 @@ class _RemessaFormScreenState extends State<RemessaFormScreen> {
         ),
         child: Text(
           date != null
-              ? DateFormat('dd/MM/yyyy').format(date!)
+              ? DateFormat('dd/MM/yyyy').format(date)
               : 'Selecionar data',
           style: TextStyle(color: context.uai.textPrimary),
         ),
@@ -629,9 +742,9 @@ class _SelecionarPedidosDialogState extends State<_SelecionarPedidosDialog> {
                     .snapshots(),
                 builder: (context, snapshot) {
                   if (!snapshot.hasData)
-                    return Center(
+                    { return Center(
                       child: CircularProgressIndicator(color: primary),
-                    );
+                    ); }
                   var docs = snapshot.data!.docs;
                   if (_search.isNotEmpty) {
                     docs = docs.where((doc) {
@@ -769,9 +882,9 @@ class _SelecionarFornecedorDialogState
                     .snapshots(),
                 builder: (context, snapshot) {
                   if (!snapshot.hasData)
-                    return Center(
+                    { return Center(
                       child: CircularProgressIndicator(color: primary),
-                    );
+                    ); }
                   var docs = snapshot.data!.docs;
                   if (_search.isNotEmpty) {
                     docs = docs.where((d) {
@@ -781,12 +894,12 @@ class _SelecionarFornecedorDialogState
                     }).toList();
                   }
                   if (docs.isEmpty)
-                    return Center(
+                    { return Center(
                       child: Text(
                         'Nenhum fornecedor encontrado',
                         style: TextStyle(color: textMuted),
                       ),
-                    );
+                    ); }
                   return ListView.builder(
                     itemCount: docs.length,
                     itemBuilder: (_, i) {

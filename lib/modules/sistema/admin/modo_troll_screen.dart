@@ -293,9 +293,9 @@ class _ModoTrollScreenState extends State<ModoTrollScreen> {
                 width: 54,
                 height: 54,
                 decoration: BoxDecoration(
-                  color: onPrimary.withOpacity(0.14),
+                  color: onPrimary.withAlpha(36),
                   borderRadius: BorderRadius.circular(t.buttonRadius),
-                  border: Border.all(color: onPrimary.withOpacity(0.16)),
+                  border: Border.all(color: onPrimary.withAlpha(41)),
                 ),
                 child: Icon(
                   Icons.theater_comedy_rounded,
@@ -321,7 +321,7 @@ class _ModoTrollScreenState extends State<ModoTrollScreen> {
                     Text(
                       'Ative apenas brincadeiras que já têm efeito real na tela de chamada.',
                       style: TextStyle(
-                        color: onPrimary.withOpacity(0.80),
+                        color: onPrimary.withAlpha(204),
                         fontSize: 12,
                         height: 1.28,
                         fontWeight: FontWeight.w600,
@@ -351,7 +351,7 @@ class _ModoTrollScreenState extends State<ModoTrollScreen> {
       child: SwitchListTile(
         value: _ativo,
         onChanged: (value) => setState(() => _ativo = value),
-        activeColor: t.success,
+        activeThumbColor: t.success,
         contentPadding: EdgeInsets.zero,
         title: Text(
           'Ativar painel secreto',
@@ -394,7 +394,7 @@ class _ModoTrollScreenState extends State<ModoTrollScreen> {
         color: t.card,
         borderRadius: BorderRadius.circular(t.cardRadius),
         border: Border.all(
-          color: value ? accent.withOpacity(0.32) : t.border,
+          color: value ? accent.withAlpha(82) : t.border,
           width: value ? 1.4 : 1,
         ),
         boxShadow: t.softShadow,
@@ -405,9 +405,9 @@ class _ModoTrollScreenState extends State<ModoTrollScreen> {
             width: 48,
             height: 48,
             decoration: BoxDecoration(
-              color: accent.withOpacity(0.12),
+              color: accent.withAlpha(31),
               borderRadius: BorderRadius.circular(t.buttonRadius),
-              border: Border.all(color: accent.withOpacity(0.16)),
+              border: Border.all(color: accent.withAlpha(41)),
             ),
             child: Icon(icon, color: accent, size: 26),
           ),
@@ -438,7 +438,7 @@ class _ModoTrollScreenState extends State<ModoTrollScreen> {
             ),
           ),
           const SizedBox(width: 8),
-          Switch(value: value, activeColor: t.success, onChanged: onChanged),
+          Switch(value: value, activeThumbColor: t.success, onChanged: onChanged),
         ],
       ),
     );
@@ -451,9 +451,9 @@ class _ModoTrollScreenState extends State<ModoTrollScreen> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.08),
+        color: accent.withAlpha(20),
         borderRadius: BorderRadius.circular(t.cardRadius - 4),
-        border: Border.all(color: accent.withOpacity(0.18)),
+        border: Border.all(color: accent.withAlpha(46)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,

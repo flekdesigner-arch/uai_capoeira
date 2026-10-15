@@ -30,6 +30,7 @@ class LocalPublishAutomationPanel extends StatelessWidget {
   final String logText;
   final bool canStart;
   final VoidCallback? onRunFullAutomation;
+  final VoidCallback? onRunBetaAutomation;
   final VoidCallback? onClearLog;
 
   const LocalPublishAutomationPanel({
@@ -39,6 +40,7 @@ class LocalPublishAutomationPanel extends StatelessWidget {
     required this.logText,
     required this.canStart,
     required this.onRunFullAutomation,
+    this.onRunBetaAutomation,
     required this.onClearLog,
   });
 
@@ -53,7 +55,7 @@ class LocalPublishAutomationPanel extends StatelessWidget {
       decoration: BoxDecoration(
         color: t.card,
         borderRadius: BorderRadius.circular(t.cardRadius),
-        border: Border.all(color: accent.withOpacity(0.18)),
+        border: Border.all(color: accent.withAlpha(46)),
         boxShadow: t.softShadow,
       ),
       child: Column(
@@ -68,6 +70,7 @@ class LocalPublishAutomationPanel extends StatelessWidget {
               state: state,
               canStart: canStart,
               onRunFullAutomation: onRunFullAutomation,
+              onRunBetaAutomation: onRunBetaAutomation,
             ),
             const SizedBox(height: 13),
             _ProgressBox(state: state),
@@ -110,9 +113,9 @@ class _Header extends StatelessWidget {
           width: 52,
           height: 52,
           decoration: BoxDecoration(
-            color: Color.alphaBlend(color.withOpacity(0.12), t.cardAlt),
+            color: Color.alphaBlend(color.withAlpha(31), t.cardAlt),
             borderRadius: BorderRadius.circular(t.buttonRadius),
-            border: Border.all(color: color.withOpacity(0.16)),
+            border: Border.all(color: color.withAlpha(41)),
           ),
           child: Icon(platformInfo.icon, color: color, size: 29),
         ),
@@ -122,7 +125,7 @@ class _Header extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Automação Windows',
+                'UAI Release Center',
                 style: TextStyle(
                   color: t.textPrimary,
                   fontWeight: FontWeight.w900,
@@ -166,11 +169,13 @@ class _ActionBox extends StatelessWidget {
   final LocalPublishAutomationState state;
   final bool canStart;
   final VoidCallback? onRunFullAutomation;
+  final VoidCallback? onRunBetaAutomation;
 
   const _ActionBox({
     required this.state,
     required this.canStart,
     required this.onRunFullAutomation,
+    required this.onRunBetaAutomation,
   });
 
   @override
@@ -181,9 +186,9 @@ class _ActionBox extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(t.primary.withOpacity(0.07), t.card),
+        color: Color.alphaBlend(t.primary.withAlpha(18), t.card),
         borderRadius: BorderRadius.circular(t.cardRadius),
-        border: Border.all(color: t.primary.withOpacity(0.13)),
+        border: Border.all(color: t.primary.withAlpha(33)),
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -196,7 +201,7 @@ class _ActionBox extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Depois de preencher a versão e o changelog, este botão executa a publicação completa: salva rascunho, publica PWA, gera APK, envia APK, publica versão e deixa a notificação manual.',
+                  'Uma esteira completa: sincroniza versão/build, publica PWA, gera Android por arquitetura, instala a release Windows e publica o manifesto. A notificação continua manual para você testar primeiro.',
                   style: TextStyle(
                     color: t.textSecondary,
                     height: 1.35,
@@ -207,38 +212,23 @@ class _ActionBox extends StatelessWidget {
             ],
           );
 
-          final button = ElevatedButton.icon(
+          final productionButton = ElevatedButton.icon(
             onPressed: disabled ? null : onRunFullAutomation,
             icon: state.running
-                ? SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                 : const Icon(Icons.rocket_launch_rounded),
-            label: Text(
-              state.running
-                  ? 'Executando automação...'
-                  : 'Publicar sem notificar',
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: t.primary,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(t.buttonRadius),
-              ),
-              textStyle: const TextStyle(fontWeight: FontWeight.w900),
-            ),
+            label: const Text('Lançar produção'),
+          );
+          final betaButton = OutlinedButton.icon(
+            onPressed: disabled ? null : onRunBetaAutomation,
+            icon: const Icon(Icons.science_rounded),
+            label: const Text('Gerar BETA'),
           );
 
           if (narrow) {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [info, const SizedBox(height: 12), button],
+              children: [info, const SizedBox(height: 12), productionButton, const SizedBox(height: 8), betaButton],
             );
           }
 
@@ -246,7 +236,9 @@ class _ActionBox extends StatelessWidget {
             children: [
               Expanded(child: info),
               const SizedBox(width: 12),
-              button,
+              productionButton,
+              const SizedBox(height: 8),
+              betaButton,
             ],
           );
         },
@@ -298,7 +290,7 @@ class _ProgressBox extends StatelessWidget {
           value: progress,
           minHeight: 9,
           borderRadius: BorderRadius.circular(999),
-          backgroundColor: t.border.withOpacity(0.35),
+          backgroundColor: t.border.withAlpha(89),
         ),
       ],
     );
@@ -310,15 +302,132 @@ class _StepsList extends StatelessWidget {
 
   const _StepsList({required this.state});
 
+  static const _groups = <_ReleaseStepGroup>[
+    _ReleaseStepGroup(
+      title: 'Preparação',
+      icon: Icons.tune_rounded,
+      ids: {'save_draft', 'preflight', 'sync_version', 'flutter_clean', 'flutter_pub_get'},
+    ),
+    _ReleaseStepGroup(
+      title: 'PWA',
+      icon: Icons.language_rounded,
+      ids: {'build_web', 'deploy_hosting'},
+    ),
+    _ReleaseStepGroup(
+      title: 'Android',
+      icon: Icons.android_rounded,
+      ids: {'deploy_storage_rules', 'build_android', 'locate_apk', 'upload_apk'},
+    ),
+    _ReleaseStepGroup(
+      title: 'Windows',
+      icon: Icons.desktop_windows_rounded,
+      ids: {'build_windows', 'install_windows'},
+    ),
+    _ReleaseStepGroup(
+      title: 'Publicação',
+      icon: Icons.cloud_done_rounded,
+      ids: {'publish_version', 'notify_users'},
+    ),
+  ];
+
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        for (final step in state.steps) ...[
-          _StepTile(step: step),
-          const SizedBox(height: 8),
+        for (final group in _groups) ...[
+          _StepGroupCard(
+            group: group,
+            steps: state.steps.where((step) => group.ids.contains(step.id)).toList(),
+          ),
+          const SizedBox(height: 10),
         ],
       ],
+    );
+  }
+}
+
+class _ReleaseStepGroup {
+  final String title;
+  final IconData icon;
+  final Set<String> ids;
+
+  const _ReleaseStepGroup({
+    required this.title,
+    required this.icon,
+    required this.ids,
+  });
+}
+
+class _StepGroupCard extends StatelessWidget {
+  final _ReleaseStepGroup group;
+  final List<LocalPublishStep> steps;
+
+  const _StepGroupCard({required this.group, required this.steps});
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.uai;
+    final finished = steps.where((step) => step.status.isFinished).length;
+    final running = steps.any((step) => step.status.isRunning);
+    final hasError = steps.any((step) => step.status.isError);
+    final color = hasError
+        ? t.error
+        : running
+            ? t.info
+            : (steps.isNotEmpty && finished == steps.length)
+                ? t.success
+                : t.primary;
+    final progress = steps.isEmpty ? 0.0 : finished / steps.length;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(color.withAlpha(9), t.cardAlt),
+        borderRadius: BorderRadius.circular(t.cardRadius),
+        border: Border.all(color: color.withAlpha(36)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(group.icon, color: color, size: 21),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  group.title,
+                  style: TextStyle(
+                    color: t.textPrimary,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+              Text(
+                '$finished/${steps.length}',
+                style: TextStyle(
+                  color: t.textSecondary,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          LinearProgressIndicator(
+            value: progress.clamp(0.0, 1.0),
+            minHeight: 5,
+            borderRadius: BorderRadius.circular(999),
+            backgroundColor: t.border.withAlpha(77),
+            color: color,
+          ),
+          const SizedBox(height: 10),
+          for (final step in steps) ...[
+            _StepTile(step: step),
+            if (step != steps.last) const SizedBox(height: 7),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -336,9 +445,9 @@ class _StepTile extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(11),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(color.withOpacity(0.06), t.cardAlt),
+        color: Color.alphaBlend(color.withAlpha(15), t.cardAlt),
         borderRadius: BorderRadius.circular(t.buttonRadius),
-        border: Border.all(color: color.withOpacity(0.11)),
+        border: Border.all(color: color.withAlpha(28)),
       ),
       child: Row(
         children: [
@@ -422,7 +531,7 @@ class _StepIcon extends StatelessWidget {
       width: 36,
       height: 36,
       decoration: BoxDecoration(
-        color: Color.alphaBlend(color.withOpacity(0.14), t.card),
+        color: Color.alphaBlend(color.withAlpha(36), t.card),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Center(
@@ -465,9 +574,9 @@ class _BlockedInfo extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(t.warning.withOpacity(0.08), t.card),
+        color: Color.alphaBlend(t.warning.withAlpha(20), t.card),
         borderRadius: BorderRadius.circular(t.cardRadius),
-        border: Border.all(color: t.warning.withOpacity(0.16)),
+        border: Border.all(color: t.warning.withAlpha(41)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -502,9 +611,9 @@ class _FinalApkBox extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(t.success.withOpacity(0.08), t.card),
+        color: Color.alphaBlend(t.success.withAlpha(20), t.card),
         borderRadius: BorderRadius.circular(t.cardRadius),
-        border: Border.all(color: t.success.withOpacity(0.16)),
+        border: Border.all(color: t.success.withAlpha(41)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -539,9 +648,9 @@ class _ErrorBox extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(t.error.withOpacity(0.08), t.card),
+        color: Color.alphaBlend(t.error.withAlpha(20), t.card),
         borderRadius: BorderRadius.circular(t.cardRadius),
-        border: Border.all(color: t.error.withOpacity(0.16)),
+        border: Border.all(color: t.error.withAlpha(41)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -611,7 +720,7 @@ class _LogBox extends StatelessWidget {
             constraints: const BoxConstraints(minHeight: 90, maxHeight: 220),
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.87),
+              color: Colors.black.withAlpha(222),
               borderRadius: BorderRadius.only(
                 bottomLeft: Radius.circular(t.cardRadius),
                 bottomRight: Radius.circular(t.cardRadius),
@@ -621,7 +730,7 @@ class _LogBox extends StatelessWidget {
               child: SelectableText(
                 hasLog ? logText.trim() : 'Nenhum log ainda.',
                 style: TextStyle(
-                  color: hasLog ? Colors.white : Colors.white.withOpacity(0.55),
+                  color: hasLog ? Colors.white : Colors.white.withAlpha(140),
                   fontFamily: 'monospace',
                   fontSize: 12,
                   height: 1.35,
@@ -648,9 +757,9 @@ class _StatusChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(color.withOpacity(0.12), t.card),
+        color: Color.alphaBlend(color.withAlpha(31), t.card),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withOpacity(0.16)),
+        border: Border.all(color: color.withAlpha(41)),
       ),
       child: Text(
         label,

@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.uai_capoeira" "\0"
-            VALUE "FileDescription", "uai_capoeira" "\0"
+            VALUE "CompanyName", "UAI Capoeira" "\0"
+            VALUE "FileDescription", "UAI Capoeira" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "uai_capoeira" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.uai_capoeira. All rights reserved." "\0"
             VALUE "OriginalFilename", "uai_capoeira.exe" "\0"
-            VALUE "ProductName", "uai_capoeira" "\0"
+            VALUE "ProductName", "UAI Capoeira" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

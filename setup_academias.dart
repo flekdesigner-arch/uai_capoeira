@@ -4,20 +4,20 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_core/firebase_core.dart';
 
 Future<void> main() async {
-  print('🚀 INICIANDO CONFIGURAÇÃO DAS ACADEMIAS...\n');
+  stdout.writeln('🚀 INICIANDO CONFIGURAÇÃO DAS ACADEMIAS...\n');
 
   try {
     // Inicializar Firebase
-    print('🔌 Conectando ao Firebase...');
+    stdout.writeln('🔌 Conectando ao Firebase...');
     await Firebase.initializeApp();
-    print('✅ Firebase inicializado!\n');
+    stdout.writeln('✅ Firebase inicializado!\n');
 
     // Referências do Firestore
     final firestore = FirebaseFirestore.instance;
     final storage = FirebaseStorage.instance;
 
     // ==================== DADOS DA ACADEMIA ====================
-    print('📊 CRIANDO COLEÇÃO DE ACADEMIAS...');
+    stdout.writeln('📊 CRIANDO COLEÇÃO DE ACADEMIAS...');
 
     final academiaData = {
       'nome': 'CENTRO DE CONVIVIO',
@@ -42,35 +42,29 @@ Future<void> main() async {
     final academiaRef = await firestore
         .collection('academias')
         .add(academiaData);
-    print('✅ Academia criada: ${academiaRef.id}');
-    print('   Nome: CENTRO DE CONVIVIO');
-    print('   Cidade: BOCAIUVA-MG');
-    print('   Professor: TICO-TICO\n');
+    stdout.writeln('✅ Academia criada: ${academiaRef.id}');
+    stdout.writeln('   Nome: CENTRO DE CONVIVIO');
+    stdout.writeln('   Cidade: BOCAIUVA-MG');
+    stdout.writeln('   Professor: TICO-TICO\n');
 
     // ==================== CRIAR PASTA NO STORAGE ====================
-    print('📁 CRIANDO PASTA NO STORAGE...');
+    stdout.writeln('📁 CRIANDO PASTA NO STORAGE...');
 
     try {
-      // Pasta para logos das academias
-      final logosFolder = storage.ref().child('logos_academias');
-
-      // Pasta para logos das turmas
-      final turmasFolder = storage.ref().child('logos_turmas');
-
       // Cria uma referência vazia (Firebase Storage não tem pastas "vazias" realmente)
       // Vamos criar um arquivo placeholder
       final placeholder = storage.ref().child('academias_placeholder/.keep');
       await placeholder.putString('Pasta criada por setup script');
 
-      print('✅ Pastas criadas no Storage');
-      print('   - logos_academias/');
-      print('   - logos_turmas/\n');
+      stdout.writeln('✅ Pastas criadas no Storage');
+      stdout.writeln('   - logos_academias/');
+      stdout.writeln('   - logos_turmas/\n');
     } catch (e) {
-      print('⚠️ Nota: Pastas serão criadas automaticamente ao fazer upload');
+      stdout.writeln('⚠️ Nota: Pastas serão criadas automaticamente ao fazer upload');
     }
 
     // ==================== CRIAR TURMAS ====================
-    print('🎓 CRIANDO SUBSCOLETA DE TURMAS...');
+    stdout.writeln('🎓 CRIANDO SUBSCOLETA DE TURMAS...');
 
     // Dados das turmas
     final turmas = [
@@ -120,15 +114,15 @@ Future<void> main() async {
       final turmaRef = await academiaRef.collection('turmas').add(turmaData);
 
       // CORREÇÃO APLICADA AQUI ↓
-      print('✅ Turma ${i + 1} criada: ${turmaRef.id}');
-      print('   Horário: ${turmaData['horario']}');
+      stdout.writeln('✅ Turma ${i + 1} criada: ${turmaRef.id}');
+      stdout.writeln('   Horário: ${turmaData['horario']}');
 
       // Converter List<dynamic> para String formatada
       final diasSemana = turmaData['dias_semana'] as List<dynamic>;
       final diasFormatados = diasSemana.map((d) => d.toString()).join(', ');
-      print('   Dias: $diasFormatados');
+      stdout.writeln('   Dias: $diasFormatados');
 
-      print('   Faixa etária: ${turmaData['faixa_etaria']}\n');
+      stdout.writeln('   Faixa etária: ${turmaData['faixa_etaria']}\n');
     }
 
     // ==================== ATUALIZAR CONTADOR DE TURMAS ====================
@@ -138,37 +132,37 @@ Future<void> main() async {
     });
 
     // ==================== VERIFICAR ESTRUTURA ====================
-    print('🔍 VERIFICANDO ESTRUTURA CRIADA...\n');
+    stdout.writeln('🔍 VERIFICANDO ESTRUTURA CRIADA...\n');
 
     // Verificar academia
     final academiaSnapshot = await academiaRef.get();
-    print('📋 ACADEMIA:');
-    print('   ID: ${academiaRef.id}');
-    print('   Nome: ${academiaSnapshot.get('nome')}');
-    print('   Cidade: ${academiaSnapshot.get('cidade')}');
-    print('   Turmas: ${academiaSnapshot.get('turmas_count')}\n');
+    stdout.writeln('📋 ACADEMIA:');
+    stdout.writeln('   ID: ${academiaRef.id}');
+    stdout.writeln('   Nome: ${academiaSnapshot.get('nome')}');
+    stdout.writeln('   Cidade: ${academiaSnapshot.get('cidade')}');
+    stdout.writeln('   Turmas: ${academiaSnapshot.get('turmas_count')}\n');
 
     // Verificar turmas
     final turmasSnapshot = await academiaRef.collection('turmas').get();
-    print('🎓 TURMAS CRIADAS:');
+    stdout.writeln('🎓 TURMAS CRIADAS:');
     for (var doc in turmasSnapshot.docs) {
-      print('   - ${doc.get('nome')} (${doc.get('horario')})');
+      stdout.writeln('   - ${doc.get('nome')} (${doc.get('horario')})');
     }
 
-    print('\n🎉 ESTRUTURA COMPLETA!');
-    print('=' * 50);
-    print('RESUMO:');
-    print('• 1 Academia criada na coleção "academias"');
-    print('• 2 Turmas criadas na subcoleção "turmas"');
-    print('• Pastas organizadas no Storage');
-    print('• Campos padronizados para o Firebase');
-    print('=' * 50);
+    stdout.writeln('\n🎉 ESTRUTURA COMPLETA!');
+    stdout.writeln('=' * 50);
+    stdout.writeln('RESUMO:');
+    stdout.writeln('• 1 Academia criada na coleção "academias"');
+    stdout.writeln('• 2 Turmas criadas na subcoleção "turmas"');
+    stdout.writeln('• Pastas organizadas no Storage');
+    stdout.writeln('• Campos padronizados para o Firebase');
+    stdout.writeln('=' * 50);
 
     // ==================== CRIAR ÍNDICES (OPCIONAL) ====================
-    print(
+    stdout.writeln(
       '\n💡 DICA: Para melhor performance, crie estes índices no Firestore:',
     );
-    print('''
+    stdout.writeln('''
 Coleção "academias":
 - cidade Ascending, status Ascending
 - nome Ascending
@@ -178,12 +172,12 @@ Coleção "academias/{id}/turmas":
 - status Ascending, capacidade_maxima Descending
 ''');
   } catch (e, stackTrace) {
-    print('\n❌ ERRO DURANTE A EXECUÇÃO:');
-    print('Erro: $e');
-    print('Stack trace: $stackTrace');
+    stdout.writeln('\n❌ ERRO DURANTE A EXECUÇÃO:');
+    stdout.writeln('Erro: $e');
+    stdout.writeln('Stack trace: $stackTrace');
     exit(1);
   }
 
-  print('\n✅ Script concluído com sucesso!');
+  stdout.writeln('\n✅ Script concluído com sucesso!');
   exit(0);
 }

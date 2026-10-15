@@ -52,13 +52,10 @@ class AcademiaCacheService {
     try {
       final connectivityResult = await _connectivity.checkConnectivity();
 
-      // Compatível com versões que retornam ConnectivityResult
-      // e versões que retornam List<ConnectivityResult>.
-      if (connectivityResult is List<ConnectivityResult>) {
-        return !connectivityResult.contains(ConnectivityResult.none);
-      }
-
-      return connectivityResult != ConnectivityResult.none;
+      return connectivityResult.isNotEmpty &&
+          connectivityResult.any(
+            (result) => result != ConnectivityResult.none,
+          );
     } catch (e) {
       debugPrint('Erro ao verificar internet: $e');
       return false;

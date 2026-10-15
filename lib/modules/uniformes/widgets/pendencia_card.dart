@@ -73,8 +73,8 @@ class PendenciaCard extends StatelessWidget {
 
     // Cor do chip de status
     final Color statusBg = percentualPago > 0
-        ? infoColor.withOpacity(0.1)
-        : warningColor.withOpacity(0.1);
+        ? infoColor.withAlpha(26)
+        : warningColor.withAlpha(26);
     final Color statusFg = percentualPago > 0 ? infoColor : warningColor;
 
     // Cor da barra de progresso
@@ -217,7 +217,7 @@ class PendenciaCard extends StatelessWidget {
                     ],
                   ),
                 );
-              }).toList(),
+              }),
               if (data['itens'].length > 2)
                 Text(
                   '+ mais ${data['itens'].length - 2} itens',
@@ -296,7 +296,7 @@ class PendenciaCard extends StatelessWidget {
                     ],
                   ),
                 );
-              }).toList(),
+              }),
             ],
           ],
         ),

@@ -1,7 +1,7 @@
-﻿name: uai_capoeira
+name: uai_capoeira
 description: "Sistema de gestão para academia de capoeira UAI CAPOEIRA"
 publish_to: 'none'
-version: 2.0.102+102
+version: 2.0.159+159
 
 # =============================================
 # 🔧 VERSÕES DO SDK
@@ -20,21 +20,29 @@ dependencies:
   flutter_localizations:
     sdk: flutter
 
+  # UAI Rhythm Studio — sampler de baixa latência (Windows/Android/PWA)
+  flutter_soloud: ^3.5.4
+
   # =============================================
   # 🔥 FIREBASE (Backend completo)
   # =============================================
-  firebase_core: ^3.5.0
-  firebase_auth: ^5.3.0
-  cloud_firestore: ^5.0.1
-  firebase_storage: ^12.0.1
-  firebase_messaging: ^15.2.4
-  firebase_app_check: ^0.3.2+1
-  firebase_analytics: ^11.3.0
-  cloud_functions: ^5.0.0
+  firebase_core: ^4.13.0
+  firebase_auth: ^6.5.7
+  cloud_firestore: ^6.8.0
+  firebase_storage: ^13.4.6
+  firebase_messaging: ^16.5.0
+  firebase_app_check: ^0.4.6
+  firebase_analytics: ^12.4.6
+  cloud_functions: ^6.3.6
 
   # 🔐 Login com Google
   google_sign_in: ^6.1.5
   shared_preferences: ^2.3.3
+
+  # 🎵 UAI Rhythm Studio — player multiplataforma
+  # Android + PWA/Web pelo just_audio.
+  # Windows usa o backend WinRT hardened, compatível com WAV/assets e com
+  # callbacks corretamente enviados para a platform thread.
 
   # =============================================
   # 🎨 INTERFACE E ANIMAÇÕES
@@ -65,6 +73,7 @@ dependencies:
   # 🖼️ IMAGENS E ARQUIVOS
   # =============================================
   image_picker: ^1.1.2
+  camera: 0.11.0+2
   cached_network_image: ^3.3.1
   file_picker: ^8.1.2
   flutter_cache_manager: ^3.3.0
@@ -75,6 +84,8 @@ dependencies:
   http: ^1.2.1
   connectivity_plus: ^6.0.0
   webview_flutter: ^4.7.0
+  webview_flutter_android: ^4.12.0
+  webview_flutter_windows: ^1.2.0
   universal_html: ^2.2.4
 
   # =============================================
@@ -117,6 +128,7 @@ dependencies:
   collection: ^1.18.0
   async: ^2.11.0
   uuid: ^4.4.0
+  crypto: ^3.0.6
 
   # =============================================
   # 📊 GOOGLE SHEETS (Integração)
@@ -129,22 +141,27 @@ dependencies:
   # =============================================
   hive: ^2.2.3
   hive_flutter: ^1.1.0
+  flutter_secure_storage: ^9.2.4
   web: ^1.1.1
+
+  # 🎵 UAI Rhythm Studio (Android / Web / Windows)
 
 # =============================================
 # 🛠️ DEPENDÊNCIAS DE DESENVOLVIMENTO
 # =============================================
+  image: any
+  path: any
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
-  image: ^4.1.7
   flutter_launcher_icons: ^0.14.1
   flutter_native_splash: ^2.4.4
 
 # =============================================
 # 🎨 CONFIGURAÇÃO DO FLUTTER
 # =============================================
+  firebase_core_platform_interface: any
 flutter:
   uses-material-design: true
 
@@ -161,6 +178,52 @@ flutter:
     - assets/images/logo_uai_tema.svg
     - assets/logo_uai_tema_seguro.svg
     - assets/uai_capoeira_logo.svg
+    - assets/rhythm_studio/
+    - assets/rhythm_studio/berimbau_visual/
+    - assets/rhythm_studio/icons/
+    # 🎵 Rhythm Studio V2 — banco WAV 48 kHz por instrumento.
+    # As subpastas são declaradas explicitamente para Android/PWA/Windows.
+    - assets/rhythm_studio/samples_v2/berimbau/
+    - assets/rhythm_studio/samples_v2/berimbau/gunga/
+    - assets/rhythm_studio/samples_v2/berimbau/medio/
+    - assets/rhythm_studio/samples_v2/berimbau/viola/
+    - assets/rhythm_studio/samples_v2/pandeiro/
+    - assets/rhythm_studio/samples_v2/atabaque/
+    - assets/rhythm_studio/samples_v2/agogo/
+    - assets/rhythm_studio/samples_v2/palmas/
+    # 🎙️ Rhythm Studio V3 — berimbau real capturado e afinado virtualmente.
+    # O banco V2 continua empacotado como fallback/reversão segura.
+    - assets/rhythm_studio/samples_v3/berimbau_capturado/gunga/
+    - assets/rhythm_studio/samples_v3/berimbau_capturado/medio/
+    - assets/rhythm_studio/samples_v3/berimbau_capturado/viola/
+    - assets/rhythm_studio/samples_v3_1/berimbau_harmonizado/gunga/
+    - assets/rhythm_studio/samples_v3_1/berimbau_harmonizado/medio/
+    - assets/rhythm_studio/samples_v3_1/berimbau_harmonizado/viola/
+    - assets/rhythm_studio/samples_v3_2/berimbau_premium/gunga/
+    - assets/rhythm_studio/samples_v3_2/berimbau_premium/medio/
+    - assets/rhythm_studio/samples_v3_2/berimbau_premium/viola/
+    - assets/rhythm_studio/samples_v4/berimbau_real_rr/gunga/
+    - assets/rhythm_studio/samples_v4/berimbau_real_rr/medio/
+    - assets/rhythm_studio/samples_v4/berimbau_real_rr/viola/
+
+    # 🔤 PATCH SITE 08 — fontes especiais como assets puros.
+    # Continuam disponíveis para certificados/PDF via rootBundle,
+    # sem ficarem registradas globalmente como famílias de UI.
+    - assets/fontes/ARIALN.TTF
+    - assets/fontes/ARIALNB.TTF
+    - assets/fontes/ARIALNBI.TTF
+    - assets/fontes/ARIALNI.TTF
+    - assets/fontes/ARLRDBD.TTF
+    - assets/fontes/ariblk.ttf
+    - assets/fontes/Square721 BT Roman.ttf
+    - assets/fontes/Square721 BT Bold.ttf
+    - assets/fontes/Square721 Cn BT Roman.ttf
+    - assets/fontes/Square721 Cn BT Bold.ttf
+    - assets/fontes/EngraversGothic BT.ttf
+    - assets/fontes/Angelina Malika Personal Use.ttf
+    - assets/fontes/Autography.otf
+    - assets/fontes/Photograph Signature.ttf
+    - assets/fontes/Bigtimes.otf
 
     # 📊 Dados de migração
     - assets/dadosalunos.csv
@@ -172,15 +235,14 @@ flutter:
     - assets/participacao_alunos_eventos.json
     - assets/graduacoes.csv
 
-    # 🔑 Credenciais
-    - assets/credentials.json
+    # 🔐 Credenciais privadas NÃO podem ser empacotadas no cliente.
+    # A integração Google Sheets usa Cloud Function autenticada (Patch Site 13).
 
-  # 🔤 FONTES DO APP / CERTIFICADOS
+  # 🔤 FONTES DE UI
   #
-  # IMPORTANTE:
-  # - A fonte Sitka foi removida porque não existe mais em assets/fontes.
-  # - As famílias abaixo podem ser usadas por TextStyle(fontFamily: "...").
-  # - No PDF direto, estes mesmos arquivos também podem ser carregados por asset path.
+  # PATCH SITE 08:
+  # - Arial permanece registrada globalmente porque ainda é usada em UI interna.
+  # - Fontes de certificados/PDF continuam como assets e são carregadas sob demanda.
   fonts:
     - family: Arial
       fonts:
@@ -192,52 +254,6 @@ flutter:
         - asset: assets/fontes/arialbi.ttf
           weight: 700
           style: italic
-
-    - family: ArialNarrow
-      fonts:
-        - asset: assets/fontes/ARIALN.TTF
-        - asset: assets/fontes/ARIALNB.TTF
-          weight: 700
-        - asset: assets/fontes/ARIALNI.TTF
-          style: italic
-        - asset: assets/fontes/ARIALNBI.TTF
-          weight: 700
-          style: italic
-
-    - family: ArialRounded
-      fonts:
-        - asset: assets/fontes/ARLRDBD.TTF
-          weight: 700
-
-    - family: ArialBlack
-      fonts:
-        - asset: assets/fontes/ariblk.ttf
-          weight: 900
-
-    - family: Square721BT
-      fonts:
-        - asset: assets/fontes/Square721 BT Roman.ttf
-        - asset: assets/fontes/Square721 BT Bold.ttf
-          weight: 700
-
-    - family: Square721CnBT
-      fonts:
-        - asset: assets/fontes/Square721 Cn BT Roman.ttf
-        - asset: assets/fontes/Square721 Cn BT Bold.ttf
-          weight: 700
-
-    - family: EngraversGothicBT
-      fonts:
-        - asset: assets/fontes/EngraversGothic BT.ttf
-
-    - family: AngelinaMalika
-      fonts:
-        - asset: assets/fontes/Angelina Malika Personal Use.ttf
-
-    - family: Autography
-      fonts:
-        - asset: assets/fontes/Autography.otf
-
     - family: Bigtimes
       fonts:
         - asset: assets/fontes/Bigtimes.otf
@@ -260,4 +276,3 @@ flutter_launcher_icons:
   adaptive_icon_background: "#B71C1C"
   adaptive_icon_foreground: "assets/images/logo_uai.png"
   min_sdk_android: 21
-

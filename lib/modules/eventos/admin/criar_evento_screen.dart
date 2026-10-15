@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
@@ -7,6 +7,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
 import 'package:uai_capoeira/core/permissions/permissao_service.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'package:uai_capoeira/modules/site/portfolio_v3/widgets/portfolio_cover_image.dart';
+import 'package:uai_capoeira/modules/site/portfolio_v3/widgets/portfolio_cover_cropper.dart';
 import 'package:uai_capoeira/modules/eventos/models/evento_model.dart';
 import 'package:uai_capoeira/modules/eventos/services/evento_service.dart';
 import 'package:uai_capoeira/modules/eventos/services/evento_participantes_cache_service.dart';
@@ -61,9 +63,13 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
   final _valorCamisaMangaLongaController = TextEditingController();
   final _valorCamisaRegataController = TextEditingController();
 
-  File? _bannerFile;
+  Uint8List? _bannerBytes;
+  String? _bannerContentType;
   String? _bannerUrl;
   bool _isUploadingBanner = false;
+  double _portfolioCoverPositionX = 0;
+  double _portfolioCoverPositionY = 0;
+  double _portfolioCoverScale = 1;
 
   double _valorInscricao = 0;
   int _maxParcelas = 1;
@@ -482,6 +488,9 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
     _cidadeController.text = e.cidade;
     _organizadoresController.text = e.organizadores.join(', ');
     _bannerUrl = e.linkBanner;
+    _portfolioCoverPositionX = e.portfolioCoverPositionX;
+    _portfolioCoverPositionY = e.portfolioCoverPositionY;
+    _portfolioCoverScale = e.portfolioCoverScale;
     _linkFotosController.text = e.linkFotosVideos ?? '';
     _linkPreviaController.text = e.previaVideo ?? '';
     _linkPlaylistController.text = e.linkPlaylist ?? '';
@@ -561,9 +570,16 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
       );
 
       if (image != null) {
+        final bytes = await image.readAsBytes();
+        if (!mounted) return;
+
         setState(() {
-          _bannerFile = File(image.path);
+          _bannerBytes = bytes;
+          _bannerContentType = image.mimeType ?? 'image/jpeg';
           _bannerUrl = null;
+          _portfolioCoverPositionX = 0;
+          _portfolioCoverPositionY = 0;
+          _portfolioCoverScale = 1;
         });
       }
     } catch (e) {
@@ -589,9 +605,16 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
       );
 
       if (image != null) {
+        final bytes = await image.readAsBytes();
+        if (!mounted) return;
+
         setState(() {
-          _bannerFile = File(image.path);
+          _bannerBytes = bytes;
+          _bannerContentType = image.mimeType ?? 'image/jpeg';
           _bannerUrl = null;
+          _portfolioCoverPositionX = 0;
+          _portfolioCoverPositionY = 0;
+          _portfolioCoverScale = 1;
         });
       }
     } catch (e) {
@@ -601,7 +624,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
     }
   }
 
-  Future<String?> _uploadBanner(File imageFile, String eventoId) async {
+  Future<String?> _uploadBanner(Uint8List imageBytes, String eventoId) async {
     try {
       setState(() => _isUploadingBanner = true);
 
@@ -613,10 +636,10 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
           .child('banners')
           .child(fileName);
 
-      await storageRef.putFile(
-        imageFile,
+      await storageRef.putData(
+        imageBytes,
         SettableMetadata(
-          contentType: 'image/jpeg',
+          contentType: _bannerContentType ?? 'image/jpeg',
           customMetadata: {
             'uploaded_at': DateTime.now().toIso8601String(),
             'evento_id': eventoId,
@@ -649,7 +672,8 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
         confirmLabel: 'REMOVER',
         onConfirm: () {
           setState(() {
-            _bannerFile = null;
+            _bannerBytes = null;
+            _bannerContentType = null;
             _bannerUrl = null;
           });
           _showSnack(
@@ -660,7 +684,8 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
       );
     } else {
       setState(() {
-        _bannerFile = null;
+        _bannerBytes = null;
+        _bannerContentType = null;
         _bannerUrl = null;
       });
     }
@@ -711,7 +736,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                     _tirarFoto();
                   },
                 ),
-                if (_bannerFile != null || _bannerUrl != null)
+                if (_bannerBytes != null || _bannerUrl != null)
                   _bottomOption(
                     icon: Icons.delete_rounded,
                     color: t.error,
@@ -807,7 +832,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                                 width: 44,
                                 height: 44,
                                 decoration: BoxDecoration(
-                                  color: primary.withOpacity(0.12),
+                                  color: primary.withAlpha(31),
                                   borderRadius: BorderRadius.circular(
                                     t.buttonRadius,
                                   ),
@@ -852,7 +877,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                                 child: Material(
                                   color: isSelected
                                       ? Color.alphaBlend(
-                                          primary.withOpacity(0.10),
+                                          primary.withAlpha(26),
                                           t.cardAlt,
                                         )
                                       : t.cardAlt,
@@ -867,7 +892,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                                       ),
                                       border: Border.all(
                                         color: isSelected
-                                            ? primary.withOpacity(0.28)
+                                            ? primary.withAlpha(71)
                                             : t.border,
                                       ),
                                     ),
@@ -1102,7 +1127,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                                 width: 44,
                                 height: 44,
                                 decoration: BoxDecoration(
-                                  color: primary.withOpacity(0.12),
+                                  color: primary.withAlpha(31),
                                   borderRadius: BorderRadius.circular(
                                     t.buttonRadius,
                                   ),
@@ -1149,7 +1174,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                                 child: Material(
                                   color: isSelected
                                       ? Color.alphaBlend(
-                                          primary.withOpacity(0.10),
+                                          primary.withAlpha(26),
                                           t.cardAlt,
                                         )
                                       : t.cardAlt,
@@ -1164,7 +1189,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                                       ),
                                       border: Border.all(
                                         color: isSelected
-                                            ? primary.withOpacity(0.28)
+                                            ? primary.withAlpha(71)
                                             : t.border,
                                       ),
                                     ),
@@ -1309,7 +1334,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                           width: 48,
                           height: 48,
                           decoration: BoxDecoration(
-                            color: accent.withOpacity(0.12),
+                            color: accent.withAlpha(31),
                             borderRadius: BorderRadius.circular(t.buttonRadius),
                           ),
                           child: Icon(icon, color: accent),
@@ -1406,11 +1431,11 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
         keyRef: _bannerKey,
         icon: Icons.image_rounded,
         label: 'Banner',
-        subtitle: _bannerFile != null || _bannerUrl != null
+        subtitle: _bannerBytes != null || _bannerUrl != null
             ? 'Imagem definida'
             : 'Sem imagem',
         color: t.info,
-        ativo: _bannerFile != null || _bannerUrl != null,
+        ativo: _bannerBytes != null || _bannerUrl != null,
       ),
       _SectionShortcut(
         keyRef: _financeiroKey,
@@ -1503,7 +1528,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
 
     return Material(
       color: item.ativo
-          ? Color.alphaBlend(accent.withOpacity(0.10), t.cardAlt)
+          ? Color.alphaBlend(accent.withAlpha(26), t.cardAlt)
           : t.cardAlt,
       borderRadius: BorderRadius.circular(t.inputRadius),
       clipBehavior: Clip.antiAlias,
@@ -1514,7 +1539,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(t.inputRadius),
             border: Border.all(
-              color: item.ativo ? accent.withOpacity(0.26) : t.border,
+              color: item.ativo ? accent.withAlpha(66) : t.border,
             ),
           ),
           child: Row(
@@ -1523,7 +1548,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                 width: 34,
                 height: 34,
                 decoration: BoxDecoration(
-                  color: accent.withOpacity(0.12),
+                  color: accent.withAlpha(31),
                   borderRadius: BorderRadius.circular(t.buttonRadius),
                 ),
                 child: Icon(item.icon, color: accent, size: 18),
@@ -1648,7 +1673,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
               padding: const EdgeInsets.all(22),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(t.cardRadius),
-                border: Border.all(color: warning.withOpacity(0.18)),
+                border: Border.all(color: warning.withAlpha(46)),
                 boxShadow: t.softShadow,
               ),
               child: Column(
@@ -1715,7 +1740,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
 
     return Material(
       color: value
-          ? Color.alphaBlend(accent.withOpacity(0.08), t.card)
+          ? Color.alphaBlend(accent.withAlpha(20), t.card)
           : t.card,
       borderRadius: BorderRadius.circular(t.inputRadius),
       clipBehavior: Clip.antiAlias,
@@ -1724,13 +1749,13 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(t.inputRadius),
           border: Border.all(
-            color: value ? accent.withOpacity(0.26) : t.border,
+            color: value ? accent.withAlpha(66) : t.border,
             width: value ? 1.4 : 1,
           ),
         ),
         child: SwitchListTile(
           value: value,
-          activeColor: accent,
+          activeThumbColor: accent,
           onChanged: onChanged,
           secondary: Icon(icon, color: accent),
           title: Text(
@@ -1759,7 +1784,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
       permission: 'pode_configurar_certificados_evento',
       message: 'Você não tem permissão para configurar certificados do evento.',
     );
-    if (!permitido) return;
+    if (!mounted || !permitido) return;
 
     final resultado = await EventoCertificadoConfigDialog.show(
       context: context,
@@ -1808,7 +1833,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
         color: t.cardAlt,
         borderRadius: BorderRadius.circular(t.inputRadius),
         border: Border.all(
-          color: _temCertificado ? success.withOpacity(0.20) : t.border,
+          color: _temCertificado ? success.withAlpha(51) : t.border,
         ),
       ),
       child: Column(
@@ -1820,8 +1845,8 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: (_temCertificado ? success : warning).withOpacity(
-                    0.11,
+                  color: (_temCertificado ? success : warning).withAlpha(
+                    28,
                   ),
                   borderRadius: BorderRadius.circular(t.buttonRadius),
                 ),
@@ -1933,7 +1958,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
               ),
               style: OutlinedButton.styleFrom(
                 foregroundColor: primary,
-                side: BorderSide(color: primary.withOpacity(0.30)),
+                side: BorderSide(color: primary.withAlpha(77)),
                 padding: const EdgeInsets.symmetric(vertical: 13),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(t.buttonRadius),
@@ -1958,9 +1983,9 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.09), t.cardAlt),
+        color: Color.alphaBlend(accent.withAlpha(23), t.cardAlt),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: accent.withOpacity(0.16)),
+        border: Border.all(color: accent.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -2019,7 +2044,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
           ? 'Você não tem permissão para editar eventos.'
           : 'Você não tem permissão para criar eventos.',
     );
-    if (!permitido) {
+    if (!mounted || !permitido) {
       return;
     }
 
@@ -2032,6 +2057,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
       return;
     }
 
+    if (!mounted) return;
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
@@ -2062,7 +2088,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
       final bool bannerFoiRemovido =
           widget.evento?.linkBanner != null &&
           _bannerUrl == null &&
-          _bannerFile == null;
+          _bannerBytes == null;
 
       if (bannerFoiRemovido && widget.evento?.linkBanner != null) {
         try {
@@ -2078,7 +2104,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
 
       String? novaBannerUrl = _bannerUrl;
 
-      if (_bannerFile != null) {
+      if (_bannerBytes != null) {
         if (widget.evento?.linkBanner != null &&
             widget.evento!.linkBanner != _bannerUrl) {
           try {
@@ -2095,7 +2121,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
         final tempEventoId =
             widget.evento?.id ??
             DateTime.now().millisecondsSinceEpoch.toString();
-        novaBannerUrl = await _uploadBanner(_bannerFile!, tempEventoId);
+        novaBannerUrl = await _uploadBanner(_bannerBytes!, tempEventoId);
 
         if (novaBannerUrl == null) {
           throw Exception('Erro ao fazer upload do banner');
@@ -2135,6 +2161,9 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
         geraCertificado: geraCertificado,
         tipoPublico: 'todos',
         linkBanner: novaBannerUrl,
+        portfolioCoverPositionX: _portfolioCoverPositionX,
+        portfolioCoverPositionY: _portfolioCoverPositionY,
+        portfolioCoverScale: _portfolioCoverScale,
         linkFotosVideos: _linkFotosController.text.isNotEmpty
             ? _linkFotosController.text.trim()
             : null,
@@ -2163,7 +2192,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
         throw Exception('Erro ao salvar evento: ID não gerado');
       }
 
-      if (_bannerFile != null &&
+      if (_bannerBytes != null &&
           novaBannerUrl != null &&
           widget.evento?.id == null) {
         try {
@@ -2172,7 +2201,16 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
               'eventos/banners/$eventoId-${DateTime.now().millisecondsSinceEpoch}.jpg';
           final newRef = FirebaseStorage.instance.ref().child(newPath);
 
-          await newRef.putFile(_bannerFile!);
+          await newRef.putData(
+            _bannerBytes!,
+            SettableMetadata(
+              contentType: _bannerContentType ?? 'image/jpeg',
+              customMetadata: {
+                'uploaded_at': DateTime.now().toIso8601String(),
+                'evento_id': eventoId,
+              },
+            ),
+          );
           final finalUrl = await newRef.getDownloadURL();
 
           await _eventoService.atualizarBanner(eventoId, finalUrl);
@@ -2294,7 +2332,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
       decoration: BoxDecoration(
         color: t.cardAlt,
         borderRadius: BorderRadius.circular(t.inputRadius),
-        border: Border.all(color: accent.withOpacity(0.20)),
+        border: Border.all(color: accent.withAlpha(51)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2469,7 +2507,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
           padding: EdgeInsets.all(dense ? 13 : 16),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(t.cardRadius),
-            border: Border.all(color: accent.withOpacity(0.14)),
+            border: Border.all(color: accent.withAlpha(36)),
             boxShadow: t.softShadow,
           ),
           child: Column(
@@ -2504,9 +2542,9 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            color: color.withOpacity(0.12),
+            color: color.withAlpha(31),
             borderRadius: BorderRadius.circular(t.buttonRadius),
-            border: Border.all(color: color.withOpacity(0.16)),
+            border: Border.all(color: color.withAlpha(41)),
           ),
           child: Icon(icon, color: color),
         ),
@@ -2558,9 +2596,9 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
             width: 62,
             height: 62,
             decoration: BoxDecoration(
-              color: onPrimary.withOpacity(0.14),
+              color: onPrimary.withAlpha(36),
               borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: onPrimary.withOpacity(0.16)),
+              border: Border.all(color: onPrimary.withAlpha(41)),
             ),
             child: Icon(
               _modoEdicao
@@ -2591,7 +2629,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                 'Configure dados, banner, taxas, camisa, certificados e portfólio web.',
                 textAlign: narrow ? TextAlign.center : TextAlign.left,
                 style: TextStyle(
-                  color: onPrimary.withOpacity(0.82),
+                  color: onPrimary.withAlpha(209),
                   fontSize: 13,
                   height: 1.35,
                 ),
@@ -2638,9 +2676,9 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: onPrimary.withOpacity(0.14),
+        color: onPrimary.withAlpha(36),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: onPrimary.withOpacity(0.16)),
+        border: Border.all(color: onPrimary.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -2660,56 +2698,95 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
     );
   }
 
+  Future<void> _abrirAjusteBanner() async {
+    final ImageProvider? provider = _bannerBytes != null
+        ? MemoryImage(_bannerBytes!)
+        : (_bannerUrl != null && _bannerUrl!.trim().isNotEmpty ? NetworkImage(_bannerUrl!) : null);
+    if (provider == null) {
+      _mostrarOpcoesImagem();
+      return;
+    }
+    final result = await showPortfolioCoverCropper(
+      context: context,
+      imageProvider: provider,
+      positionX: _portfolioCoverPositionX,
+      positionY: _portfolioCoverPositionY,
+      scale: _portfolioCoverScale,
+      title: 'Ajustar banner do evento',
+    );
+    if (!mounted || result == null) return;
+    setState(() {
+      _portfolioCoverPositionX = result.positionX;
+      _portfolioCoverPositionY = result.positionY;
+      _portfolioCoverScale = result.scale;
+    });
+  }
+
   Widget _buildBannerPreview() {
     final t = context.uai;
+    final hasBanner = _bannerBytes != null || (_bannerUrl != null && _bannerUrl!.trim().isNotEmpty);
 
     return Material(
       color: t.cardAlt,
       borderRadius: BorderRadius.circular(t.inputRadius),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: _mostrarOpcoesImagem,
-        child: Container(
-          height: 158,
-          width: double.infinity,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(t.inputRadius),
-            border: Border.all(color: t.border),
-          ),
-          child: _bannerFile != null
-              ? Image.file(
-                  _bannerFile!,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stack) => _bannerFallback(
-                    icon: Icons.broken_image_rounded,
-                    text: 'Erro ao carregar imagem',
-                  ),
-                )
-              : _bannerUrl != null
-              ? Image.network(
-                  _bannerUrl!,
-                  fit: BoxFit.cover,
-                  loadingBuilder: (context, child, progress) {
-                    if (progress == null) return child;
-                    return Center(
-                      child: CircularProgressIndicator(
-                        color: t.primary,
-                        value: progress.expectedTotalBytes != null
-                            ? progress.cumulativeBytesLoaded /
-                                  progress.expectedTotalBytes!
-                            : null,
+        onTap: hasBanner ? _abrirAjusteBanner : _mostrarOpcoesImagem,
+        child: AspectRatio(
+          aspectRatio: 16 / 9,
+          child: Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(t.inputRadius),
+              border: Border.all(color: t.border),
+            ),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (_bannerBytes != null)
+                  ClipRect(
+                    child: Transform.scale(
+                      scale: _portfolioCoverScale.clamp(1.0, 2.5).toDouble(),
+                      alignment: Alignment(_portfolioCoverPositionX, _portfolioCoverPositionY),
+                      child: Image.memory(
+                        _bannerBytes!,
+                        fit: BoxFit.cover,
+                        alignment: Alignment(_portfolioCoverPositionX, _portfolioCoverPositionY),
+                        gaplessPlayback: true,
+                        errorBuilder: (context, error, stack) => _bannerFallback(icon: Icons.broken_image_rounded, text: 'Erro ao carregar imagem'),
                       ),
-                    );
-                  },
-                  errorBuilder: (context, error, stack) => _bannerFallback(
-                    icon: Icons.broken_image_rounded,
-                    text: 'Erro ao carregar imagem',
+                    ),
+                  )
+                else if (_bannerUrl != null && _bannerUrl!.trim().isNotEmpty)
+                  PortfolioCoverImage(
+                    url: _bannerUrl!,
+                    positionX: _portfolioCoverPositionX,
+                    positionY: _portfolioCoverPositionY,
+                    scale: _portfolioCoverScale,
+                    placeholder: _bannerFallback(icon: Icons.broken_image_rounded, text: 'Erro ao carregar imagem'),
+                  )
+                else
+                  _bannerFallback(icon: Icons.add_photo_alternate_rounded, text: 'Toque para adicionar um banner'),
+                if (hasBanner)
+                  Positioned(
+                    left: 10,
+                    bottom: 10,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                      decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(99)),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.crop_free_rounded, color: Colors.white, size: 15),
+                          SizedBox(width: 5),
+                          Text('Toque para ajustar a capa', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800)),
+                        ],
+                      ),
+                    ),
                   ),
-                )
-              : _bannerFallback(
-                  icon: Icons.add_photo_alternate_rounded,
-                  text: 'Clique para adicionar um banner',
-                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -2730,8 +2807,48 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
     );
   }
 
+
+  Widget _buildPortfolioBannerFramingEditor() {
+    final t = context.uai;
+    final hasBanner = _bannerBytes != null || (_bannerUrl != null && _bannerUrl!.trim().isNotEmpty);
+    if (!hasBanner) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: t.cardAlt,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: t.border),
+        ),
+        child: LayoutBuilder(
+          builder: (context, c) {
+            final narrow = c.maxWidth < 430;
+            final info = Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Enquadramento do portfólio', style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 3),
+                Text('O mesmo recorte 16:9 será usado na timeline e nos cards.', style: TextStyle(color: t.textMuted, fontSize: 12)),
+              ],
+            );
+            final action = FilledButton.tonalIcon(
+              onPressed: _abrirAjusteBanner,
+              icon: const Icon(Icons.crop_free_rounded),
+              label: const Text('AJUSTAR CAPA'),
+            );
+            return narrow
+                ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [info, const SizedBox(height: 10), action])
+                : Row(children: [Expanded(child: info), const SizedBox(width: 12), action]);
+          },
+        ),
+      ),
+    );
+  }
+
   Widget _buildBannerActions() {
-    final hasBanner = _bannerFile != null || _bannerUrl != null;
+    final hasBanner = _bannerBytes != null || _bannerUrl != null;
     final t = context.uai;
 
     return LayoutBuilder(
@@ -2843,9 +2960,9 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.09), t.cardAlt),
+        color: Color.alphaBlend(accent.withAlpha(23), t.cardAlt),
         borderRadius: BorderRadius.circular(t.inputRadius),
-        border: Border.all(color: accent.withOpacity(0.16)),
+        border: Border.all(color: accent.withAlpha(41)),
       ),
       child: Row(
         children: [
@@ -2942,7 +3059,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                                 ),
                                 const SizedBox(height: 12),
                                 DropdownButtonFormField<String>(
-                                  value: _tipoController.text.isNotEmpty
+                                  initialValue: _tipoController.text.isNotEmpty
                                       ? _tipoController.text
                                       : null,
                                   isExpanded: true,
@@ -3085,6 +3202,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                                 ],
                                 const SizedBox(height: 12),
                                 _buildBannerActions(),
+                                _buildPortfolioBannerFramingEditor(),
                               ],
                             ),
                           ),

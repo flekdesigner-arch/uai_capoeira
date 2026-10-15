@@ -5,11 +5,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:uai_capoeira/modules/auth/screens/login_screen.dart';
 import 'package:uai_capoeira/app/portal_screen.dart';
-import 'package:uai_capoeira/main.dart';
+import 'package:uai_capoeira/app/bootstrap/uai_native_bootstrap.dart' show MainScreen;
 import 'package:uai_capoeira/modules/area_aluno/screens/area_aluno_dashboard_screen.dart';
 import 'package:uai_capoeira/modules/area_aluno/screens/escolher_aluno_vinculado_screen.dart';
 import 'package:uai_capoeira/modules/area_aluno/services/area_aluno_google_service.dart';
 import 'package:uai_capoeira/modules/usuarios/services/user_service.dart';
+import 'package:uai_capoeira/modules/minha_uai/screens/minha_uai_home_screen.dart';
+import 'package:uai_capoeira/modules/usuarios/services/usuario_identidade_service.dart';
 
 class AuthCheck extends StatelessWidget {
   const AuthCheck({super.key});
@@ -22,6 +24,24 @@ class AuthCheck extends StatelessWidget {
 
     if (userDoc.exists) {
       return;
+    }
+
+    // IMPORTANTE: Firebase Auth nao significa automaticamente usuario da gestao.
+    // Antes de criar uma pendencia administrativa, verifica se a identidade
+    // Google ja pertence exclusivamente a Area do Aluno.
+    try {
+      final alunos = await AreaAlunoGoogleService().buscarAlunosVinculados();
+      if (alunos.isNotEmpty) {
+        debugPrint(
+          'Identidade vinculada a Area do Aluno. Perfil administrativo nao sera criado.',
+        );
+        return;
+      }
+    } catch (e) {
+      // Uma falha temporaria na verificacao nao deve criar lixo administrativo.
+      // Propaga o erro para permitir retry seguro em vez de assumir gestao.
+      debugPrint('Erro ao verificar identidade da Area do Aluno: $e');
+      rethrow;
     }
 
     debugPrint('Perfil do usuario nao existe. Preparando via Function.');
@@ -251,8 +271,73 @@ class AuthCheck extends StatelessWidget {
                 }
 
                 if (!userSnapshot.hasData || !userSnapshot.data!.exists) {
-                  debugPrint('⚠️ Documento ainda não apareceu no Firestore.');
-                  return _buildLoadingScreen('Finalizando configuração...');
+                  // Sem documento em /usuarios pode ser exatamente o caso correto:
+                  // uma conta exclusiva da Area do Aluno.
+                  return FutureBuilder<List<AlunoVinculadoGoogle>>(
+                    future: AreaAlunoGoogleService().buscarAlunosVinculados(),
+                    builder: (context, alunoSnapshot) {
+                      if (alunoSnapshot.connectionState ==
+                          ConnectionState.waiting) {
+                        return _buildLoadingScreen('Abrindo Área do Aluno...');
+                      }
+
+                      if (alunoSnapshot.hasError) {
+                        return _buildErrorScreen(
+                          title: 'Erro ao identificar sua conta',
+                          message:
+                              'Não foi possível confirmar se esta conta pertence à Área do Aluno.',
+                          onRetry: () {
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(builder: (_) => const AuthCheck()),
+                            );
+                          },
+                        );
+                      }
+
+                      final alunos = alunoSnapshot.data ?? const [];
+                      if (alunos.length == 1) {
+                        return FutureBuilder<Map<String, dynamic>?>(
+                          future: AreaAlunoGoogleService()
+                              .prepararAcessoAreaAluno(alunos.first),
+                          builder: (context, acessoSnapshot) {
+                            if (acessoSnapshot.connectionState ==
+                                ConnectionState.waiting) {
+                              return _buildLoadingScreen('Abrindo Área do Aluno...');
+                            }
+                            final acesso = acessoSnapshot.data;
+                            if (acesso != null) {
+                              return AreaAlunoDashboardScreen(
+                                aluno: Map<String, dynamic>.from(
+                                  acesso['aluno'] as Map,
+                                ),
+                                config: Map<String, dynamic>.from(
+                                  acesso['config'] as Map,
+                                ),
+                                authPayload: Map<String, dynamic>.from(
+                                  acesso['authPayload'] as Map,
+                                ),
+                              );
+                            }
+                            return _buildErrorScreen(
+                              title: 'Não foi possível abrir a Área do Aluno',
+                              message: 'Tente novamente em alguns instantes.',
+                            );
+                          },
+                        );
+                      }
+
+                      if (alunos.length > 1) {
+                        return EscolherAlunoVinculadoScreen(alunos: alunos);
+                      }
+
+                      return _buildErrorScreen(
+                        title: 'Conta sem perfil de acesso',
+                        message:
+                            'Esta conta não possui perfil de gestão nem vínculo ativo com a Área do Aluno.',
+                      );
+                    },
+                  );
                 }
 
                 final userData = userSnapshot.data!.data() ?? {};
@@ -260,6 +345,26 @@ class AuthCheck extends StatelessWidget {
                     .toString();
 
                 debugPrint('✅ Usuário: ${user.email} - Status: $statusConta');
+
+                // A origem da identidade tem prioridade sobre o status legado.
+                // Uma Conta UAI criada pela inscrição continua sendo Conta UAI
+                // mesmo que a inscrição seja excluída depois.
+                if (UsuarioIdentidadeService.ehContextoMinhaUai(userData)) {
+                  return FutureBuilder<void>(
+                    future: UsuarioIdentidadeService().reconciliarContaInscricao(
+                      userId: user.uid,
+                      data: userData,
+                    ),
+                    builder: (context, repairSnapshot) {
+                      if (repairSnapshot.connectionState == ConnectionState.waiting) {
+                        return _buildLoadingScreen('Preparando sua Conta UAI...');
+                      }
+                      // Falha no auto-healing não deve bloquear uma rota que já
+                      // sabemos ser da Minha UAI. A próxima abertura tenta de novo.
+                      return const MinhaUaiHomeScreen();
+                    },
+                  );
+                }
 
                 if (statusConta == 'ativa') {
                   return const MainScreen();

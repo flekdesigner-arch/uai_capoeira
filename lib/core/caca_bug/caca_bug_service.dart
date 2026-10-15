@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import 'caca_bug_actions.dart';
+import 'package:uai_capoeira/core/session_log/session_log_service.dart';
 import 'models/caca_bug_config.dart';
 import 'models/caca_bug_event_model.dart';
 import 'models/caca_bug_session_model.dart';
@@ -28,30 +29,35 @@ class CacaBugService {
   int _ordem = 0;
   int _eventosPersistidos = 0;
   String? _uidInicializado;
+  DateTime? _ultimaLeituraConfig;
 
   bool get ativo => _config.ativo;
   bool get coletando => _sessao != null && _config.ativo;
   CacaBugConfig get configAtual => _config;
+  String? get sessaoAtualId => _sessao?.sessaoId;
 
   Future<void> inicializar({User? user}) async {
     try {
       if (user == null) return;
-      if (_sessao != null && _sessao!.uid == user.uid && _config.ativo) return;
-      if (_uidInicializado == user.uid && _configCarregada) return;
 
+      await _carregarConfigControlada(force: _uidInicializado != user.uid);
       _uidInicializado = user.uid;
-      await _carregarConfigUmaVez();
 
       if (!_config.ativo || !_config.deveMonitorarUsuario(user.uid)) {
-        _desligarColetaLocal();
+        await flush(force: true);
+        _desligarColetaLocal(resetUid: false);
         return;
       }
 
-      if (_sessao?.uid == user.uid) return;
+      if (_sessao != null && _sessao!.uid == user.uid) {
+        _iniciarTimer();
+        return;
+      }
+
       await iniciarSessao(user: user);
     } catch (e) {
       _desligarColetaLocal();
-      _logControlado('Erro ao inicializar Caça Bug: $e');
+      _logControlado('Erro ao inicializar Caça Bug: ${_sanitizeErrorMessage(e)}');
     }
   }
 
@@ -66,15 +72,21 @@ class CacaBugService {
           ? CacaBugConfig.fromMap(doc.data())
           : CacaBugConfig.defaults();
       _configCarregada = true;
+      _ultimaLeituraConfig = DateTime.now();
 
       if (!_config.ativo) {
-        _desligarColetaLocal();
+        await flush(force: true);
+        _desligarColetaLocal(resetUid: false);
       }
     } catch (e) {
       _config = CacaBugConfig.defaults();
       _configCarregada = true;
-      _desligarColetaLocal();
-      _logControlado('Erro ao atualizar configuração Caça Bug: $e');
+      _ultimaLeituraConfig = DateTime.now();
+      await flush(force: true);
+      _desligarColetaLocal(resetUid: false);
+      _logControlado(
+        'Erro ao atualizar configuração Caça Bug: ${_sanitizeErrorMessage(e)}',
+      );
     }
   }
 
@@ -135,7 +147,7 @@ class CacaBugService {
       _iniciarTimer();
     } catch (e) {
       _desligarColetaLocal();
-      _logControlado('Erro ao iniciar sessão Caça Bug: $e');
+      _logControlado('Erro ao iniciar sessão Caça Bug: ${_sanitizeErrorMessage(e)}');
     }
   }
 
@@ -158,6 +170,7 @@ class CacaBugService {
           arquivo: sessao.ultimoArquivo ?? '',
           rota: '',
           status: 'info',
+          force: true,
         );
       }
 
@@ -171,7 +184,32 @@ class CacaBugService {
         'atualizadoEm': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
     } catch (e) {
-      _logControlado('Erro ao finalizar sessão Caça Bug: $e');
+      _logControlado('Erro ao finalizar sessão Caça Bug: ${_sanitizeErrorMessage(e)}');
+    } finally {
+      _desligarColetaLocal();
+    }
+  }
+
+
+  /// Finaliza a telemetria enquanto o Firebase Auth ainda está válido e,
+  /// independentemente de falha de rede/permissão, encerra timers e limpa a
+  /// fila local. Deve ser chamado ANTES de FirebaseAuth.signOut().
+  Future<void> prepararLogout() async {
+    _flushTimer?.cancel();
+    _flushTimer = null;
+
+    if (_sessao == null) {
+      _desligarColetaLocal();
+      return;
+    }
+
+    try {
+      await finalizarSessao(
+        motivo: 'logout',
+        registrarEventoFinal: true,
+      );
+    } catch (_) {
+      _desligarColetaLocal();
     } finally {
       _desligarColetaLocal();
     }
@@ -186,35 +224,27 @@ class CacaBugService {
     String rota = '',
     String status = 'info',
     Map<String, dynamic>? dados,
+    bool force = false,
   }) async {
     try {
       if (!coletando) return;
-      if (!_tipoPermitido(tipo) || !_statusPermitido(status)) return;
-      if (tipo == 'navegacao' && !_config.registrarNavegacao) return;
-      if (tipo == 'erro' && !_config.registrarErros) return;
+      if (!_eventoPermitido(tipo: tipo, status: status, force: force)) return;
 
-      if (_eventosPersistidos + _fila.length >= _config.maxEventosPorSessao) {
+      if (!_podeAdicionarEvento()) {
         await _registrarLimiteSeNecessario();
         return;
       }
 
-      final canalDedupe = dados?['canal']?.toString().trim();
-      final destinoTipoDedupe = dados?['destinoTipo']?.toString().trim();
-      final temDiscriminadorContato =
-          canalDedupe != null &&
-          canalDedupe.isNotEmpty &&
-          destinoTipoDedupe != null &&
-          destinoTipoDedupe.isNotEmpty;
-      final dedupeKey = temDiscriminadorContato
-          ? '$acao|$tela|$status|$canalDedupe|$destinoTipoDedupe'
-          : '$acao|$tela|$status';
-      final now = DateTime.now();
-      final last = _dedupe[dedupeKey];
-      if (last != null &&
-          now.difference(last).inMilliseconds < _config.dedupeJanelaMs) {
+      final dadosSeguros = CacaBugEventModel.sanitizeMap(dados ?? const {});
+      if (!_dedupePermitido(
+        acao: acao,
+        tela: tela,
+        status: status,
+        dados: dadosSeguros,
+        force: force,
+      )) {
         return;
       }
-      _dedupe[dedupeKey] = now;
 
       final eventId = _firestore
           .collection('caca_bug_sessoes')
@@ -233,18 +263,22 @@ class CacaBugService {
           arquivo: arquivo,
           rota: rota,
           status: status,
-          dados: dados,
+          dados: dadosSeguros,
           ordem: ++_ordem,
           erro: null,
         ),
       );
 
+      // Espelha somente ação e nome da tela; nunca descrição, dados ou stack.
+      unawaited(SessionLogService.instance.event(
+        action: acao, screen: tela, category: tipo, status: status,
+      ));
       _apararFila();
       if (_fila.length >= _config.maxEventosPorFlush) {
         unawaited(flush());
       }
     } catch (e) {
-      _logControlado('Erro ao enfileirar evento Caça Bug: $e');
+      _logControlado('Erro ao enfileirar evento Caça Bug: ${_sanitizeErrorMessage(e)}');
     }
   }
 
@@ -258,26 +292,95 @@ class CacaBugService {
     StackTrace? stackTrace,
     Map<String, dynamic>? dados,
   }) async {
-    if (!coletando || !_config.registrarErros) return;
+    try {
+      if (!coletando) return;
+      if (!_eventoPermitido(tipo: 'erro', status: 'error', force: false)) return;
+      if (!_podeAdicionarEvento()) {
+        await _registrarLimiteSeNecessario();
+        return;
+      }
 
-    final erroMap = {
-      'message': _sanitizeErrorMessage(erro, fallback: descricao),
-      if (stackTrace != null) 'stackTrace': _sanitizeErrorMessage(stackTrace),
-    };
+      final dadosSeguros = CacaBugEventModel.sanitizeMap(dados ?? const {});
+      if (!_dedupePermitido(
+        acao: acao,
+        tela: tela,
+        status: 'error',
+        dados: dadosSeguros,
+        force: false,
+      )) {
+        return;
+      }
 
-    await _registrarEventoComErro(
-      acao: acao,
-      descricao: descricao,
+      final erroMap = {
+        'message': _sanitizeErrorMessage(erro, fallback: descricao),
+        if (stackTrace != null)
+          'stackTrace': _sanitizeErrorMessage(stackTrace, fallback: descricao),
+      };
+
+      unawaited(SessionLogService.instance.event(
+        action: acao, screen: tela, category: 'erro', status: 'erro',
+      ));
+      await _registrarEventoComErro(
+        acao: acao,
+        descricao: descricao,
+        tela: tela,
+        arquivo: arquivo,
+        rota: rota,
+        dados: dadosSeguros,
+        erro: erroMap,
+      );
+    } catch (e) {
+      _logControlado('Erro ao registrar erro Caça Bug: ${_sanitizeErrorMessage(e)}');
+    }
+  }
+
+  Future<void> registrarRelatorioManualBug({
+    required String titulo,
+    required String descricao,
+    String gravidade = 'media',
+    String categoria = 'manual',
+    String tela = 'CaçaBugScreen',
+    String arquivo = 'lib/modules/sistema/admin/caca_bug/caca_bug_screen.dart',
+    String rota = '/admin/caca-bug',
+  }) async {
+    final tituloSeguro = _sanitizeManualText(titulo, max: 80);
+    final descricaoSegura = _sanitizeManualText(descricao, max: 700);
+    if (tituloSeguro.isEmpty && descricaoSegura.isEmpty) return;
+
+    await registrarEvento(
+      tipo: 'acao_usuario',
+      acao: CacaBugActions.relatorioManualBug,
+      descricao: tituloSeguro.isEmpty
+          ? 'Relatório manual de bug registrado'
+          : 'Relatório manual: $tituloSeguro',
       tela: tela,
       arquivo: arquivo,
       rota: rota,
-      dados: dados,
-      erro: erroMap,
+      status: gravidade == 'critica' ? 'warning' : 'info',
+      dados: {
+        'titulo': tituloSeguro,
+        'descricao': descricaoSegura,
+        'gravidade': _sanitizeShort(gravidade) ?? 'media',
+        'categoria': _sanitizeShort(categoria) ?? 'manual',
+        'origem': 'relatorio_manual_bug',
+      },
+      force: true,
     );
   }
 
   Future<void> flush({bool force = false}) async {
     if (!coletando || _flushEmAndamento) return;
+
+    // O Firestore revoga o acesso imediatamente após o signOut. Se um timer
+    // periódico sobreviver alguns milissegundos ao logout ele não deve tentar
+    // persistir eventos com uma sessão já desautenticada.
+    final authUser = FirebaseAuth.instance.currentUser;
+    final sessao = _sessao;
+    if (authUser == null || sessao == null || authUser.uid != sessao.uid) {
+      _desligarColetaLocal();
+      return;
+    }
+
     if (_fila.isEmpty) return;
 
     _flushEmAndamento = true;
@@ -306,6 +409,7 @@ class CacaBugService {
         'ultimaTela': ultimo.tela,
         'ultimoArquivo': ultimo.arquivo,
         'ultimoEventoResumo': ultimo.descricao,
+        'atualizadoEm': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
       await batch.commit();
@@ -314,7 +418,24 @@ class CacaBugService {
       _eventosPersistidos += eventos.length;
     } catch (e) {
       _apararFila();
-      _logControlado('Erro no flush Caça Bug: $e');
+
+      // Logout/hot-restart pode invalidar o token enquanto um commit que já
+      // estava em voo termina. Nesse caso não há erro funcional para reportar:
+      // encerra a coleta local e não entra em loop de permission-denied.
+      final currentUser = FirebaseAuth.instance.currentUser;
+      final currentSession = _sessao;
+      final authPerdida = currentUser == null ||
+          currentSession == null ||
+          currentUser.uid != currentSession.uid;
+      final permissionDenied = e is FirebaseException &&
+          e.plugin == 'cloud_firestore' &&
+          e.code == 'permission-denied';
+
+      if (authPerdida && permissionDenied) {
+        _desligarColetaLocal();
+      } else {
+        _logControlado('Erro no flush Caça Bug: ${_sanitizeErrorMessage(e)}');
+      }
     } finally {
       _flushEmAndamento = false;
     }
@@ -366,7 +487,7 @@ class CacaBugService {
       );
     } catch (e) {
       _logControlado(
-        'Caça Bug: não foi possível finalizar sessões antigas sem índice composto: $e',
+        'Caça Bug: não foi possível finalizar sessões antigas sem índice composto: ${_sanitizeErrorMessage(e)}',
       );
     }
   }
@@ -379,8 +500,11 @@ class CacaBugService {
     return DateTime(1970);
   }
 
-  Future<void> _carregarConfigUmaVez() async {
-    if (_configCarregada) return;
+  Future<void> _carregarConfigControlada({bool force = false}) async {
+    final agora = DateTime.now();
+    final configRecente = _ultimaLeituraConfig != null &&
+        agora.difference(_ultimaLeituraConfig!).inSeconds < 8;
+    if (!force && _configCarregada && configRecente) return;
     await refreshConfig();
   }
 
@@ -423,10 +547,10 @@ class CacaBugService {
 
   Future<void> _registrarLimiteSeNecessario() async {
     if (_limiteRegistrado) return;
-    _limiteRegistrado = true;
     if (_eventosPersistidos + _fila.length >= _config.maxEventosPorSessao) {
       return;
     }
+    _limiteRegistrado = true;
     await registrarEvento(
       tipo: 'sistema',
       acao: CacaBugActions.limiteEventosAtingido,
@@ -434,7 +558,62 @@ class CacaBugService {
       tela: _sessao?.ultimaTela ?? '',
       arquivo: _sessao?.ultimoArquivo ?? '',
       status: 'warning',
+      force: true,
     );
+  }
+
+  bool _eventoPermitido({
+    required String tipo,
+    required String status,
+    required bool force,
+  }) {
+    if (!_tipoPermitido(tipo) || !_statusPermitido(status)) return false;
+    if (force) return true;
+    if (tipo == 'navegacao' && !_config.registrarNavegacao) return false;
+    if (tipo == 'erro' && !_config.registrarErros) return false;
+    if ((tipo == 'navegacao' || tipo == 'acao_usuario') &&
+        !_config.registrarEventosHumanos) {
+      return false;
+    }
+    if ((tipo == 'sistema' || tipo == 'performance') &&
+        !_config.registrarEventosTecnicos) {
+      return false;
+    }
+    return true;
+  }
+
+  bool _podeAdicionarEvento() {
+    return _eventosPersistidos + _fila.length < _config.maxEventosPorSessao;
+  }
+
+  bool _dedupePermitido({
+    required String acao,
+    required String tela,
+    required String status,
+    required Map<String, dynamic> dados,
+    required bool force,
+  }) {
+    if (force) return true;
+    final partes = <String>[acao, tela, status];
+    for (final key in const [
+      'canal',
+      'destinoTipo',
+      'erroEtapa',
+      'filtroAlterado',
+      'viewMode',
+    ]) {
+      final value = dados[key]?.toString().trim();
+      if (value != null && value.isNotEmpty) partes.add(value);
+    }
+    final dedupeKey = partes.join('|');
+    final now = DateTime.now();
+    final last = _dedupe[dedupeKey];
+    if (last != null &&
+        now.difference(last).inMilliseconds < _config.dedupeJanelaMs) {
+      return false;
+    }
+    _dedupe[dedupeKey] = now;
+    return true;
   }
 
   void _iniciarTimer() {
@@ -445,7 +624,7 @@ class CacaBugService {
     );
   }
 
-  void _desligarColetaLocal() {
+  void _desligarColetaLocal({bool resetUid = true}) {
     _flushTimer?.cancel();
     _flushTimer = null;
     _sessao = null;
@@ -454,6 +633,7 @@ class CacaBugService {
     _ordem = 0;
     _eventosPersistidos = 0;
     _limiteRegistrado = false;
+    if (resetUid) _uidInicializado = null;
   }
 
   void _apararFila() {
@@ -487,6 +667,14 @@ class CacaBugService {
     final text = value?.trim();
     if (text == null || text.isEmpty) return null;
     return text.length <= 160 ? text : text.substring(0, 160);
+  }
+
+  String _sanitizeManualText(String value, {required int max}) {
+    final text = _sanitizeErrorMessage(value, fallback: '')
+        .replaceAll('\n', ' ')
+        .trim();
+    if (text.length <= max) return text;
+    return '${text.substring(0, max)}...';
   }
 
   String _sanitizeErrorMessage(Object? erro, {String fallback = ''}) {

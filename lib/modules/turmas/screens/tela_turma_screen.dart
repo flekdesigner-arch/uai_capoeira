@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:uai_capoeira/core/image_cache/uai_student_photo.dart';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -220,6 +221,7 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
 
   Future<bool> _temInternetParaAcao() async {
     final online = await _temInternetAgora();
+    if (!mounted) return false;
 
     if (!online) {
       _mostrarMensagem(
@@ -355,7 +357,7 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
       return;
     }
 
-    if (!await _temInternetParaAcao()) return;
+    if (!await _temInternetParaAcao() || !mounted) return;
 
     final user = FirebaseAuth.instance.currentUser;
 
@@ -392,7 +394,7 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
       return;
     }
 
-    if (!await _temInternetParaAcao()) return;
+    if (!await _temInternetParaAcao() || !mounted) return;
 
     Navigator.push(
       context,
@@ -471,7 +473,7 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
             widget.academiaNome,
             style: TextStyle(
               fontSize: 12,
-              color: appBarFg.withOpacity(0.82),
+              color: appBarFg.withAlpha(209),
               fontWeight: FontWeight.w600,
             ),
             maxLines: 1,
@@ -513,8 +515,8 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
           child: CachedNetworkImage(
             imageUrl: logoUrl,
             fit: BoxFit.cover,
-            errorWidget: (_, __, ___) => _fallbackLogo(t, size),
-            placeholder: (_, __) => Center(
+            errorWidget: (_, _, _) => _fallbackLogo(t, size),
+            placeholder: (_, _) => Center(
               child: SizedBox(
                 width: size * 0.30,
                 height: size * 0.30,
@@ -537,9 +539,9 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: _onPrimaryText(t).withOpacity(0.14),
+        color: _onPrimaryText(t).withAlpha(36),
         borderRadius: BorderRadius.circular(t.cardRadius - 8),
-        border: Border.all(color: _onPrimaryText(t).withOpacity(0.16)),
+        border: Border.all(color: _onPrimaryText(t).withAlpha(41)),
       ),
       child: Icon(
         Icons.class_rounded,
@@ -600,7 +602,7 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
                   widget.academiaNome,
                   textAlign: narrow ? TextAlign.center : TextAlign.left,
                   style: TextStyle(
-                    color: onPrimary.withOpacity(0.84),
+                    color: onPrimary.withAlpha(214),
                     fontSize: 13,
                     height: 1.25,
                     fontWeight: FontWeight.w600,
@@ -660,9 +662,9 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
       constraints: const BoxConstraints(maxWidth: 260),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: onPrimary.withOpacity(0.14),
+        color: onPrimary.withAlpha(36),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: onPrimary.withOpacity(0.16)),
+        border: Border.all(color: onPrimary.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -704,7 +706,7 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
               width: 43,
               height: 43,
               decoration: BoxDecoration(
-                color: t.primary.withOpacity(0.10),
+                color: t.primary.withAlpha(26),
                 borderRadius: BorderRadius.circular(t.buttonRadius),
               ),
               child: Icon(Icons.dashboard_customize_rounded, color: t.primary),
@@ -1042,6 +1044,8 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
             .get(const GetOptions(source: Source.cache));
       }
 
+      if (!mounted) return;
+
       final alertas = <_AlunoAlertaTurma>[];
 
       for (final doc in alunosSnapshot.docs) {
@@ -1136,9 +1140,9 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
           width: 36,
           height: 36,
           decoration: BoxDecoration(
-            color: t.warning.withOpacity(0.14),
+            color: t.warning.withAlpha(36),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: t.warning.withOpacity(0.36)),
+            border: Border.all(color: t.warning.withAlpha(92)),
           ),
           child: Stack(
             clipBehavior: Clip.none,
@@ -1230,7 +1234,7 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: t.warning.withOpacity(0.10),
+                    color: t.warning.withAlpha(26),
                     borderRadius: BorderRadius.only(
                       topLeft: Radius.circular(t.cardRadius + 4),
                       topRight: Radius.circular(t.cardRadius + 4),
@@ -1242,7 +1246,7 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
                         width: 42,
                         height: 42,
                         decoration: BoxDecoration(
-                          color: t.warning.withOpacity(0.16),
+                          color: t.warning.withAlpha(41),
                           borderRadius: BorderRadius.circular(t.buttonRadius),
                         ),
                         child: Icon(
@@ -1294,11 +1298,11 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
                         margin: const EdgeInsets.only(bottom: 12),
                         decoration: BoxDecoration(
                           color: Color.alphaBlend(
-                            cor.withOpacity(0.07),
+                            cor.withAlpha(18),
                             t.card,
                           ),
                           borderRadius: BorderRadius.circular(t.cardRadius),
-                          border: Border.all(color: cor.withOpacity(0.20)),
+                          border: Border.all(color: cor.withAlpha(51)),
                         ),
                         child: Column(
                           children: [
@@ -1429,7 +1433,7 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
               borderRadius: BorderRadius.circular(26),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.18),
+                  color: Colors.black.withAlpha(46),
                   blurRadius: 24,
                   offset: const Offset(0, 10),
                 ),
@@ -1570,7 +1574,7 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
                                   'assets/images/whatsapp.svg',
                                   width: 18,
                                   height: 18,
-                                  color: _readableOn(t.success),
+                                  colorFilter: ColorFilter.mode(_readableOn(t.success), BlendMode.srcIn),
                                 ),
                                 label: const Text('WhatsApp'),
                                 style: ElevatedButton.styleFrom(
@@ -1611,7 +1615,7 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
 
     Widget fallback() {
       return Container(
-        color: alerta.cor.withOpacity(0.16),
+        color: alerta.cor.withAlpha(41),
         alignment: Alignment.center,
         child: Text(
           inicial,
@@ -1629,10 +1633,10 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        border: Border.all(color: alerta.cor.withOpacity(0.55), width: 2),
+        border: Border.all(color: alerta.cor.withAlpha(140), width: 2),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.10),
+            color: Colors.black.withAlpha(26),
             blurRadius: 6,
             offset: const Offset(0, 2),
           ),
@@ -1643,11 +1647,12 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
             fotoUrl.isNotEmpty &&
                 (fotoUrl.startsWith('http://') ||
                     fotoUrl.startsWith('https://'))
-            ? CachedNetworkImage(
+            ? UaiStudentPhoto(
+                studentId: alerta.alunoId,
                 imageUrl: fotoUrl,
+                profile: UaiStudentPhotoProfile.compact,
                 fit: BoxFit.cover,
-                placeholder: (_, __) => fallback(),
-                errorWidget: (_, __, ___) => fallback(),
+                fallback: fallback(),
               )
             : fallback(),
       ),
@@ -1678,14 +1683,14 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(t.cardRadius - 6),
-          splashColor: color.withOpacity(0.12),
-          highlightColor: color.withOpacity(0.06),
+          splashColor: color.withAlpha(31),
+          highlightColor: color.withAlpha(15),
           child: Container(
             constraints: const BoxConstraints(minHeight: 78),
             padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(t.cardRadius - 6),
-              border: Border.all(color: color.withOpacity(0.14)),
+              border: Border.all(color: color.withAlpha(36)),
               boxShadow: t.softShadow,
             ),
             child: Row(
@@ -1694,7 +1699,7 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
                   width: 47,
                   height: 47,
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.12),
+                    color: color.withAlpha(31),
                     borderRadius: BorderRadius.circular(t.buttonRadius),
                   ),
                   child: Icon(icon, size: 25, color: color),

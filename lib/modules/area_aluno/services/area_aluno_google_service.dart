@@ -1,7 +1,7 @@
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import 'package:uai_capoeira/core/services/uai_callable_client.dart';
 import 'package:uai_capoeira/modules/area_aluno/screens/area_aluno_dashboard_screen.dart';
 import 'package:uai_capoeira/modules/area_aluno/services/area_aluno_session_service.dart';
 import 'package:uai_capoeira/modules/auth/screens/auth_check.dart';
@@ -51,23 +51,20 @@ class AlunoVinculadoGoogle {
 }
 
 class AreaAlunoGoogleService {
-  final FirebaseFunctions _functions;
+  final UaiCallableClient _callable;
   final FirebaseAuth _auth;
   final AreaAlunoSessionService _sessionService;
 
   AreaAlunoGoogleService({
-    FirebaseFunctions? functions,
+    UaiCallableClient? callable,
     FirebaseAuth? auth,
     AreaAlunoSessionService? sessionService,
-  }) : _functions = functions ?? FirebaseFunctions.instance,
+  }) : _callable = callable ?? UaiCallableClient.instance,
        _auth = auth ?? FirebaseAuth.instance,
        _sessionService = sessionService ?? AreaAlunoSessionService();
 
   Future<List<AlunoVinculadoGoogle>> buscarAlunosVinculados() async {
-    final result = await _functions
-        .httpsCallable('buscarAlunosVinculadosAoGoogle')
-        .call();
-    final data = Map<String, dynamic>.from(result.data as Map);
+    final data = await _callable.call('buscarAlunosVinculadosAoGoogle');
     final raw = data['alunos'];
     if (data['success'] != true || raw is! List) return const [];
 
@@ -87,10 +84,10 @@ class AreaAlunoGoogleService {
     final user = _auth.currentUser;
     if (user == null) return null;
 
-    final result = await _functions
-        .httpsCallable('validarAcessoGoogleAreaAluno')
-        .call({'alunoId': aluno.alunoId});
-    final data = Map<String, dynamic>.from(result.data as Map);
+    final data = await _callable.call(
+      'validarAcessoGoogleAreaAluno',
+      {'alunoId': aluno.alunoId},
+    );
 
     if (data['success'] != true) return null;
 
@@ -103,11 +100,17 @@ class AreaAlunoGoogleService {
         aluno.alunoId;
     final alunoNome = alunoData['nome']?.toString() ?? aluno.nome;
 
+    final modoAcesso = data['modo_acesso']?.toString().trim().isNotEmpty == true
+        ? data['modo_acesso'].toString().trim()
+        : 'conta_uai';
     final authPayload = {
-      'modo_acesso': 'google',
+      'modo_acesso': modoAcesso,
       'aluno_id_login': alunoId,
       'aluno_id': alunoId,
       'aluno_nome_login': alunoNome,
+      'conta_uai_uid': user.uid,
+      'conta_uai_email': user.email ?? '',
+      // Mantidos por compatibilidade com telas/sessões legadas.
       'google_uid': user.uid,
       'google_email': user.email ?? '',
       'login_google_em': DateTime.now().toIso8601String(),
@@ -178,7 +181,7 @@ class AreaAlunoGoogleService {
 
   Future<void> _registrarLog(String evento, Map<String, dynamic> dados) async {
     try {
-      await _functions.httpsCallable('registrarEventoGoogleAreaAluno').call({
+      await _callable.call('registrarEventoGoogleAreaAluno', {
         'evento': evento,
         'dados': dados,
       });

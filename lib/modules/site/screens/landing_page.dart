@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -11,19 +13,222 @@ import 'package:uai_capoeira/core/theme/app_theme_preset.dart';
 import 'package:uai_capoeira/core/theme/app_theme_tokens.dart';
 import 'package:uai_capoeira/core/theme/tema_global_service.dart';
 import 'package:uai_capoeira/shared/widgets/uai_dynamic_logo.dart';
-import 'package:uai_capoeira/modules/area_aluno/screens/area_aluno_login_screen.dart';
-import 'package:uai_capoeira/modules/auth/screens/auth_check.dart';
-import 'package:uai_capoeira/modules/auth/screens/login_screen.dart';
-import 'package:uai_capoeira/modules/inscricoes/public/inscricao_campeonato_screen.dart';
-import 'package:uai_capoeira/modules/inscricoes/public/inscricao_publica_screen.dart';
+import 'package:uai_capoeira/modules/area_aluno/screens/area_aluno_login_screen.dart' deferred as area_aluno_login_page;
+import 'package:uai_capoeira/modules/auth/screens/auth_check.dart' deferred as landing_auth_check;
+import 'package:uai_capoeira/modules/auth/screens/login_screen.dart' deferred as landing_login;
+import 'package:uai_capoeira/modules/inscricoes/public/inscricao_campeonato_screen.dart' deferred as campeonato_page;
+import 'package:uai_capoeira/modules/inscricoes/public/inscricao_publica_screen.dart' deferred as inscricao_page;
 import 'package:uai_capoeira/modules/rastreio/services/rastreio_site.dart';
 import 'package:uai_capoeira/modules/rastreio/services/dispositivo_rastreio_service.dart';
+import 'package:uai_capoeira/modules/rastreio/services/public_tracking_core.dart';
 import 'package:uai_capoeira/modules/rastreio/widgets/arvore_visitas_dialog.dart';
-import 'package:uai_capoeira/modules/site/screens/biografia_screen.dart';
-import 'package:uai_capoeira/modules/site/screens/graduacoes_screen.dart';
-import 'package:uai_capoeira/modules/site/screens/portfolio_web_screen.dart';
-import 'package:uai_capoeira/modules/site/screens/regimento_screen.dart';
-import 'package:uai_capoeira/shared/widgets/chat_assistente_widget.dart';
+import 'package:uai_capoeira/modules/site/screens/biografia_screen.dart' deferred as biografia_page;
+import 'package:uai_capoeira/modules/site/screens/graduacoes_screen.dart' deferred as graduacoes_page;
+import 'package:uai_capoeira/modules/site/screens/portfolio_web_screen.dart' deferred as portfolio_page;
+import 'package:uai_capoeira/modules/site/screens/regimento_screen.dart' deferred as regimento_page;
+import 'package:uai_capoeira/shared/widgets/chat_assistente_widget.dart' deferred as chat_widget;
+
+
+// =====================================================
+// ⚡ PATCH SITE 02 - DEFERRED LOADING
+// =====================================================
+// As páginas abaixo não fazem parte da primeira dobra da Landing. No Web,
+// suas bibliotecas são baixadas somente quando o visitante abre a seção.
+// Isso reduz o JavaScript necessário no boot e mantém um fallback visual
+// enquanto o chunk é carregado.
+class _DeferredSiteScreen extends StatefulWidget {
+  final Future<void> Function() loadLibrary;
+  final Widget Function() builder;
+  final String label;
+
+  const _DeferredSiteScreen({
+    super.key,
+    required this.loadLibrary,
+    required this.builder,
+    required this.label,
+  });
+
+  @override
+  State<_DeferredSiteScreen> createState() => _DeferredSiteScreenState();
+}
+
+class _DeferredSiteScreenState extends State<_DeferredSiteScreen> {
+  late Future<void> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = widget.loadLibrary();
+  }
+
+  void _tentarNovamente() {
+    setState(() => _future = widget.loadLibrary());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<void>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.done &&
+            snapshot.error == null) {
+          return widget.builder();
+        }
+
+        if (snapshot.hasError) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 440),
+                child: Container(
+                  padding: const EdgeInsets.all(22),
+                  decoration: BoxDecoration(
+                    color: context.uai.surface,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: context.uai.border),
+                    boxShadow: context.uai.cardShadow,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.cloud_off_rounded,
+                        size: 42,
+                        color: context.uai.error,
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        'Não foi possível carregar ${widget.label}.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: context.uai.textPrimary,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Confira sua conexão e tente novamente.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: context.uai.textSecondary),
+                      ),
+                      const SizedBox(height: 18),
+                      FilledButton.icon(
+                        onPressed: _tentarNovamente,
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('Tentar novamente'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 52),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 22),
+                decoration: BoxDecoration(
+                  color: context.uai.surface,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: context.uai.border),
+                  boxShadow: context.uai.cardShadow,
+                ),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 30,
+                      height: 30,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.6,
+                        color: context.uai.primary,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Carregando ${widget.label}...',
+                            style: TextStyle(
+                              color: context.uai.textPrimary,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Preparando esta seção para você.',
+                            style: TextStyle(
+                              color: context.uai.textSecondary,
+                              fontSize: 12.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _DeferredChatAssistente extends StatefulWidget {
+  const _DeferredChatAssistente();
+
+  @override
+  State<_DeferredChatAssistente> createState() =>
+      _DeferredChatAssistenteState();
+}
+
+class _DeferredChatAssistenteState extends State<_DeferredChatAssistente> {
+  bool _carregar = false;
+  Future<void>? _future;
+
+  @override
+  void initState() {
+    super.initState();
+    // O chat não concorre com a primeira pintura da Landing. Depois que a
+    // interface já apareceu, baixamos o chunk silenciosamente.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future<void>.delayed(const Duration(milliseconds: 1400), () {
+        if (!mounted) return;
+        setState(() {
+          _carregar = true;
+          _future = chat_widget.loadLibrary();
+        });
+      });
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_carregar || _future == null) return const SizedBox.shrink();
+
+    return FutureBuilder<void>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.done &&
+            snapshot.error == null) {
+          return chat_widget.ChatAssistenteWidget();
+        }
+        return const SizedBox.shrink();
+      },
+    );
+  }
+}
 
 class LandingPage extends StatefulWidget {
   const LandingPage({super.key});
@@ -41,17 +246,17 @@ class _LandingPageState extends State<LandingPage> {
   int _selectedIndex = 0;
   final ScrollController _scrollController = ScrollController();
 
+  // PATCH SITE 12 — preload por intenção.
+  // Nada é pré-carregado no boot: o chunk só começa a baixar em hover/clique.
+  final Map<String, Future<void>> _preloads = <String, Future<void>>{};
+
   String _senhaAcessoApp = 'uai2026app';
   final TextEditingController _senhaController = TextEditingController();
 
   bool _inscricoesAbertas = false;
-  bool _carregandoConfigInscricoes = true;
   bool _portfolioVisivel = false;
-  bool _carregandoConfigPortfolio = true;
   bool _campeonatoAtivo = false;
-  bool _carregandoConfigCampeonato = true;
   bool _areaAlunoVisivel = false;
-  bool _carregandoConfigAreaAluno = true;
 
   int _totalVisitas = 0;
   bool _carregandoVisitas = true;
@@ -136,20 +341,31 @@ class _LandingPageState extends State<LandingPage> {
   void initState() {
     super.initState();
 
-    _garantirTemaPublicoPadrao();
+    // Dados que realmente alteram a navegação pública começam já, em paralelo.
     _carregarConfiguracoes();
-    _incrementarContadorVisitas();
-    _carregarSenhaApp();
     _carregarConfiguracoesMenu();
 
+    // Tudo abaixo é secundário para o primeiro frame. A Landing aparece primeiro.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _registrarLocalizacao();
+      Future<void>.delayed(const Duration(milliseconds: 350), () {
+        if (mounted) _garantirTemaPublicoPadrao();
+      });
+
+      Future<void>.delayed(const Duration(milliseconds: 900), () {
+        if (!mounted) return;
+        _incrementarContadorVisitas();
+        _carregarSenhaApp();
+      });
+
+      Future<void>.delayed(const Duration(milliseconds: 1800), () {
+        if (mounted) _registrarLocalizacao();
+      });
     });
   }
 
   @override
   void dispose() {
-    _rastreioService.finalizarSessao();
+    unawaited(_rastreioService.flush(force: true));
     _senhaController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -176,7 +392,9 @@ class _LandingPageState extends State<LandingPage> {
         }
       }
     } catch (e) {
-      debugPrint('Tema público global não carregado, usando UAI Clássico: $e');
+      if (kDebugMode) {
+        debugPrint('Tema público global não carregado, usando UAI Clássico: $e');
+      }
     }
 
     await controller.apply(preset: presetPublico, mode: ThemeMode.light);
@@ -203,65 +421,13 @@ class _LandingPageState extends State<LandingPage> {
         .toColor();
   }
 
-  String _colorToHex(Color color) {
-    return '#${color.value.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
-  }
-
-  bool get _isUaiClassicoPublicTheme {
-    return AppThemeController.instance.currentPreset ==
-        UaiThemePreset.uaiClassico;
-  }
-
   // ==================== RASTREAMENTO ====================
-  Future<void> _registrarLocalizacao() async {
-    try {
-      debugPrint('Registrando localização e dispositivo...');
-
-      final dispositivo = _dispositivoRastreioService.coletar(
-        context,
-        tela: 'landing_page',
-        origem: 'site_landing',
-        extra: {'pagina_inicial': 'home', 'modulo': 'site_publico'},
-      );
-
-      final functions = FirebaseFunctions.instance;
-      final callable = functions.httpsCallable('registrarLocalizacaoAcesso');
-
-      debugPrint('Chamando Cloud Function registrarLocalizacaoAcesso...');
-      final result = await callable.call({
-        'origem': 'site_landing',
-        'dispositivo': dispositivo,
-      });
-
-      final data = Map<String, dynamic>.from(result.data as Map);
-
-      debugPrint('Resposta da Cloud Function: $data');
-
-      if (data['success'] == true && data['docId'] != null) {
-        final docId = data['docId'].toString();
-
-        debugPrint('Documento criado com ID: $docId');
-
-        _rastreioService.iniciarSessaoComDocumento(docId);
-
-        await _rastreioService.registrarPaginaVista('home', 'inicial');
-
-        await _rastreioService.registrarEvento(
-          tipo: 'dispositivo',
-          nome: 'dados_dispositivo_inicial',
-          origem: 'site_landing',
-          metadata: dispositivo,
-        );
-
-        debugPrint(
-          'Rastreamento iniciado com dispositivo para documento $docId',
-        );
-      } else {
-        debugPrint('Falha na Cloud Function: ${data['error']}');
-      }
-    } catch (e) {
-      debugPrint('Erro ao registrar localização/dispositivo: $e');
-    }
+  Future<void> _registrarLocalizacao() {
+    return PublicTrackingCore.instance.ensureStarted(
+      context,
+      entryPage: 'home',
+      origem: 'site_landing',
+    );
   }
 
   // ==================== CONTADOR DE VISITAS ====================
@@ -324,51 +490,30 @@ class _LandingPageState extends State<LandingPage> {
   // ==================== CONFIGURAÇÕES ====================
   Future<void> _carregarConfiguracoes() async {
     try {
-      final docInscricoes = await _firestore
-          .collection('configuracoes')
-          .doc('inscricoes')
-          .get();
-      if (mounted) {
-        setState(() {
-          _inscricoesAbertas =
-              docInscricoes.data()?['inscricoes_abertas'] ?? false;
-          _carregandoConfigInscricoes = false;
-        });
-      }
+      // Antes eram 4 GETs sequenciais. Agora as quatro leituras saem juntas.
+      final docs = await Future.wait([
+        _firestore.collection('configuracoes').doc('inscricoes').get(),
+        _firestore.collection('configuracoes').doc('portfolio_site').get(),
+        _firestore.collection('configuracoes').doc('campeonato').get(),
+        _firestore.collection('configuracoes_site').doc('area_aluno').get(),
+      ]);
 
-      final docPortfolio = await _firestore
-          .collection('configuracoes')
-          .doc('portfolio_site')
-          .get();
-      if (mounted) {
-        setState(() {
-          _portfolioVisivel = docPortfolio.data()?['exibir'] ?? false;
-          _carregandoConfigPortfolio = false;
-        });
-      }
+      if (!mounted) return;
 
-      final docCampeonato = await _firestore
-          .collection('configuracoes')
-          .doc('campeonato')
-          .get();
-      if (mounted) {
-        setState(() {
-          _campeonatoAtivo = docCampeonato.data()?['campeonato_ativo'] ?? false;
-          _carregandoConfigCampeonato = false;
-        });
-      }
+      final docInscricoes = docs[0];
+      final docPortfolio = docs[1];
+      final docCampeonato = docs[2];
+      final docAreaAluno = docs[3];
 
-      final docAreaAluno = await _firestore
-          .collection('configuracoes_site')
-          .doc('area_aluno')
-          .get();
-      if (mounted) {
-        setState(() {
-          _areaAlunoVisivel = docAreaAluno.data()?['visivel_site'] == true;
-          _carregandoConfigAreaAluno = false;
-        });
-      }
+      setState(() {
+        _inscricoesAbertas =
+            docInscricoes.data()?['inscricoes_abertas'] ?? false;
+        _portfolioVisivel = docPortfolio.data()?['exibir'] ?? false;
+        _campeonatoAtivo = docCampeonato.data()?['campeonato_ativo'] ?? false;
+        _areaAlunoVisivel = docAreaAluno.data()?['visivel_site'] == true;
+      });
     } catch (e) {
+      if (kDebugMode) debugPrint('Configurações públicas: $e');
       if (!mounted) return;
 
       setState(() {
@@ -376,10 +521,6 @@ class _LandingPageState extends State<LandingPage> {
         _portfolioVisivel = false;
         _campeonatoAtivo = false;
         _areaAlunoVisivel = false;
-        _carregandoConfigInscricoes = false;
-        _carregandoConfigPortfolio = false;
-        _carregandoConfigCampeonato = false;
-        _carregandoConfigAreaAluno = false;
       });
     }
   }
@@ -391,7 +532,7 @@ class _LandingPageState extends State<LandingPage> {
         setState(() => _senhaAcessoApp = doc.data()!['senha_acesso']);
       }
     } catch (e) {
-      debugPrint('Erro ao carregar senha de acesso: $e');
+      if (kDebugMode) debugPrint('Erro ao carregar senha de acesso: $e');
     }
   }
 
@@ -504,7 +645,76 @@ class _LandingPageState extends State<LandingPage> {
     );
   }
 
+  // ==================== PRELOAD INTELIGENTE ====================
+  Future<void> _loadDeferredItem(String itemId) {
+    Future<void> Function()? loader;
+
+    switch (itemId) {
+      case 'regimento':
+        loader = regimento_page.loadLibrary;
+        break;
+      case 'biografia':
+        loader = biografia_page.loadLibrary;
+        break;
+      case 'graduacoes':
+        loader = graduacoes_page.loadLibrary;
+        break;
+      case 'inscricao':
+        loader = inscricao_page.loadLibrary;
+        break;
+      case 'area_aluno':
+        loader = area_aluno_login_page.loadLibrary;
+        break;
+      case 'campeonato':
+        loader = campeonato_page.loadLibrary;
+        break;
+      case 'portfolio':
+        loader = portfolio_page.loadLibrary;
+        break;
+      case 'acessar_app':
+        loader = landing_auth_check.loadLibrary;
+        break;
+    }
+
+    if (loader == null) return Future<void>.value();
+
+    return _preloads.putIfAbsent(itemId, () async {
+      try {
+        await loader!();
+      } catch (_) {
+        _preloads.remove(itemId);
+        rethrow;
+      }
+    });
+  }
+
+  void _preloadPorIntencao(String itemId) {
+    _loadDeferredItem(itemId).catchError((_) {});
+  }
+
   // ==================== NAVEGAÇÃO E RASTREIO ====================
+  void _registrarNavegacaoPublica(
+    String pagina, {
+    required String origem,
+    Map<String, dynamic>? metadata,
+  }) {
+    final bruto = pagina.trim().isEmpty ? 'home' : pagina.trim();
+    final nome = bruto == 'inicio' ? 'home' : bruto;
+
+    // As telas públicas apenas emitem intenção. O core global mantém a sessão.
+    unawaited(_rastreioService.registrarPaginaVista(nome, origem));
+    unawaited(
+      _rastreioService.iniciarTela(
+        nome,
+        origem: origem,
+        metadata: {
+          'modulo': 'site_publico',
+          ...?metadata,
+        },
+      ),
+    );
+  }
+
   Future<void> _launchURL(String url) async {
     final uri = Uri.parse(url);
 
@@ -514,7 +724,9 @@ class _LandingPageState extends State<LandingPage> {
   }
 
   void _onMenuItemTap(int index, String itemId, String label, bool isSpecial) {
-    debugPrint('Menu clicado');
+    if (kDebugMode) debugPrint('Menu clicado');
+
+    _preloadPorIntencao(itemId);
 
     _rastreioService.registrarEvento(
       tipo: 'menu',
@@ -538,11 +750,18 @@ class _LandingPageState extends State<LandingPage> {
       return;
     }
 
+    _registrarNavegacaoPublica(
+      itemId,
+      origem: 'drawer',
+      metadata: {'label': label},
+    );
     setState(() => _selectedIndex = index);
   }
 
   void _onCardTap(String itemId, String titulo, int index) {
-    debugPrint('Card clicado');
+    if (kDebugMode) debugPrint('Card clicado');
+
+    _preloadPorIntencao(itemId);
 
     _rastreioService.registrarEvento(
       tipo: 'card',
@@ -558,11 +777,16 @@ class _LandingPageState extends State<LandingPage> {
       },
     );
 
+    _registrarNavegacaoPublica(
+      itemId,
+      origem: 'home_grid',
+      metadata: {'titulo': titulo},
+    );
     setState(() => _selectedIndex = index);
   }
 
   void _onSocialButtonTap(String rede, String url, String origem) {
-    debugPrint('ðŸ”˜ Botão social clicado: $rede (origem: $origem)');
+    if (kDebugMode) debugPrint('Botão social clicado: $rede (origem: $origem)');
 
     _rastreioService.registrarEvento(
       tipo: 'botao_social',
@@ -597,8 +821,70 @@ class _LandingPageState extends State<LandingPage> {
     return user;
   }
 
+  Future<T> _executarComFallback<T>({
+    required String mensagem,
+    required Future<T> Function() acao,
+  }) async {
+    if (!mounted) return acao();
+
+    final overlay = Overlay.of(context, rootOverlay: true);
+    final entry = OverlayEntry(
+      builder: (overlayContext) => Material(
+        color: Colors.black.withAlpha(77),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 360),
+            child: Container(
+              margin: const EdgeInsets.all(24),
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
+              decoration: BoxDecoration(
+                color: overlayContext.uai.surface,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: overlayContext.uai.border),
+                boxShadow: overlayContext.uai.cardShadow,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.6,
+                      color: overlayContext.uai.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Flexible(
+                    child: Text(
+                      mensagem,
+                      style: TextStyle(
+                        color: overlayContext.uai.textPrimary,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    overlay.insert(entry);
+    try {
+      return await acao();
+    } finally {
+      if (entry.mounted) entry.remove();
+    }
+  }
+
   Future<void> _abrirAcessoApp() async {
-    final user = await _aguardarUsuarioFirebaseSalvo();
+    final user = await _executarComFallback<User?>(
+      mensagem: 'Verificando seu acesso...',
+      acao: _aguardarUsuarioFirebaseSalvo,
+    );
 
     if (!mounted) return;
 
@@ -618,9 +904,14 @@ class _LandingPageState extends State<LandingPage> {
         },
       );
 
+      await _executarComFallback<void>(
+        mensagem: 'Carregando painel administrativo...',
+        acao: () => _loadDeferredItem('acessar_app'),
+      );
+      if (!mounted) return;
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => const AuthCheck()),
+        MaterialPageRoute(builder: (_) => landing_auth_check.AuthCheck()),
       );
       return;
     }
@@ -661,7 +952,7 @@ class _LandingPageState extends State<LandingPage> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: primary.withOpacity(0.12),
+                        color: primary.withAlpha(31),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(Icons.lock_rounded, color: primary, size: 32),
@@ -786,7 +1077,7 @@ class _LandingPageState extends State<LandingPage> {
     );
   }
 
-  void _verificarSenha(BuildContext dialogContext) {
+  Future<void> _verificarSenha(BuildContext dialogContext) async {
     final senhaDigitada = _senhaController.text.trim();
 
     if (senhaDigitada == _senhaAcessoApp) {
@@ -794,13 +1085,27 @@ class _LandingPageState extends State<LandingPage> {
 
       final user = FirebaseAuth.instance.currentUser;
 
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) =>
-              user != null ? const AuthCheck() : const LoginScreen(),
-        ),
-      );
+      if (user != null) {
+        await _executarComFallback<void>(
+          mensagem: 'Carregando painel administrativo...',
+          acao: landing_auth_check.loadLibrary,
+        );
+        if (!mounted) return;
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => landing_auth_check.AuthCheck()),
+        );
+      } else {
+        await _executarComFallback<void>(
+          mensagem: 'Carregando acesso...',
+          acao: landing_login.loadLibrary,
+        );
+        if (!mounted) return;
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => landing_login.LoginScreen()),
+        );
+      }
       return;
     }
 
@@ -906,6 +1211,7 @@ class _LandingPageState extends State<LandingPage> {
       return shouldExit == true;
     }
 
+    _registrarNavegacaoPublica('home', origem: 'voltar_site');
     setState(() => _selectedIndex = 0);
     return false;
   }
@@ -939,7 +1245,7 @@ class _LandingPageState extends State<LandingPage> {
         : t.primary;
     final fallback = _readableOn(appBarBg);
     final iconColor = _ensureVisible(t.accent, appBarBg);
-    final bg = Color.alphaBlend(iconColor.withOpacity(0.16), appBarBg);
+    final bg = Color.alphaBlend(iconColor.withAlpha(41), appBarBg);
 
     return Tooltip(
       message: 'Escolher tema',
@@ -955,10 +1261,10 @@ class _LandingPageState extends State<LandingPage> {
             height: compact ? 40 : 42,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(13),
-              border: Border.all(color: iconColor.withOpacity(0.36)),
+              border: Border.all(color: iconColor.withAlpha(92)),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.16),
+                  color: Colors.black.withAlpha(41),
                   blurRadius: 10,
                   offset: const Offset(0, 3),
                 ),
@@ -980,15 +1286,21 @@ class _LandingPageState extends State<LandingPage> {
   Widget build(BuildContext context) {
     final largura = MediaQuery.of(context).size.width;
     final isMobile = largura < 700;
-    final t = context.uai;
 
     return AnimatedBuilder(
       animation: AppThemeController.instance,
       builder: (context, _) {
         final t = context.uai;
 
-        return WillPopScope(
-          onWillPop: _onWillPop,
+        return PopScope(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, result) async {
+            if (didPop) return;
+            final shouldExit = await _onWillPop();
+            if (shouldExit) {
+              SystemNavigator.pop();
+            }
+          },
           child: Scaffold(
             backgroundColor: t.background,
             drawer: Drawer(
@@ -1044,7 +1356,7 @@ class _LandingPageState extends State<LandingPage> {
               ],
             ),
             body: Stack(
-              children: [_buildMainContent(), const ChatAssistenteWidget()],
+              children: [_buildMainContent(), const _DeferredChatAssistente()],
             ),
           ),
         );
@@ -1077,10 +1389,10 @@ class _LandingPageState extends State<LandingPage> {
         width: 58,
         height: 24,
         decoration: BoxDecoration(
-          color: comBackground ? t.cardAlt : onPrimary.withOpacity(0.18),
+          color: comBackground ? t.cardAlt : onPrimary.withAlpha(46),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: comBackground ? t.border : onPrimary.withOpacity(0.16),
+            color: comBackground ? t.border : onPrimary.withAlpha(41),
           ),
         ),
       );
@@ -1095,10 +1407,10 @@ class _LandingPageState extends State<LandingPage> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
         decoration: BoxDecoration(
-          color: comBackground ? t.cardAlt : onPrimary.withOpacity(0.12),
+          color: comBackground ? t.cardAlt : onPrimary.withAlpha(31),
           borderRadius: BorderRadius.circular(99),
           border: Border.all(
-            color: comBackground ? t.border : onPrimary.withOpacity(0.16),
+            color: comBackground ? t.border : onPrimary.withAlpha(41),
           ),
         ),
         child: Row(
@@ -1148,7 +1460,7 @@ class _LandingPageState extends State<LandingPage> {
                   decoration: BoxDecoration(
                     color: t.surface,
                     borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: onPrimary.withOpacity(0.16)),
+                    border: Border.all(color: onPrimary.withAlpha(41)),
                   ),
                   child: SizedBox(
                     width: 132,
@@ -1174,7 +1486,7 @@ class _LandingPageState extends State<LandingPage> {
                       Text(
                         'União • Amizade • Inteligência',
                         style: TextStyle(
-                          color: onPrimary.withOpacity(0.74),
+                          color: onPrimary.withAlpha(189),
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
                         ),
@@ -1197,7 +1509,7 @@ class _LandingPageState extends State<LandingPage> {
             child: ListView.separated(
               padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
               itemCount: itensVisiveis.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 3),
+              separatorBuilder: (_, _) => const SizedBox(height: 3),
               itemBuilder: (context, index) {
                 final item = itensVisiveis[index];
                 final originalIndex = _itensMenu.indexOf(item);
@@ -1334,9 +1646,9 @@ class _LandingPageState extends State<LandingPage> {
         alignment: Alignment.center,
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
         decoration: BoxDecoration(
-          color: Color.alphaBlend(accent.withOpacity(0.08), t.cardAlt),
+          color: Color.alphaBlend(accent.withAlpha(20), t.cardAlt),
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: accent.withOpacity(0.16)),
+          border: Border.all(color: accent.withAlpha(41)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1370,6 +1682,9 @@ class _LandingPageState extends State<LandingPage> {
     final t = context.uai;
     final isSelected = _selectedIndex == index;
     final color = _ensureVisible(isSpecial ? t.success : t.primary, t.surface);
+    final itemId = index >= 0 && index < _itensMenu.length
+        ? _itensMenu[index]['id']?.toString() ?? ''
+        : '';
 
     return Builder(
       builder: (context) {
@@ -1378,11 +1693,12 @@ class _LandingPageState extends State<LandingPage> {
           borderRadius: BorderRadius.circular(14),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
+            onHover: (hovering) {
+              if (hovering && itemId.isNotEmpty) {
+                _preloadPorIntencao(itemId);
+              }
+            },
             onTap: () {
-              final itemId = index >= 0 && index < _itensMenu.length
-                  ? _itensMenu[index]['id']?.toString() ?? ''
-                  : '';
-
               Navigator.pop(context);
 
               Future.delayed(const Duration(milliseconds: 140), () {
@@ -1394,12 +1710,12 @@ class _LandingPageState extends State<LandingPage> {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
               decoration: BoxDecoration(
                 color: isSelected
-                    ? Color.alphaBlend(color.withOpacity(0.10), t.cardAlt)
+                    ? Color.alphaBlend(color.withAlpha(26), t.cardAlt)
                     : Colors.transparent,
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
                   color: isSelected
-                      ? color.withOpacity(0.18)
+                      ? color.withAlpha(46)
                       : Colors.transparent,
                 ),
               ),
@@ -1409,7 +1725,7 @@ class _LandingPageState extends State<LandingPage> {
                     width: 36,
                     height: 36,
                     decoration: BoxDecoration(
-                      color: isSelected ? color : color.withOpacity(0.10),
+                      color: isSelected ? color : color.withAlpha(26),
                       borderRadius: BorderRadius.circular(13),
                     ),
                     child: Icon(
@@ -1468,19 +1784,54 @@ class _LandingPageState extends State<LandingPage> {
         case 'inicio':
           return _buildHomeContent();
         case 'regimento':
-          return const RegimentoScreen();
+          return _DeferredSiteScreen(
+            key: const ValueKey('regimento'),
+            label: 'Regimento Interno',
+            loadLibrary: () => _loadDeferredItem('regimento'),
+            builder: () => regimento_page.RegimentoScreen(),
+          );
         case 'biografia':
-          return const BiografiaScreen();
+          return _DeferredSiteScreen(
+            key: const ValueKey('biografia'),
+            label: 'Biografia',
+            loadLibrary: () => _loadDeferredItem('biografia'),
+            builder: () => biografia_page.BiografiaScreen(),
+          );
         case 'graduacoes':
-          return const GraduacoesScreen();
+          return _DeferredSiteScreen(
+            key: const ValueKey('graduacoes'),
+            label: 'Graduações',
+            loadLibrary: () => _loadDeferredItem('graduacoes'),
+            builder: () => graduacoes_page.GraduacoesScreen(),
+          );
         case 'inscricao':
-          return const InscricaoPublicaScreen();
+          return _DeferredSiteScreen(
+            key: const ValueKey('inscricao'),
+            label: 'Inscrição',
+            loadLibrary: () => _loadDeferredItem('inscricao'),
+            builder: () => inscricao_page.InscricaoPublicaScreen(),
+          );
         case 'area_aluno':
-          return const AreaAlunoLoginScreen();
+          return _DeferredSiteScreen(
+            key: const ValueKey('area_aluno'),
+            label: 'Área do Aluno',
+            loadLibrary: () => _loadDeferredItem('area_aluno'),
+            builder: () => area_aluno_login_page.AreaAlunoLoginScreen(),
+          );
         case 'campeonato':
-          return const InscricaoCampeonatoScreen();
+          return _DeferredSiteScreen(
+            key: const ValueKey('campeonato'),
+            label: 'Campeonato',
+            loadLibrary: () => _loadDeferredItem('campeonato'),
+            builder: () => campeonato_page.InscricaoCampeonatoScreen(),
+          );
         case 'portfolio':
-          return const PortfolioWebScreen();
+          return _DeferredSiteScreen(
+            key: const ValueKey('portfolio'),
+            label: 'Portfólio',
+            loadLibrary: () => _loadDeferredItem('portfolio'),
+            builder: () => portfolio_page.PortfolioWebScreen(),
+          );
         case 'acessar_app':
           return _buildHomeContent();
         default:
@@ -1610,9 +1961,9 @@ class _LandingPageState extends State<LandingPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(primary.withOpacity(0.08), t.cardAlt),
+        color: Color.alphaBlend(primary.withAlpha(20), t.cardAlt),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: primary.withOpacity(0.15)),
+        border: Border.all(color: primary.withAlpha(38)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1685,9 +2036,9 @@ class _LandingPageState extends State<LandingPage> {
         alignment: Alignment.center,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         decoration: BoxDecoration(
-          color: Color.alphaBlend(accent.withOpacity(0.08), t.card),
+          color: Color.alphaBlend(accent.withAlpha(20), t.card),
           borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: accent.withOpacity(0.15)),
+          border: Border.all(color: accent.withAlpha(38)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1766,6 +2117,7 @@ class _LandingPageState extends State<LandingPage> {
                 descricao: _descricaoCard(id),
                 icone: item['icone'],
                 cor: _corCard(id),
+                onPreload: () => _preloadPorIntencao(id),
                 onTap: () => _onCardTap(id, tituloCard, index),
               ),
             );
@@ -1825,32 +2177,35 @@ class _LandingPageState extends State<LandingPage> {
     required IconData icone,
     required Color cor,
     required VoidCallback onTap,
+    VoidCallback? onPreload,
   }) {
     final t = context.uai;
     final accent = _ensureVisible(cor, t.card);
 
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(22),
-      child: Container(
-        constraints: const BoxConstraints(minHeight: 126),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 13),
-        decoration: BoxDecoration(
-          color: t.card,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: accent.withOpacity(0.13)),
-          boxShadow: t.softShadow,
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
+    return MouseRegion(
+      onEnter: (_) => onPreload?.call(),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(22),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 126),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 13),
+          decoration: BoxDecoration(
+            color: t.card,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: accent.withAlpha(33)),
+            boxShadow: t.softShadow,
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
             Container(
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: Color.alphaBlend(accent.withOpacity(0.10), t.cardAlt),
+                color: Color.alphaBlend(accent.withAlpha(26), t.cardAlt),
                 borderRadius: BorderRadius.circular(17),
-                border: Border.all(color: accent.withOpacity(0.15)),
+                border: Border.all(color: accent.withAlpha(38)),
               ),
               child: Icon(icone, size: 25, color: accent),
             ),
@@ -1879,7 +2234,8 @@ class _LandingPageState extends State<LandingPage> {
                 fontWeight: FontWeight.w500,
               ),
             ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -1890,6 +2246,28 @@ class _LandingPageState extends State<LandingPage> {
 
     return Column(
       children: [
+        Text(
+          'Capoeira em Bocaiúva • Minas Gerais',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: t.textSecondary,
+            fontSize: isMobile ? 11.5 : 12,
+            height: 1.3,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 5),
+        Text(
+          'Aulas de capoeira • Aula experimental • Projetos e eventos',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: t.textSecondary.withAlpha(224),
+            fontSize: isMobile ? 10.5 : 11,
+            height: 1.25,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 10),
         Wrap(
           alignment: WrapAlignment.center,
           crossAxisAlignment: WrapCrossAlignment.center,
@@ -2024,7 +2402,7 @@ class _PublicThemeSelectorSheet extends StatelessWidget {
                 child: ListView.separated(
                   shrinkWrap: true,
                   itemCount: publicPresets.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  separatorBuilder: (_, _) => const SizedBox(height: 8),
                   itemBuilder: (context, index) {
                     final preset = publicPresets[index];
                     final selected = preset == current;
@@ -2073,7 +2451,7 @@ class _PublicPresetTile extends StatelessWidget {
 
     return Material(
       color: selected
-          ? Color.alphaBlend(tokens.primary.withOpacity(0.12), tokens.card)
+          ? Color.alphaBlend(tokens.primary.withAlpha(31), tokens.card)
           : tokens.card,
       borderRadius: BorderRadius.circular(18),
       clipBehavior: Clip.antiAlias,
@@ -2086,7 +2464,7 @@ class _PublicPresetTile extends StatelessWidget {
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
               color: selected
-                  ? tokens.primary.withOpacity(0.55)
+                  ? tokens.primary.withAlpha(140)
                   : tokens.border,
             ),
           ),
@@ -2100,7 +2478,7 @@ class _PublicPresetTile extends StatelessWidget {
                   borderRadius: BorderRadius.circular(15),
                   boxShadow: [
                     BoxShadow(
-                      color: preset.previewColor.withOpacity(0.22),
+                      color: preset.previewColor.withAlpha(56),
                       blurRadius: 12,
                       offset: const Offset(0, 4),
                     ),

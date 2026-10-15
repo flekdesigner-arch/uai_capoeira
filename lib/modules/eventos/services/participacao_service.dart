@@ -271,6 +271,24 @@ class ParticipacaoService {
     }
   }
 
+  /// Remove uma participação já finalizada sem apagar o aluno ou o histórico geral.
+  Future<void> removerParticipanteFinalizado({
+    required String participacaoId,
+    required String eventoId,
+  }) async {
+    final batch = _firestore.batch();
+    batch.delete(_firestore.collection(_finalizadasCollection).doc(participacaoId));
+    batch.delete(
+      _firestore
+          .collection('eventos')
+          .doc(eventoId)
+          .collection('participacoes')
+          .doc(participacaoId),
+    );
+    await batch.commit();
+    debugPrint('✅ Participação finalizada $participacaoId removida do evento $eventoId');
+  }
+
   /// Lista todos os participantes FINALIZADOS de um evento
   Future<List<Map<String, dynamic>>> listarParticipantesFinalizados(
     String eventoId,
@@ -570,7 +588,11 @@ class ParticipacaoService {
         // 1. Link enviado pela tela, se existir.
         // 2. Link já salvo no documento em andamento.
         // 3. Não salva campo vazio.
-        final linkFinal = linkRecebidoTela.isNotEmpty
+        final pdfImportado = data['certificado_origem'] == 'pdf_importado' ||
+            '${data['certificado_storage_path'] ?? ''}'.contains('/importados/');
+        final linkFinal = pdfImportado && linkAtualFirestore.isNotEmpty
+            ? linkAtualFirestore
+            : linkRecebidoTela.isNotEmpty
             ? linkRecebidoTela
             : linkAtualFirestore;
 

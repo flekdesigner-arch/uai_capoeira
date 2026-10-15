@@ -1,3 +1,4 @@
+import 'dart:developer' as developer;
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class UsuarioService {
@@ -12,18 +13,18 @@ class UsuarioService {
   }) async {
     // Se forçar atualização, remove do cache primeiro
     if (forceRefresh && _cache.containsKey(uid)) {
-      print('🔄 Forçando refresh - removendo cache de $uid');
+      developer.log('🔄 Forçando refresh - removendo cache de $uid');
       _cache.remove(uid);
     }
 
     // Verifica se já está em cache (apenas se não forçar refresh)
     if (!forceRefresh && _cache.containsKey(uid)) {
-      print('📦 Cache hit para $uid');
+      developer.log('📦 Cache hit para $uid');
       return _cache[uid]!;
     }
 
     try {
-      print('🔍 Buscando usuário $uid no Firebase...');
+      developer.log('🔍 Buscando usuário $uid no Firebase...');
 
       // 🔥 CORREÇÃO: Buscar no local correto!
       final doc = await _firestore
@@ -35,7 +36,7 @@ class UsuarioService {
 
       if (doc.exists) {
         final data = doc.data()!;
-        print('✅ Permissões encontradas!');
+        developer.log('✅ Permissões encontradas!');
 
         // 🔥 Adicionar também os dados básicos do usuário
         final userDoc = await _firestore.collection('usuarios').doc(uid).get();
@@ -52,7 +53,7 @@ class UsuarioService {
         _cache[uid] = data;
         return data;
       } else {
-        print(
+        developer.log(
           '⚠️ Permissões não encontradas - buscando apenas dados do usuário',
         );
 
@@ -65,7 +66,7 @@ class UsuarioService {
         }
       }
     } catch (e) {
-      print('❌ Erro ao buscar usuário $uid: $e');
+      developer.log('❌ Erro ao buscar usuário $uid: $e');
     }
 
     return {};
@@ -93,7 +94,7 @@ class UsuarioService {
         return data.map((key, value) => MapEntry(key, value as bool? ?? false));
       }
     } catch (e) {
-      print('❌ Erro ao buscar permissões: $e');
+      developer.log('❌ Erro ao buscar permissões: $e');
     }
 
     return {};
@@ -167,7 +168,7 @@ class UsuarioService {
 
   // 🔥 Método para limpar cache
   static void limparCache() {
-    print('🧹 Limpando todo o cache');
+    developer.log('🧹 Limpando todo o cache');
     _cache.clear();
   }
 }

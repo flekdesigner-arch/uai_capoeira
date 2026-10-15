@@ -232,8 +232,33 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
         return Icons.public_rounded;
       case 'emoji_events':
         return Icons.emoji_events_rounded;
-      case 'lightbulb':
-        return Icons.lightbulb_rounded;
+      case 'lightbulb': return Icons.lightbulb_rounded;
+      case 'menu_book': return Icons.menu_book_rounded;
+      case 'park': return Icons.park_rounded;
+      case 'eco': return Icons.eco_rounded;
+      case 'timeline': return Icons.timeline_rounded;
+      case 'trending_up': return Icons.trending_up_rounded;
+      case 'diversity_3': return Icons.diversity_3_rounded;
+      case 'person': return Icons.person_rounded;
+      case 'theater_comedy': return Icons.theater_comedy_rounded;
+      case 'music_note': return Icons.music_note_rounded;
+      case 'location_on': return Icons.location_on_rounded;
+      case 'explore': return Icons.explore_rounded;
+      case 'handshake': return Icons.handshake_rounded;
+      case 'volunteer_activism': return Icons.volunteer_activism_rounded;
+      case 'accessibility_new': return Icons.accessibility_new_rounded;
+      case 'family_restroom': return Icons.family_restroom_rounded;
+      case 'hub': return Icons.hub_rounded;
+      case 'shield': return Icons.shield_rounded;
+      case 'track_changes': return Icons.track_changes_rounded;
+      case 'star': return Icons.star_rounded;
+      case 'workspace_premium': return Icons.workspace_premium_rounded;
+      case 'favorite_border': return Icons.favorite_border_rounded;
+      case 'article': return Icons.article_rounded;
+      case 'format_quote': return Icons.format_quote_rounded;
+      case 'photo_library': return Icons.photo_library_rounded;
+      case 'event': return Icons.event_rounded;
+      case 'done_all': return Icons.done_all_rounded;
       default:
         return Icons.auto_stories_rounded;
     }
@@ -341,13 +366,6 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
     return colors[index % colors.length];
   }
 
-  int _totalParagrafos() {
-    return _secoesBiografia.fold<int>(0, (total, secao) {
-      final conteudo = secao['conteudo']?.toString() ?? '';
-      return total + _paragrafos(conteudo).length;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     final t = context.uai;
@@ -418,13 +436,11 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
       children: [
         Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1080),
+            constraints: const BoxConstraints(maxWidth: 1180),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _buildHero(isMobile),
-                const SizedBox(height: 14),
-                _buildResumoCards(isMobile),
                 const SizedBox(height: 16),
                 _buildIntro(isMobile),
                 const SizedBox(height: 10),
@@ -456,9 +472,9 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
             width: 68,
             height: 68,
             decoration: BoxDecoration(
-              color: onPrimary.withOpacity(0.14),
+              color: onPrimary.withAlpha(36),
               borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: onPrimary.withOpacity(0.16)),
+              border: Border.all(color: onPrimary.withAlpha(41)),
             ),
             child: Icon(Icons.auto_stories_rounded, color: onPrimary, size: 38),
           );
@@ -480,10 +496,10 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Conheça a história, missão e valores que movem o Grupo UAI Capoeira.',
+                'Uma história construída em capítulos: pessoas, propósito, cultura e transformação por meio da capoeira.',
                 textAlign: narrow ? TextAlign.center : TextAlign.left,
                 style: TextStyle(
-                  color: onPrimary.withOpacity(0.82),
+                  color: onPrimary.withAlpha(209),
                   fontSize: narrow ? 13.5 : 15,
                   height: 1.38,
                   fontWeight: FontWeight.w500,
@@ -532,9 +548,9 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: onPrimary.withOpacity(0.14),
+        color: onPrimary.withAlpha(36),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: onPrimary.withOpacity(0.16)),
+        border: Border.all(color: onPrimary.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -554,89 +570,6 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
     );
   }
 
-  Widget _buildResumoCards(bool isMobile) {
-    final t = context.uai;
-
-    final cards = [
-      _ResumoBiografia(
-        icon: Icons.auto_stories_rounded,
-        label: 'Seções',
-        value: _secoesBiografia.length.toString(),
-        color: t.info,
-      ),
-      _ResumoBiografia(
-        icon: Icons.format_quote_rounded,
-        label: 'Textos',
-        value: _totalParagrafos().toString(),
-        color: t.success,
-      ),
-      _ResumoBiografia(
-        icon: Icons.sports_martial_arts_rounded,
-        label: 'Grupo',
-        value: 'UAI',
-        color: t.warning,
-      ),
-    ];
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        const spacing = 10.0;
-        final itemWidth = (constraints.maxWidth - spacing * 2) / 3;
-
-        return Wrap(
-          spacing: spacing,
-          runSpacing: spacing,
-          children: cards.map((card) {
-            return SizedBox(
-              width: itemWidth,
-              child: _buildResumoCard(card, compact: isMobile),
-            );
-          }).toList(),
-        );
-      },
-    );
-  }
-
-  Widget _buildResumoCard(_ResumoBiografia card, {required bool compact}) {
-    final t = context.uai;
-    final accent = _ensureVisible(card.color, t.card);
-
-    return Container(
-      constraints: BoxConstraints(minHeight: compact ? 94 : 104),
-      padding: EdgeInsets.all(compact ? 10 : 13),
-      decoration: _cardDecoration(borderColor: accent.withOpacity(0.13)),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(card.icon, color: accent, size: compact ? 23 : 26),
-          const SizedBox(height: 6),
-          Text(
-            card.value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: accent,
-              fontSize: compact ? 18 : 22,
-              fontWeight: FontWeight.w900,
-              height: 1,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            card.label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: t.textSecondary,
-              fontSize: compact ? 10.5 : 11.5,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildIntro(bool isMobile) {
     final t = context.uai;
     final primary = _ensureVisible(t.primary, t.background);
@@ -647,9 +580,9 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
           width: 42,
           height: 42,
           decoration: BoxDecoration(
-            color: Color.alphaBlend(primary.withOpacity(0.09), t.cardAlt),
+            color: Color.alphaBlend(primary.withAlpha(23), t.cardAlt),
             borderRadius: BorderRadius.circular(15),
-            border: Border.all(color: primary.withOpacity(0.14)),
+            border: Border.all(color: primary.withAlpha(36)),
           ),
           child: Icon(Icons.menu_book_rounded, color: primary),
         ),
@@ -685,37 +618,24 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
   Widget _buildSecoesLayout(bool isMobile) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final wide = constraints.maxWidth >= 920;
-
-        if (!wide) {
-          return Column(
-            children: List.generate(_secoesBiografia.length, (index) {
-              return _buildSecaoLeitura(
-                secao: _secoesBiografia[index],
-                index: index,
-                isMobile: isMobile,
-              );
-            }),
+        final wide = constraints.maxWidth >= 900;
+        final children = <Widget>[];
+        for (var index = 0; index < _secoesBiografia.length; index++) {
+          final featured = index == 0;
+          final card = _buildSecaoLeitura(
+            secao: _secoesBiografia[index],
+            index: index,
+            isMobile: isMobile,
+            featured: featured,
           );
+          if (featured || !wide) {
+            children.add(SizedBox(width: constraints.maxWidth, child: card));
+          } else {
+            const gap = 14.0;
+            children.add(SizedBox(width: (constraints.maxWidth - gap) / 2, child: card));
+          }
         }
-
-        const spacing = 14.0;
-        final itemWidth = (constraints.maxWidth - spacing) / 2;
-
-        return Wrap(
-          spacing: spacing,
-          runSpacing: spacing,
-          children: List.generate(_secoesBiografia.length, (index) {
-            return SizedBox(
-              width: itemWidth,
-              child: _buildSecaoLeitura(
-                secao: _secoesBiografia[index],
-                index: index,
-                isMobile: false,
-              ),
-            );
-          }),
-        );
+        return Wrap(spacing: 14, runSpacing: 14, children: children);
       },
     );
   }
@@ -724,6 +644,7 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
     required Map<String, dynamic> secao,
     required int index,
     required bool isMobile,
+    bool featured = false,
   }) {
     final t = context.uai;
 
@@ -738,8 +659,8 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
     final paragrafos = _paragrafos(conteudo);
 
     return Container(
-      margin: EdgeInsets.only(bottom: isMobile ? 14 : 0),
-      decoration: _cardDecoration(borderColor: cor.withOpacity(0.13)),
+      margin: EdgeInsets.zero,
+      decoration: _cardDecoration(borderColor: cor.withAlpha(33)),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(t.cardRadius),
         child: Column(
@@ -750,34 +671,34 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    Color.alphaBlend(cor.withOpacity(0.11), t.cardAlt),
+                    Color.alphaBlend(cor.withAlpha(28), t.cardAlt),
                     t.card,
                   ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
                 border: Border(
-                  bottom: BorderSide(color: cor.withOpacity(0.10)),
+                  bottom: BorderSide(color: cor.withAlpha(26)),
                 ),
               ),
               child: Row(
                 children: [
                   Container(
-                    width: 48,
-                    height: 48,
+                    width: featured ? 54 : 46,
+                    height: featured ? 54 : 46,
                     decoration: BoxDecoration(
-                      color: cor.withOpacity(0.10),
+                      color: cor.withAlpha(26),
                       borderRadius: BorderRadius.circular(17),
-                      border: Border.all(color: cor.withOpacity(0.13)),
+                      border: Border.all(color: cor.withAlpha(33)),
                     ),
-                    child: Icon(icone, color: cor, size: 25),
+                    child: Icon(icone, color: cor, size: featured ? 29 : 24),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
                       titulo,
                       style: TextStyle(
-                        fontSize: isMobile ? 16 : 18,
+                        fontSize: featured ? (isMobile ? 18 : 22) : (isMobile ? 15.5 : 17.5),
                         height: 1.08,
                         fontWeight: FontWeight.w900,
                         color: t.textPrimary,
@@ -792,10 +713,10 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
                     decoration: BoxDecoration(
                       color: t.cardAlt,
                       borderRadius: BorderRadius.circular(99),
-                      border: Border.all(color: cor.withOpacity(0.14)),
+                      border: Border.all(color: cor.withAlpha(36)),
                     ),
                     child: Text(
-                      '${index + 1}',
+                      featured ? 'CAPÍTULO ${index + 1}' : '${index + 1}',
                       style: TextStyle(
                         color: cor,
                         fontSize: 11,
@@ -841,66 +762,29 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
     required bool isFirst,
   }) {
     final t = context.uai;
-
     if (texto.trim().endsWith(':')) {
-      return Container(
-        margin: const EdgeInsets.only(top: 8, bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
-        decoration: BoxDecoration(
-          color: Color.alphaBlend(cor.withOpacity(0.09), t.cardAlt),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: cor.withOpacity(0.14)),
-        ),
+      return Padding(
+        padding: const EdgeInsets.only(top: 8, bottom: 6),
         child: Text(
           _limparTitulo(texto),
-          style: TextStyle(
-            color: cor,
-            fontSize: isMobile ? 12.5 : 13.5,
-            fontWeight: FontWeight.w900,
-            height: 1.2,
-          ),
+          style: TextStyle(color: cor, fontSize: isMobile ? 13 : 14, fontWeight: FontWeight.w900, height: 1.25),
         ),
       );
     }
-
     return Container(
       margin: EdgeInsets.only(bottom: isMobile ? 10 : 12),
-      padding: EdgeInsets.all(isMobile ? 12 : 13),
-      decoration: BoxDecoration(
-        color: isFirst
-            ? Color.alphaBlend(cor.withOpacity(0.06), t.cardAlt)
-            : t.cardAlt,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: isFirst ? cor.withOpacity(0.12) : t.border),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (isFirst) ...[
-            Container(
-              width: 28,
-              height: 28,
-              decoration: BoxDecoration(
-                color: Color.alphaBlend(cor.withOpacity(0.10), t.card),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: cor.withOpacity(0.12)),
-              ),
-              child: Icon(Icons.format_quote_rounded, color: cor, size: 17),
-            ),
-            const SizedBox(width: 10),
-          ],
-          Expanded(
-            child: Text(
-              texto,
-              style: TextStyle(
-                color: t.textPrimary,
-                fontSize: isMobile ? 13.2 : 14,
-                height: 1.48,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-        ],
+      padding: EdgeInsets.only(left: isFirst ? 13 : 0),
+      decoration: isFirst
+          ? BoxDecoration(border: Border(left: BorderSide(color: cor, width: 3)))
+          : null,
+      child: Text(
+        texto,
+        style: TextStyle(
+          color: t.textPrimary,
+          fontSize: isMobile ? 13.4 : 14.4,
+          height: 1.58,
+          fontWeight: isFirst ? FontWeight.w600 : FontWeight.w500,
+        ),
       ),
     );
   }
@@ -952,18 +836,4 @@ class _BiografiaScreenState extends State<BiografiaScreen> {
       boxShadow: t.softShadow,
     );
   }
-}
-
-class _ResumoBiografia {
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color color;
-
-  const _ResumoBiografia({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.color,
-  });
 }

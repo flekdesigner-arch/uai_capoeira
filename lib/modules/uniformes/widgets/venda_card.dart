@@ -1,9 +1,31 @@
-import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:intl/intl.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 
 class VendaCard extends StatelessWidget {
+  static final Map<String, Future<String?>> _fotoAlunoCache =
+      <String, Future<String?>>{};
+  static Future<QuerySnapshot<Map<String, dynamic>>>? _alunosLookupFuture;
+
+  static String _normalizarNome(String value) {
+    const com =
+        'áàâãäéèêëíìîïóòôõöúùûüçÁÀÂÃÄÉÈÊËÍÌÏÓÒÔÕÖÚÙÛÜÇ';
+    const sem =
+        'aaaaaeeeeiiiiooooouuuucAAAAAEEEEIIIIOOOOOUUUUC';
+
+    var out = value.trim().toLowerCase();
+    for (var i = 0; i < com.length; i++) {
+      out = out.replaceAll(com[i], sem[i].toLowerCase());
+    }
+
+    return out
+        .replaceAll(RegExp(r'[^a-z0-9 ]'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
   final String docId;
   final Map<String, dynamic> data;
   final NumberFormat realFormat;
@@ -21,49 +43,161 @@ class VendaCard extends StatelessWidget {
     this.podeExcluir = false,
   });
 
-  // ---------------------------------------------------------------------------
-  // Helpers de contraste
-  // ---------------------------------------------------------------------------
-  Color _readableOn(Color background) {
-    return background.computeLuminance() > 0.48
-        ? const Color(0xFF111827)
-        : const Color(0xFFFFFFFF);
+  Future<String?> _resolverFotoAluno() {
+    final alunoId = (data['aluno_id'] ?? '').toString().trim();
+    final alunoNome = (data['aluno_nome'] ?? '').toString().trim();
+    final direta = (data['foto_aluno_url'] ??
+            data['aluno_foto_url'] ??
+            data['foto_perfil_aluno'] ??
+            data['foto_url'] ??
+            data['fotoUrl'] ??
+            '')
+        .toString()
+        .trim();
+
+    if (direta.isNotEmpty) return Future<String?>.value(direta);
+
+    final cacheKey = alunoId.isNotEmpty
+        ? 'id:$alunoId'
+        : 'nome:${_normalizarNome(alunoNome)}';
+
+    return _fotoAlunoCache.putIfAbsent(
+      cacheKey,
+      () => _buscarFotoAluno(alunoId: alunoId, alunoNome: alunoNome),
+    );
   }
 
-  Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance())
-        .abs();
-    if (diff >= 0.26) return color;
+  Future<String?> _buscarFotoAluno({
+    required String alunoId,
+    required String alunoNome,
+  }) async {
+    try {
+      Map<String, dynamic>? aluno;
 
-    final bgIsDark = background.computeLuminance() < 0.45;
-    final hsl = HSLColor.fromColor(color);
+      if (alunoId.isNotEmpty) {
+        final doc = await FirebaseFirestore.instance
+            .collection('alunos')
+            .doc(alunoId)
+            .get(const GetOptions(source: Source.serverAndCache));
 
-    return hsl
-        .withLightness(bgIsDark ? 0.72 : 0.32)
-        .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
-        .toColor();
+        if (doc.exists) aluno = doc.data();
+      }
+
+      if ((aluno == null || aluno.isEmpty) && alunoNome.isNotEmpty) {
+        final snap = await FirebaseFirestore.instance
+            .collection('alunos')
+            .where('nome', isEqualTo: alunoNome)
+            .limit(1)
+            .get(const GetOptions(source: Source.serverAndCache));
+
+        if (snap.docs.isNotEmpty) aluno = snap.docs.first.data();
+      }
+
+      if ((aluno == null || aluno.isEmpty) && alunoNome.isNotEmpty) {
+        _alunosLookupFuture ??= FirebaseFirestore.instance
+            .collection('alunos')
+            .limit(500)
+            .get(const GetOptions(source: Source.serverAndCache));
+
+        final todos = await _alunosLookupFuture!;
+        final alvo = _normalizarNome(alunoNome);
+
+        for (final doc in todos.docs) {
+          final nomeDoc = (doc.data()['nome'] ?? '').toString();
+          if (_normalizarNome(nomeDoc) == alvo) {
+            aluno = doc.data();
+            break;
+          }
+        }
+      }
+
+      if (aluno == null || aluno.isEmpty) return null;
+
+      final foto = (aluno['foto_perfil_aluno'] ??
+              aluno['foto_url'] ??
+              aluno['fotoUrl'] ??
+              aluno['foto'] ??
+              aluno['url_foto'] ??
+              aluno['fotoPerfil'] ??
+              aluno['foto_perfil_url'] ??
+              '')
+          .toString()
+          .trim();
+
+      if (foto.isEmpty) return null;
+
+      // Backfill para vendas antigas: as próximas aberturas não precisam buscar.
+      try {
+        await FirebaseFirestore.instance
+            .collection('vendas_uniformes')
+            .doc(docId)
+            .set({
+          'foto_aluno_url': foto,
+          'foto_perfil_aluno': foto,
+          'foto_aluno_atualizada_em': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      } catch (_) {}
+
+      return foto;
+    } catch (_) {
+      return null;
+    }
   }
 
-  // ---------------------------------------------------------------------------
-  // Formatação de data (mantida igual)
-  // ---------------------------------------------------------------------------
+  Widget _buildFotoAluno(BuildContext context, {required bool compact}) {
+    final width = compact ? 66.0 : 44.0;
+    final height = compact ? 78.0 : 44.0;
+    final radius = compact ? 14.0 : 999.0;
+
+    return FutureBuilder<String?>(
+      future: _resolverFotoAluno(),
+      builder: (context, snapshot) {
+        final foto = snapshot.data?.trim() ?? '';
+
+        Widget placeholder() => Container(
+              width: width,
+              height: height,
+              decoration: BoxDecoration(
+                color: context.uai.cardAlt,
+                borderRadius: BorderRadius.circular(radius),
+              ),
+              child: Icon(
+                Icons.person_rounded,
+                color: context.uai.textMuted,
+                size: compact ? 30 : 24,
+              ),
+            );
+
+        if (foto.isEmpty) return placeholder();
+
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(radius),
+          child: CachedNetworkImage(
+            imageUrl: foto,
+            width: width,
+            height: height,
+            fit: BoxFit.cover,
+            placeholder: (_, _) => placeholder(),
+            errorWidget: (_, _, _) => placeholder(),
+          ),
+        );
+      },
+    );
+  }
+
   String _formatarData(dynamic data) {
     if (data == null) return 'Data não informada';
     try {
       if (data is Timestamp) {
         return DateFormat('dd/MM/yyyy HH:mm', 'pt_BR').format(data.toDate());
-      } else if (data is String) {
-        return data;
       }
-    } catch (e) {
+      if (data is String) return data;
+    } catch (_) {
       return 'Data inválida';
     }
     return 'Data inválida';
   }
 
-  // ---------------------------------------------------------------------------
-  // Cores e ícones de status de pagamento (usando tokens do tema)
-  // ---------------------------------------------------------------------------
   Color _pagamentoColor(BuildContext context, String? statusPag) {
     switch (statusPag) {
       case 'pago':
@@ -84,130 +218,469 @@ class VendaCard extends StatelessWidget {
       case 'pendente':
         return Icons.pending;
       case 'parcial':
-        return Icons.money_off;
+        return Icons.paid;
       default:
-        return Icons.help;
+        return Icons.help_outline;
     }
   }
 
   String _pagamentoText(String? statusPag) {
     switch (statusPag) {
       case 'pago':
-        return 'PAGO';
+        return 'Pago';
       case 'pendente':
-        return 'PENDENTE';
+        return 'Pendente';
       case 'parcial':
-        return 'PARCIAL';
+        return 'Parcial';
       default:
-        return 'INDEFINIDO';
+        return 'Indefinido';
     }
+  }
+
+  Color _entregaColor(BuildContext context, String? status) {
+    switch ((status ?? '').toLowerCase()) {
+      case 'entregue':
+        return context.uai.success;
+      case 'parcial':
+        return context.uai.info;
+      case 'cancelado':
+        return context.uai.error;
+      default:
+        return context.uai.warning;
+    }
+  }
+
+  String _entregaText(String? status) {
+    switch ((status ?? '').toLowerCase()) {
+      case 'entregue':
+        return 'Entregue';
+      case 'parcial':
+        return 'Entrega parcial';
+      case 'cancelado':
+        return 'Entrega cancelada';
+      default:
+        return 'Aguardando entrega';
+    }
+  }
+
+  String _resumirItens(List<dynamic>? itens) {
+    if (itens == null || itens.isEmpty) return 'Nenhum item informado';
+
+    final resumos = itens.take(2).map((item) {
+      final nome = (item['produtoNome'] ?? item['nome'] ?? 'Item').toString();
+      final qtd = (item['quantidade'] ?? 1).toString();
+      return '$qtd x $nome';
+    }).toList();
+
+    if (itens.length > 2) {
+      resumos.add('+${itens.length - 2} item(ns)');
+    }
+
+    return resumos.join(' • ');
+  }
+
+  Widget _buildInfoChip(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 180),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withAlpha(31),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text.rich(
+        TextSpan(
+          children: [
+            WidgetSpan(
+              alignment: PlaceholderAlignment.middle,
+              child: Icon(icon, size: 12, color: color),
+            ),
+            const WidgetSpan(
+              alignment: PlaceholderAlignment.middle,
+              child: SizedBox(width: 4),
+            ),
+            TextSpan(
+              text: label,
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.w800,
+                fontSize: 10,
+              ),
+            ),
+          ],
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        softWrap: false,
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final statusPag = data['status_pagamento'] as String?;
-    final Color pagColor = _pagamentoColor(context, statusPag);
-    final IconData pagIcon = _pagamentoIcon(statusPag);
-    final String pagText = _pagamentoText(statusPag);
+    final statusEntrega = data['status_entrega'] as String?;
+    final pagColor = _pagamentoColor(context, statusPag);
+    final pagIcon = _pagamentoIcon(statusPag);
+    final pagText = _pagamentoText(statusPag);
+    final entregaColor = _entregaColor(context, statusEntrega);
+    final entregaText = _entregaText(statusEntrega);
 
-    final double total = (data['valor_total'] ?? 0).toDouble();
-    final double pago = (data['valor_pago'] ?? 0).toDouble();
-
-    // Contraste do ícone sobre o fundo do CircleAvatar
-    final Color onPag = _readableOn(pagColor);
+    final total = ((data['valor_total'] ?? 0) as num).toDouble();
+    final pago = ((data['valor_pago'] ?? 0) as num).toDouble();
+    final restante = (total - pago).clamp(0, double.infinity).toDouble();
+    final itens = (data['itens'] as List?)?.cast<dynamic>() ?? const [];
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 10),
       child: Material(
         color: context.uai.card,
         borderRadius: BorderRadius.circular(context.uai.cardRadius),
         clipBehavior: Clip.antiAlias,
-        elevation: 0, // sombra aplicada no Container externo
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(context.uai.cardRadius),
-            border: Border.all(color: context.uai.border),
-            boxShadow: context.uai.cardShadow,
-          ),
-          child: ListTile(
-            contentPadding: const EdgeInsets.all(12),
-            leading: CircleAvatar(
-              backgroundColor: pagColor.withOpacity(0.15),
-              child: Icon(pagIcon, color: pagColor),
+        elevation: 0,
+        child: InkWell(
+          onTap: () => onTap(docId, data),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(context.uai.cardRadius),
+              border: Border.all(color: context.uai.border),
             ),
-            title: Text(
-              data['aluno_nome'] ?? 'Aluno não identificado',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: context.uai.textPrimary,
-              ),
-            ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${data['itens']?.length ?? 0} itens',
-                  style: TextStyle(color: context.uai.textSecondary),
-                ),
-                Text(
-                  'Data: ${_formatarData(data['data_venda'])}',
-                  style: TextStyle(color: context.uai.textSecondary),
-                ),
-                Row(
-                  children: [
-                    Text(
-                      'Status: ',
-                      style: TextStyle(color: context.uai.textMuted),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final compact = constraints.maxWidth < 700;
+
+                if (compact) {
+                  return Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        _buildFotoAluno(context, compact: true),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                (data['aluno_nome'] ??
+                                        'Aluno não identificado')
+                                    .toString()
+                                    .toUpperCase(),
+                                maxLines: 1,
+                                softWrap: false,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 13.4,
+                                  height: 1.05,
+                                  color: context.uai.textPrimary,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                _resumirItens(itens),
+                                maxLines: 1,
+                                softWrap: false,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: context.uai.textSecondary,
+                                  fontSize: 11.2,
+                                  height: 1.1,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Wrap(
+                                spacing: 5,
+                                runSpacing: 5,
+                                children: [
+                                  _buildInfoChip(
+                                    context,
+                                    icon: pagIcon,
+                                    label: pagText,
+                                    color: pagColor,
+                                  ),
+                                  _buildInfoChip(
+                                    context,
+                                    icon: Icons.local_shipping_rounded,
+                                    label: entregaText,
+                                    color: entregaColor,
+                                  ),
+                                  _buildInfoChip(
+                                    context,
+                                    icon: Icons.calendar_today_rounded,
+                                    label: _formatarData(data['data_venda']),
+                                    color: context.uai.textMuted,
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: 76,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                realFormat.format(total),
+                                maxLines: 1,
+                                softWrap: false,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 15.5,
+                                  color: context.uai.textPrimary,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                pago > 0
+                                    ? 'Pago ${realFormat.format(pago)}'
+                                    : 'Sem pagamento',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.right,
+                                style: TextStyle(
+                                  fontSize: 9.5,
+                                  color: context.uai.textSecondary,
+                                ),
+                              ),
+                              if (restante > 0) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Falta ${realFormat.format(restante)}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.right,
+                                  style: TextStyle(
+                                    fontSize: 9.5,
+                                    color: context.uai.warning,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                    Text(
-                      pagText,
-                      style: TextStyle(
-                        color: pagColor,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            // --- trailing corrigido para evitar overflow ---
-            trailing: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  realFormat.format(total),
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14, // reduzido de 16 para caber
-                    color: context.uai.textPrimary,
-                  ),
-                ),
-                if (pago < total)
-                  Text(
-                    'Pago: ${realFormat.format(pago)}',
-                    style: TextStyle(
-                      fontSize: 10, // reduzido de 11
-                      color: context.uai.textSecondary,
-                    ),
-                  ),
-                if (podeEditar || podeExcluir)
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
+                  );
+                }
+
+                return Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      if (podeEditar)
-                        Icon(Icons.edit, size: 12, color: context.uai.info),
-                      if (podeEditar && podeExcluir) const SizedBox(width: 4),
-                      if (podeExcluir)
-                        Icon(Icons.delete, size: 12, color: context.uai.error),
+                      _buildFotoAluno(context, compact: false),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              (data['aluno_nome'] ??
+                                      'Aluno não identificado')
+                                  .toString()
+                                  .toUpperCase(),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w900,
+                                fontSize: 14.5,
+                                color: context.uai.textPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              _resumirItens(itens),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: context.uai.textSecondary,
+                                fontSize: 11.8,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 5,
+                              children: [
+                                _buildInfoChip(
+                                  context,
+                                  icon: pagIcon,
+                                  label: pagText,
+                                  color: pagColor,
+                                ),
+                                _buildInfoChip(
+                                  context,
+                                  icon: Icons.local_shipping_rounded,
+                                  label: entregaText,
+                                  color: entregaColor,
+                                ),
+                                _buildInfoChip(
+                                  context,
+                                  icon: Icons.calendar_today_rounded,
+                                  label: _formatarData(data['data_venda']),
+                                  color: context.uai.textMuted,
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      _buildTotalColumn(context, total, pago, restante),
                     ],
                   ),
-              ],
+                );
+              },
             ),
-            onTap: () => onTap(docId, data),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildTotalColumn(
+    BuildContext context,
+    double total,
+    double pago,
+    double restante,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Text(
+          realFormat.format(total),
+          style: TextStyle(
+            fontWeight: FontWeight.w900,
+            fontSize: 20,
+            color: context.uai.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Pago: ${realFormat.format(pago)}',
+          style: TextStyle(fontSize: 12, color: context.uai.textSecondary),
+        ),
+        if (restante > 0)
+          Text(
+            'Falta: ${realFormat.format(restante)}',
+            style: TextStyle(
+              fontSize: 12,
+              color: context.uai.warning,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        if (podeEditar || podeExcluir) ...[
+          const SizedBox(height: 10),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (podeEditar)
+                Icon(Icons.edit_rounded, size: 16, color: context.uai.info),
+              if (podeEditar && podeExcluir) const SizedBox(width: 8),
+              if (podeExcluir)
+                Icon(
+                  Icons.delete_outline_rounded,
+                  size: 16,
+                  color: context.uai.error,
+                ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildTotalFooter(
+    BuildContext context,
+    double total,
+    double pago,
+    double restante,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: context.uai.cardAlt,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _buildMetric(
+              context,
+              label: 'Total',
+              value: realFormat.format(total),
+            ),
+          ),
+          Expanded(
+            child: _buildMetric(
+              context,
+              label: 'Pago',
+              value: realFormat.format(pago),
+            ),
+          ),
+          Expanded(
+            child: _buildMetric(
+              context,
+              label: 'Falta',
+              value: realFormat.format(restante),
+              valueColor: restante > 0
+                  ? context.uai.warning
+                  : context.uai.success,
+            ),
+          ),
+          if (podeEditar || podeExcluir)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (podeEditar)
+                  Icon(Icons.edit_rounded, size: 16, color: context.uai.info),
+                if (podeEditar && podeExcluir) const SizedBox(width: 8),
+                if (podeExcluir)
+                  Icon(
+                    Icons.delete_outline_rounded,
+                    size: 16,
+                    color: context.uai.error,
+                  ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetric(
+    BuildContext context, {
+    required String label,
+    required String value,
+    Color? valueColor,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(fontSize: 11, color: context.uai.textMuted),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+            color: valueColor ?? context.uai.textPrimary,
+          ),
+        ),
+      ],
     );
   }
 }

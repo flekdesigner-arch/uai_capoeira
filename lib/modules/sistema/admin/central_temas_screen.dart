@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -12,7 +13,6 @@ import 'package:uai_capoeira/core/theme/app_theme_controller.dart';
 import 'package:uai_capoeira/core/theme/cloud_global_theme.dart';
 import 'package:uai_capoeira/core/theme/cloud_global_theme_service.dart';
 import 'package:uai_capoeira/core/theme/tema_global_config.dart';
-import 'package:uai_capoeira/core/logo/uai_logo_config.dart';
 import 'package:uai_capoeira/core/logo/uai_logo_service.dart';
 import 'package:uai_capoeira/core/theme/tema_global_service.dart';
 import 'package:uai_capoeira/modules/sistema/admin/screens/uai_logo_editor_screen.dart';
@@ -48,7 +48,7 @@ Color _safePreviewAccent(Color color, Color background) =>
     _previewEnsureVisible(color, background);
 
 Color _softPreviewBg(Color accent, Color surface) =>
-    Color.alphaBlend(accent.withOpacity(0.12), surface);
+    Color.alphaBlend(accent.withAlpha(31), surface);
 
 Color _accessibleSoftBg(Color accent, Color baseSurface) {
   final surfaceIsDark = baseSurface.computeLuminance() < 0.45;
@@ -59,7 +59,7 @@ Color _accessibleSoftBg(Color accent, Color baseSurface) {
       .toColor();
 
   return Color.alphaBlend(
-    strongerAccent.withOpacity(surfaceIsDark ? 0.42 : 0.55),
+    strongerAccent.withAlpha(surfaceIsDark ? 107 : 140),
     baseSurface,
   );
 }
@@ -77,7 +77,7 @@ Widget _accessiblePreviewPill({
     label: label,
     foreground: fg,
     background: bg,
-    border: border.withOpacity(0.45),
+    border: border.withAlpha(115),
   );
 }
 
@@ -92,9 +92,18 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
   final PermissionAccessGuard _accessGuard = PermissionAccessGuard();
   late Future<bool> _accessFuture;
   late ThemeGlobalDraft _draft;
+  late final ScrollController _scrollController;
   late TextEditingController _campanhaController;
+  final GlobalKey _temaPadraoKey = GlobalKey();
+  final GlobalKey _regrasKey = GlobalKey();
+  final GlobalKey _logoKey = GlobalKey();
+  final GlobalKey _temasDisponiveisKey = GlobalKey();
+  final GlobalKey _campanhaKey = GlobalKey();
+  final GlobalKey _bibliotecaKey = GlobalKey();
+  final GlobalKey _actionsKey = GlobalKey();
   bool _saving = false;
   bool _dirty = false;
+  bool _speedDialOpen = false;
   String? _message;
 
   @override
@@ -104,6 +113,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
       permission: 'pode_gerenciar_temas_globais',
     );
     _draft = ThemeGlobalDraft.fromConfig(TemaGlobalService.instance.config);
+    _scrollController = ScrollController();
     _campanhaController = TextEditingController(text: _draft.campanhaNome);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _carregarLogoTemaAtual();
@@ -112,6 +122,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
 
   @override
   void dispose() {
+    _scrollController.dispose();
     _campanhaController.dispose();
     super.dispose();
   }
@@ -402,6 +413,120 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
     }
   }
 
+  Future<void> _scrollToSection(GlobalKey key) async {
+    _closeSpeedDial();
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+
+    final targetContext = key.currentContext;
+    if (targetContext == null || !targetContext.mounted) return;
+
+    await Scrollable.ensureVisible(
+      targetContext,
+      duration: const Duration(milliseconds: 450),
+      curve: Curves.easeInOutCubic,
+      alignment: 0.06,
+    );
+  }
+
+  void _toggleSpeedDial() {
+    if (!mounted) return;
+    setState(() => _speedDialOpen = !_speedDialOpen);
+  }
+
+  void _closeSpeedDial() {
+    if (!_speedDialOpen || !mounted) return;
+    setState(() => _speedDialOpen = false);
+  }
+
+  Future<void> _runSpeedDialAction(FutureOr<void> Function() action) async {
+    _closeSpeedDial();
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    if (!mounted) return;
+    await action();
+  }
+
+  Widget _buildSpeedDialBackdrop(BuildContext context) {
+    if (!_speedDialOpen) return const SizedBox.shrink();
+    final t = context.uai;
+
+    return Positioned.fill(
+      child: Semantics(
+        button: true,
+        label: 'Fechar menu de atalhos',
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: _closeSpeedDial,
+          child: ColoredBox(color: t.textPrimary.withValues(alpha: 0.06)),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFloatingThemeMenu(BuildContext context) {
+    return _ThemeSpeedDial(
+      open: _speedDialOpen,
+      dirty: _dirty,
+      saving: _saving,
+      onToggle: _toggleSpeedDial,
+      actions: [
+        _ThemeSpeedDialAction(
+          icon: Icons.save_rounded,
+          label: 'Salvar',
+          tooltip: _dirty
+              ? 'Salvar alterações pendentes'
+              : 'Nenhuma alteração pendente',
+          emphasized: _dirty,
+          enabled: _dirty && !_saving,
+          onPressed: () => _runSpeedDialAction(_salvar),
+        ),
+        _ThemeSpeedDialAction(
+          icon: Icons.add_circle_rounded,
+          label: 'Criar novo tema',
+          tooltip: 'Criar novo tema global',
+          enabled: !_saving,
+          onPressed: () => _runSpeedDialAction(_openCloudThemeForm),
+        ),
+        _ThemeSpeedDialAction(
+          icon: Icons.cloud_sync_rounded,
+          label: 'Biblioteca',
+          tooltip: 'Ir para biblioteca de temas da nuvem',
+          onPressed: () => _scrollToSection(_bibliotecaKey),
+        ),
+        _ThemeSpeedDialAction(
+          icon: Icons.campaign_rounded,
+          label: 'Campanha',
+          tooltip: 'Ir para modo campanha',
+          onPressed: () => _scrollToSection(_campanhaKey),
+        ),
+        _ThemeSpeedDialAction(
+          icon: Icons.palette_rounded,
+          label: 'Temas disponíveis',
+          tooltip: 'Ir para temas disponíveis',
+          onPressed: () => _scrollToSection(_temasDisponiveisKey),
+        ),
+        _ThemeSpeedDialAction(
+          icon: Icons.image_rounded,
+          label: 'Logo',
+          tooltip: 'Ir para logo dinâmica',
+          onPressed: () => _scrollToSection(_logoKey),
+        ),
+        _ThemeSpeedDialAction(
+          icon: Icons.rule_rounded,
+          label: 'Regras',
+          tooltip: 'Ir para regras de aplicação',
+          onPressed: () => _scrollToSection(_regrasKey),
+        ),
+        _ThemeSpeedDialAction(
+          icon: Icons.tune_rounded,
+          label: 'Tema padrão',
+          tooltip: 'Ir para tema padrão global',
+          onPressed: () => _scrollToSection(_temaPadraoKey),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = context.uai;
@@ -437,118 +562,193 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
               _campanhaController.text = config.campanhaNome;
             }
 
-            return Scaffold(
-              backgroundColor: t.background,
-              appBar: AppBar(
-                title: const Text('Central de Temas'),
-                backgroundColor: appBarBg,
-                foregroundColor: appBarFg,
-                iconTheme: IconThemeData(color: appBarFg),
-                actionsIconTheme: IconThemeData(color: appBarFg),
-              ),
-              body: SafeArea(
-                child: RefreshIndicator(
-                  onRefresh: _reload,
-                  color: previewTokens.primary,
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      return ListView(
-                        padding: pagePadding,
-                        children: [
-                          Align(
-                            alignment: Alignment.topCenter,
-                            child: ConstrainedBox(
-                              constraints: BoxConstraints(maxWidth: maxWidth),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  _buildHeader(
-                                    context,
-                                    config,
-                                    previewTokens: previewTokens,
-                                    currentAppPreset: currentAppPreset,
-                                  ),
-                                  const SizedBox(height: 14),
-                                  if (!service.documentExists) ...[
-                                    _buildMissingDocCard(context),
-                                    const SizedBox(height: 14),
-                                  ],
-                                  if (isDesktop) ...[
-                                    Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Expanded(
-                                          child: _buildTemaPadraoCard(
-                                            context,
-                                            config,
-                                            previewTokens,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 14),
-                                        Expanded(
-                                          child: _buildRegrasCard(context),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 14),
-                                    _buildLogoDinamicaCard(
-                                      context,
-                                      previewTokens,
-                                    ),
-                                    const SizedBox(height: 14),
-                                    Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Expanded(
-                                          child: _buildTemasDisponiveisCard(
-                                            context,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 14),
-                                        Expanded(
-                                          child: _buildCampanhaCard(context),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 14),
-                                    _buildCloudGlobalThemesCard(context),
-                                  ] else ...[
-                                    _buildTemaPadraoCard(
-                                      context,
-                                      config,
-                                      previewTokens,
-                                    ),
-                                    const SizedBox(height: 14),
-                                    _buildLogoDinamicaCard(
-                                      context,
-                                      previewTokens,
-                                    ),
-                                    const SizedBox(height: 14),
-                                    _buildRegrasCard(context),
-                                    const SizedBox(height: 14),
-                                    _buildTemasDisponiveisCard(context),
-                                    const SizedBox(height: 14),
-                                    _buildCampanhaCard(context),
-                                    const SizedBox(height: 14),
-                                    _buildCloudGlobalThemesCard(context),
-                                  ],
-                                  const SizedBox(height: 14),
-                                  _buildActions(context),
-                                  if (_message != null) ...[
-                                    const SizedBox(height: 14),
-                                    _buildErrorCard(context, _message!),
-                                  ],
-                                ],
+            return PopScope(
+              canPop: !_speedDialOpen,
+              onPopInvokedWithResult: (didPop, result) {
+                if (!didPop && _speedDialOpen) _closeSpeedDial();
+              },
+              child: Scaffold(
+                backgroundColor: t.background,
+                appBar: AppBar(
+                  title: const Text('Central de Temas'),
+                  backgroundColor: appBarBg,
+                  foregroundColor: appBarFg,
+                  iconTheme: IconThemeData(color: appBarFg),
+                  actionsIconTheme: IconThemeData(color: appBarFg),
+                ),
+                body: SafeArea(
+                  child: Stack(
+                    children: [
+                      RefreshIndicator(
+                        onRefresh: _reload,
+                        color: previewTokens.primary,
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            final bottomPadding =
+                                MediaQuery.paddingOf(context).bottom + 132;
+                            return ListView(
+                              controller: _scrollController,
+                              padding: pagePadding.add(
+                                EdgeInsets.only(bottom: bottomPadding),
                               ),
-                            ),
-                          ),
-                        ],
-                      );
-                    },
+                              children: [
+                                Align(
+                                  alignment: Alignment.topCenter,
+                                  child: ConstrainedBox(
+                                    constraints: BoxConstraints(
+                                      maxWidth: maxWidth,
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: [
+                                        _buildHeader(
+                                          context,
+                                          config,
+                                          previewTokens: previewTokens,
+                                          currentAppPreset: currentAppPreset,
+                                        ),
+                                        const SizedBox(height: 14),
+                                        if (!service.documentExists) ...[
+                                          _buildMissingDocCard(context),
+                                          const SizedBox(height: 14),
+                                        ],
+                                        if (isDesktop) ...[
+                                          Row(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Expanded(
+                                                child: KeyedSubtree(
+                                                  key: _temaPadraoKey,
+                                                  child: _buildTemaPadraoCard(
+                                                    context,
+                                                    config,
+                                                    previewTokens,
+                                                  ),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 14),
+                                              Expanded(
+                                                child: KeyedSubtree(
+                                                  key: _regrasKey,
+                                                  child: _buildRegrasCard(
+                                                    context,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 14),
+                                          KeyedSubtree(
+                                            key: _logoKey,
+                                            child: _buildLogoDinamicaCard(
+                                              context,
+                                              previewTokens,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 14),
+                                          Row(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Expanded(
+                                                child: KeyedSubtree(
+                                                  key: _temasDisponiveisKey,
+                                                  child:
+                                                      _buildTemasDisponiveisCard(
+                                                        context,
+                                                      ),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 14),
+                                              Expanded(
+                                                child: KeyedSubtree(
+                                                  key: _campanhaKey,
+                                                  child: _buildCampanhaCard(
+                                                    context,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 14),
+                                          KeyedSubtree(
+                                            key: _bibliotecaKey,
+                                            child: _buildCloudGlobalThemesCard(
+                                              context,
+                                            ),
+                                          ),
+                                        ] else ...[
+                                          KeyedSubtree(
+                                            key: _temaPadraoKey,
+                                            child: _buildTemaPadraoCard(
+                                              context,
+                                              config,
+                                              previewTokens,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 14),
+                                          KeyedSubtree(
+                                            key: _logoKey,
+                                            child: _buildLogoDinamicaCard(
+                                              context,
+                                              previewTokens,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 14),
+                                          KeyedSubtree(
+                                            key: _regrasKey,
+                                            child: _buildRegrasCard(context),
+                                          ),
+                                          const SizedBox(height: 14),
+                                          KeyedSubtree(
+                                            key: _temasDisponiveisKey,
+                                            child: _buildTemasDisponiveisCard(
+                                              context,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 14),
+                                          KeyedSubtree(
+                                            key: _campanhaKey,
+                                            child: _buildCampanhaCard(context),
+                                          ),
+                                          const SizedBox(height: 14),
+                                          KeyedSubtree(
+                                            key: _bibliotecaKey,
+                                            child: _buildCloudGlobalThemesCard(
+                                              context,
+                                            ),
+                                          ),
+                                        ],
+                                        const SizedBox(height: 14),
+                                        KeyedSubtree(
+                                          key: _actionsKey,
+                                          child: _buildActions(context),
+                                        ),
+                                        if (_message != null) ...[
+                                          const SizedBox(height: 14),
+                                          _buildErrorCard(context, _message!),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                      ),
+                      _buildSpeedDialBackdrop(context),
+                    ],
                   ),
                 ),
+                floatingActionButton: SafeArea(
+                  minimum: const EdgeInsets.only(right: 12, bottom: 12),
+                  child: _buildFloatingThemeMenu(context),
+                ),
+                floatingActionButtonLocation:
+                    FloatingActionButtonLocation.endFloat,
               ),
             );
           },
@@ -584,7 +784,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
                 width: 52,
                 height: 52,
                 decoration: BoxDecoration(
-                  color: Color.alphaBlend(onHeader.withOpacity(0.10), headerBg),
+                  color: Color.alphaBlend(onHeader.withAlpha(26), headerBg),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Icon(Icons.palette_rounded, color: onHeader),
@@ -606,7 +806,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
                     Text(
                       'Controle a identidade visual global do app, campanhas e temas disponíveis para os usuários.',
                       style: TextStyle(
-                        color: onHeader.withOpacity(0.90),
+                        color: onHeader.withAlpha(230),
                         fontWeight: FontWeight.w600,
                         height: 1.25,
                       ),
@@ -673,7 +873,6 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
     UaiThemeTokens previewTokens,
   ) {
     final t = context.uai;
-    final preset = UaiThemePresetX.fromId(_draft.temaPadraoGlobal);
     final preview = previewTokens;
 
     return _buildSectionCard(
@@ -684,7 +883,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           DropdownButtonFormField<String>(
-            value: UaiThemePresetX.isOfficialId(_draft.temaPadraoGlobal)
+            initialValue: UaiThemePresetX.isOfficialId(_draft.temaPadraoGlobal)
                 ? _draft.temaPadraoGlobal
                 : UaiThemePreset.uaiClassico.id,
             dropdownColor: t.surface,
@@ -1160,9 +1359,9 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(t.error.withOpacity(0.10), t.card),
+        color: Color.alphaBlend(t.error.withAlpha(26), t.card),
         borderRadius: BorderRadius.circular(t.cardRadius),
-        border: Border.all(color: t.error.withOpacity(0.25)),
+        border: Border.all(color: t.error.withAlpha(64)),
       ),
       child: Text(
         _friendlyError(error),
@@ -1235,7 +1434,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
                   height: 38,
                   decoration: BoxDecoration(
                     color: Color.alphaBlend(
-                      accent.withOpacity(0.12),
+                      accent.withAlpha(31),
                       t.cardAlt,
                     ),
                     borderRadius: BorderRadius.circular(14),
@@ -1272,7 +1471,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
     required ValueChanged<bool> onChanged,
   }) {
     final t = context.uai;
-    final bg = Color.alphaBlend(accent.withOpacity(0.08), t.cardAlt);
+    final bg = Color.alphaBlend(accent.withAlpha(20), t.cardAlt);
     return Material(
       color: bg,
       borderRadius: BorderRadius.circular(16),
@@ -1307,7 +1506,14 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
               Switch.adaptive(
                 value: value,
                 onChanged: onChanged,
-                activeColor: accent,
+                activeThumbColor: switch (Theme.of(context).platform) {
+                  TargetPlatform.iOS || TargetPlatform.macOS => null,
+                  _ => accent,
+                },
+                activeTrackColor: switch (Theme.of(context).platform) {
+                  TargetPlatform.iOS || TargetPlatform.macOS => accent,
+                  _ => null,
+                },
               ),
             ],
           ),
@@ -1332,7 +1538,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
         color: chipBg,
         borderRadius: BorderRadius.circular(999),
         border: Border.all(
-          color: _safePreviewAccent(safeAccent, chipBg).withOpacity(0.32),
+          color: _safePreviewAccent(safeAccent, chipBg).withAlpha(82),
         ),
       ),
       child: Text(
@@ -1392,23 +1598,13 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
         : const Color(0xFFFFFFFF);
   }
 
-  Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance())
-        .abs();
-    if (diff >= 0.26) return color;
-    final bgIsDark = background.computeLuminance() < 0.45;
-    final hsl = HSLColor.fromColor(color);
-    return hsl
-        .withLightness(bgIsDark ? 0.72 : 0.32)
-        .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
-        .toColor();
-  }
+
 
   Gradient _safeHeaderGradient(UaiThemeTokens theme) {
     final header = _safeHeaderBg(theme);
     return LinearGradient(
       colors: [
-        Color.alphaBlend(header.withOpacity(0.82), theme.background),
+        Color.alphaBlend(header.withAlpha(209), theme.background),
         header,
       ],
       begin: Alignment.topLeft,
@@ -1419,7 +1615,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
   Color _safeHeaderBg(UaiThemeTokens theme) {
     final primary = theme.primary;
     if (_temaPrimarioMuitoClaroEmFundoEscuro(primary, theme.background)) {
-      return Color.alphaBlend(primary.withOpacity(0.52), theme.surface);
+      return Color.alphaBlend(primary.withAlpha(133), theme.surface);
     }
     return primary;
   }
@@ -1427,7 +1623,7 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
   Color _safeAppBarBg(UaiThemeTokens t) {
     final primary = t.primary;
     if (_temaPrimarioMuitoClaroEmFundoEscuro(primary, t.background)) {
-      return Color.alphaBlend(primary.withOpacity(0.55), t.surface);
+      return Color.alphaBlend(primary.withAlpha(140), t.surface);
     }
     return primary;
   }
@@ -2433,6 +2629,282 @@ class _ThemeColorPickerDialogState extends State<_ThemeColorPickerDialog> {
   }
 }
 
+class _ThemeSpeedDialAction {
+  final IconData icon;
+  final String label;
+  final String tooltip;
+  final bool enabled;
+  final bool emphasized;
+  final FutureOr<void> Function() onPressed;
+
+  const _ThemeSpeedDialAction({
+    required this.icon,
+    required this.label,
+    required this.tooltip,
+    required this.onPressed,
+    this.enabled = true,
+    this.emphasized = false,
+  });
+}
+
+class _ThemeSpeedDial extends StatelessWidget {
+  final bool open;
+  final bool dirty;
+  final bool saving;
+  final VoidCallback onToggle;
+  final List<_ThemeSpeedDialAction> actions;
+
+  const _ThemeSpeedDial({
+    required this.open,
+    required this.dirty,
+    required this.saving,
+    required this.onToggle,
+    required this.actions,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final availableWidth = media.size.width - media.padding.horizontal - 32;
+    final maxLabelWidth = availableWidth < 340 ? availableWidth - 72 : 230.0;
+
+    return Semantics(
+      container: true,
+      label: 'Menu de atalhos da Central de Temas',
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          IgnorePointer(
+            ignoring: !open,
+            child: AnimatedOpacity(
+              opacity: open ? 1 : 0,
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              child: AnimatedSlide(
+                offset: open ? Offset.zero : const Offset(0, 0.08),
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                child: AnimatedScale(
+                  scale: open ? 1 : 0.96,
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
+                  alignment: Alignment.bottomRight,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: availableWidth),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        for (final action in actions.reversed) ...[
+                          _SpeedDialActionButton(
+                            action: action,
+                            maxLabelWidth: maxLabelWidth.clamp(128.0, 230.0),
+                          ),
+                          const SizedBox(height: 10),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Tooltip(
+            message: open ? 'Fechar atalhos' : 'Abrir atalhos da Central',
+            child: Semantics(
+              button: true,
+              toggled: open,
+              label: open ? 'Fechar atalhos' : 'Abrir atalhos da Central',
+              child: _SpeedDialMainButton(
+                open: open,
+                dirty: dirty,
+                saving: saving,
+                onPressed: onToggle,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SpeedDialMainButton extends StatelessWidget {
+  final bool open;
+  final bool dirty;
+  final bool saving;
+  final VoidCallback onPressed;
+
+  const _SpeedDialMainButton({
+    required this.open,
+    required this.dirty,
+    required this.saving,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.uai;
+    final bg = dirty && !saving
+        ? _previewEnsureVisible(t.warning, t.background)
+        : _previewEnsureVisible(t.primary, t.background);
+    final fg = _strongTextOn(bg);
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Material(
+          color: bg,
+          elevation: open ? 10 : 7,
+          shadowColor: Colors.black.withValues(alpha: 0.24),
+          shape: const CircleBorder(),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onPressed,
+            child: SizedBox(
+              width: 58,
+              height: 58,
+              child: Center(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  child: saving
+                      ? SizedBox(
+                          key: const ValueKey('saving'),
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.6,
+                            valueColor: AlwaysStoppedAnimation<Color>(fg),
+                          ),
+                        )
+                      : AnimatedRotation(
+                          key: ValueKey(open ? 'close' : 'settings'),
+                          turns: open ? 0.125 : 0,
+                          duration: const Duration(milliseconds: 220),
+                          curve: Curves.easeOutCubic,
+                          child: Icon(
+                            open ? Icons.close_rounded : Icons.settings_rounded,
+                            color: fg,
+                            size: 28,
+                          ),
+                        ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        if (dirty && !saving)
+          Positioned(
+            right: 2,
+            top: 2,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: t.error,
+                shape: BoxShape.circle,
+                border: Border.all(color: t.background, width: 2),
+              ),
+              child: const SizedBox(width: 15, height: 15),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _SpeedDialActionButton extends StatelessWidget {
+  final _ThemeSpeedDialAction action;
+  final double maxLabelWidth;
+
+  const _SpeedDialActionButton({
+    required this.action,
+    required this.maxLabelWidth,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.uai;
+    final baseAccent = action.emphasized ? t.warning : t.primary;
+    final accent = _previewEnsureVisible(baseAccent, t.background);
+    final buttonBg = action.enabled
+        ? accent
+        : Color.alphaBlend(t.textSecondary.withValues(alpha: 0.12), t.card);
+    final buttonFg = action.enabled ? _strongTextOn(buttonBg) : t.textSecondary;
+    final labelBg = Color.alphaBlend(
+      t.card.withValues(alpha: 0.94),
+      t.background,
+    );
+    final labelFg = action.enabled ? t.textPrimary : t.textSecondary;
+
+    return Tooltip(
+      message: action.tooltip,
+      child: Semantics(
+        button: true,
+        enabled: action.enabled,
+        label: action.tooltip,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            Flexible(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: maxLabelWidth),
+                child: Material(
+                  color: labelBg,
+                  elevation: 5,
+                  shadowColor: Colors.black.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(999),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: action.enabled ? () => action.onPressed() : null,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 13,
+                        vertical: 9,
+                      ),
+                      child: Text(
+                        action.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.right,
+                        style: TextStyle(
+                          color: labelFg,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Material(
+              color: buttonBg,
+              elevation: 6,
+              shadowColor: Colors.black.withValues(alpha: 0.18),
+              shape: const CircleBorder(),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: action.enabled ? () => action.onPressed() : null,
+                child: SizedBox(
+                  width: 46,
+                  height: 46,
+                  child: Icon(action.icon, color: buttonFg, size: 22),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class ThemeGlobalDraft {
   final bool ativo;
   final String temaPadraoGlobal;
@@ -2655,7 +3127,7 @@ class _ThemeOptionRow extends StatelessWidget {
     final t = context.uai;
     final preview = AppTheme.tokensFor(preset);
     final accent = _previewEnsureVisible(preview.primary, t.card);
-    final bg = Color.alphaBlend(accent.withOpacity(0.09), t.card);
+    final bg = Color.alphaBlend(accent.withAlpha(23), t.card);
 
     return Material(
       color: bg,
@@ -2668,7 +3140,7 @@ class _ThemeOptionRow extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: selected ? accent.withOpacity(0.52) : t.border,
+              color: selected ? accent.withAlpha(133) : t.border,
             ),
           ),
           child: Row(
@@ -2701,13 +3173,13 @@ class _ThemeOptionRow extends StatelessWidget {
                             label: 'Seguro',
                             foreground: _previewReadableOn(t.warning),
                             background: Color.alphaBlend(
-                              t.warning.withOpacity(0.14),
+                              t.warning.withAlpha(36),
                               t.cardAlt,
                             ),
                             border: _previewEnsureVisible(
                               t.warning,
                               t.cardAlt,
-                            ).withOpacity(0.30),
+                            ).withAlpha(77),
                           ),
                       ],
                     ),

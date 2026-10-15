@@ -12,6 +12,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 
 import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
 import 'package:uai_capoeira/core/permissions/permissao_service.dart';
+import 'package:uai_capoeira/modules/associacao/services/associacao_financeiro_service.dart';
 
 class PatrocinadoresEventoScreen extends StatefulWidget {
   final String eventoId;
@@ -51,7 +52,7 @@ class _PatrocinadoresEventoScreenState
   }
 
   Color _onCard() => _readableOn(context.uai.card);
-  Color _onCardMuted() => _onCard().withOpacity(0.68);
+  Color _onCardMuted() => _onCard().withAlpha(173);
   Color _appBarBg() =>
       Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
   Color _appBarFg() =>
@@ -99,6 +100,7 @@ class _PatrocinadoresEventoScreenState
   final TextEditingController _observacoesController = TextEditingController();
 
   final PermissaoService _permissaoService = PermissaoService();
+  final AssociacaoFinanceiroService _financeiroAssociacao = AssociacaoFinanceiroService();
 
   File? _imagemSelecionada;
   String? _logoUrl;
@@ -506,9 +508,9 @@ class _PatrocinadoresEventoScreenState
             width: 38,
             height: 38,
             decoration: BoxDecoration(
-              color: onWarning.withOpacity(0.14),
+              color: onWarning.withAlpha(36),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: onWarning.withOpacity(0.18)),
+              border: Border.all(color: onWarning.withAlpha(46)),
             ),
             child: Icon(Icons.handshake_rounded, color: onWarning, size: 21),
           ),
@@ -562,11 +564,11 @@ class _PatrocinadoresEventoScreenState
         padding: EdgeInsets.symmetric(horizontal: 10),
         decoration: BoxDecoration(
           color: _imagemSelecionada != null
-              ? context.uai.success.withOpacity(0.08)
+              ? context.uai.success.withAlpha(20)
               : context.uai.surface,
           border: Border.all(
             color: _imagemSelecionada != null
-                ? context.uai.success.withOpacity(0.45)
+                ? context.uai.success.withAlpha(115)
                 : context.uai.border,
           ),
           borderRadius: BorderRadius.circular(14),
@@ -630,9 +632,9 @@ class _PatrocinadoresEventoScreenState
         height: 56,
         padding: EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
-          color: selected ? color.withOpacity(0.08) : context.uai.surface,
+          color: selected ? color.withAlpha(20) : context.uai.surface,
           border: Border.all(
-            color: selected ? color.withOpacity(0.35) : context.uai.border,
+            color: selected ? color.withAlpha(89) : context.uai.border,
           ),
           borderRadius: BorderRadius.circular(14),
         ),
@@ -715,6 +717,7 @@ class _PatrocinadoresEventoScreenState
       return;
     }
 
+    if (!mounted) return;
     if (_nomeController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -772,11 +775,25 @@ class _PatrocinadoresEventoScreenState
           });
 
       if (_dataRealizada != null && valor > 0) {
-        await docRef.collection('pagamentos').add({
+        final pagamentoRef = await docRef.collection('pagamentos').add({
           'valor': valor,
           'data': Timestamp.fromDate(_dataRealizada!),
           'observacao': 'Contribuição inicial',
         });
+        try {
+          await _financeiroAssociacao.registrarMovimentacaoAutomatica(
+            tipo: 'entrada',
+            valor: valor,
+            descricao: 'Patrocínio • ${_nomeController.text.trim()}',
+            categoria: 'Patrocínios',
+            subcategoria: 'Contribuição de patrocinador',
+            origemModulo: 'eventos_patrocinios',
+            origemId: '${docRef.id}::${pagamentoRef.id}',
+            origemDescricao: widget.eventoNome,
+            dataCompetencia: _dataRealizada,
+            eventoId: widget.eventoId,
+          );
+        } catch (_) {}
       }
 
       _nomeController.clear();
@@ -833,6 +850,7 @@ class _PatrocinadoresEventoScreenState
       return;
     }
 
+    if (!mounted) return;
     final TextEditingController valorController = TextEditingController(
       text: valor.toStringAsFixed(2).replaceAll('.', ','),
     );
@@ -926,6 +944,7 @@ class _PatrocinadoresEventoScreenState
           .collection('patrocinadores_eventos')
           .doc(patrocinadorId);
 
+      final pagamentoRef = patrocinadorRef.collection('pagamentos').doc();
       await FirebaseFirestore.instance.runTransaction((transaction) async {
         final snapshot = await transaction.get(patrocinadorRef);
         if (!snapshot.exists) return;
@@ -944,12 +963,27 @@ class _PatrocinadoresEventoScreenState
           'data_realizada': Timestamp.fromDate(dataPagamento),
         });
 
-        transaction.set(patrocinadorRef.collection('pagamentos').doc(), {
+        transaction.set(pagamentoRef, {
           'valor': valorPago,
           'data': Timestamp.fromDate(dataPagamento),
           'observacao': 'Registro manual',
         });
       });
+
+      try {
+        await _financeiroAssociacao.registrarMovimentacaoAutomatica(
+          tipo: 'entrada',
+          valor: valorPago,
+          descricao: 'Patrocínio • $nome',
+          categoria: 'Patrocínios',
+          subcategoria: 'Contribuição de patrocinador',
+          origemModulo: 'eventos_patrocinios',
+          origemId: '$patrocinadorId::${pagamentoRef.id}',
+          origemDescricao: widget.eventoNome,
+          dataCompetencia: dataPagamento,
+          eventoId: widget.eventoId,
+        );
+      } catch (_) {}
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -990,6 +1024,7 @@ class _PatrocinadoresEventoScreenState
       return;
     }
 
+    if (!mounted) return;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -1247,9 +1282,9 @@ class _PatrocinadoresEventoScreenState
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.08),
+            color: color.withAlpha(20),
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: color.withOpacity(0.14)),
+            border: Border.all(color: color.withAlpha(36)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -1312,9 +1347,9 @@ class _PatrocinadoresEventoScreenState
       margin: EdgeInsets.fromLTRB(16, 14, 16, 0),
       padding: EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withAlpha(20),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: color.withOpacity(0.14)),
+        border: Border.all(color: color.withAlpha(36)),
       ),
       child: Row(
         children: [
@@ -1356,10 +1391,10 @@ class _PatrocinadoresEventoScreenState
       decoration: BoxDecoration(
         color: context.uai.card,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: context.uai.warning.withOpacity(0.14)),
+        border: Border.all(color: context.uai.warning.withAlpha(36)),
         boxShadow: [
           BoxShadow(
-            color: context.uai.warning.withOpacity(0.08),
+            color: context.uai.warning.withAlpha(20),
             blurRadius: 8,
             offset: const Offset(0, 3),
           ),
@@ -1385,7 +1420,7 @@ class _PatrocinadoresEventoScreenState
               Container(
                 padding: EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                 decoration: BoxDecoration(
-                  color: context.uai.warning.withOpacity(0.08),
+                  color: context.uai.warning.withAlpha(20),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
@@ -1460,13 +1495,13 @@ class _PatrocinadoresEventoScreenState
             Container(
               padding: EdgeInsets.all(22),
               decoration: BoxDecoration(
-                color: context.uai.warning.withOpacity(0.08),
+                color: context.uai.warning.withAlpha(20),
                 shape: BoxShape.circle,
               ),
               child: Icon(
                 Icons.handshake_rounded,
                 size: 62,
-                color: context.uai.warning.withOpacity(0.24),
+                color: context.uai.warning.withAlpha(61),
               ),
             ),
             SizedBox(height: 16),
@@ -1505,7 +1540,7 @@ class _PatrocinadoresEventoScreenState
             Icon(
               Icons.error_outline,
               size: 50,
-              color: context.uai.error.withOpacity(0.45),
+              color: context.uai.error.withAlpha(115),
             ),
             SizedBox(height: 12),
             Text(
@@ -1540,7 +1575,7 @@ class _PatrocinadoresEventoScreenState
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: corStatus.withOpacity(0.24), width: 1),
+        side: BorderSide(color: corStatus.withAlpha(61), width: 1),
       ),
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -1577,7 +1612,7 @@ class _PatrocinadoresEventoScreenState
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color: corStatus.withOpacity(0.1),
+                              color: corStatus.withAlpha(26),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Row(
@@ -1679,9 +1714,9 @@ class _PatrocinadoresEventoScreenState
       width: 52,
       height: 52,
       decoration: BoxDecoration(
-        color: corStatus.withOpacity(0.1),
+        color: corStatus.withAlpha(26),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: corStatus.withOpacity(0.3)),
+        border: Border.all(color: corStatus.withAlpha(77)),
       ),
       child: logoUrl != null && logoUrl.isNotEmpty
           ? ClipRRect(
@@ -1706,7 +1741,7 @@ class _PatrocinadoresEventoScreenState
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withAlpha(20),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -1871,7 +1906,7 @@ class _PatrocinadoresEventoScreenState
         Container(
           padding: EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: cor.withOpacity(0.1),
+            color: cor.withAlpha(26),
             shape: BoxShape.circle,
           ),
           child: Text(

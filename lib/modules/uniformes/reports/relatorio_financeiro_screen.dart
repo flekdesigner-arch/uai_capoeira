@@ -52,19 +52,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
         : const Color(0xFFFFFFFF);
   }
 
-  Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance())
-        .abs();
-    if (diff >= 0.26) return color;
 
-    final bgIsDark = background.computeLuminance() < 0.45;
-    final hsl = HSLColor.fromColor(color);
-
-    return hsl
-        .withLightness(bgIsDark ? 0.72 : 0.32)
-        .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
-        .toColor();
-  }
 
   @override
   void initState() {
@@ -133,6 +121,11 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     }
   }
 
+  static Future<pw.Font> _carregarFontePdf(String path) async {
+    final data = await rootBundle.load(path);
+    return pw.Font.ttf(data);
+  }
+
   // ─────────────────────────── PDF MENSAL ───────────────────────────
   Future<void> _gerarPdfMensal() async {
     try {
@@ -158,6 +151,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
       pdf.addPage(
         pw.MultiPage(
           pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.fromLTRB(24, 24, 24, 30),
+          footer: (ctx) => _pdfRodapePagina(ctx),
           build: (ctx) => [
             pw.Container(
               padding: const pw.EdgeInsets.only(bottom: 8),
@@ -225,7 +220,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
               ),
             ),
             pw.SizedBox(height: 14),
-            pw.Table.fromTextArray(
+            pw.TableHelper.fromTextArray(
               headers: ['Mês', 'Vendas', 'Recebido', 'Pendente'],
               data: dataRows,
               headerStyle: pw.TextStyle(
@@ -266,11 +261,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                 ),
               ),
             ],
-            pw.SizedBox(height: 20),
-            pw.Text(
-              'Gerado em ${DateFormat('dd/MM/yyyy HH:mm').format(now)} - Sistema UAI Capoeira',
-              style: pw.TextStyle(fontSize: 7, color: PdfColors.grey),
-            ),
+
           ],
         ),
       );
@@ -316,6 +307,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
       pdf.addPage(
         pw.MultiPage(
           pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.fromLTRB(24, 24, 24, 30),
+          footer: (ctx) => _pdfRodapePagina(ctx),
           build: (ctx) => [
             pw.Container(
               padding: const pw.EdgeInsets.only(bottom: 8),
@@ -346,7 +339,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
               ),
             ),
             pw.SizedBox(height: 14),
-            pw.Table.fromTextArray(
+            pw.TableHelper.fromTextArray(
               headers: ['Mês', 'Vendas', 'Recebido', 'Pendente'],
               data: dataRows,
               headerStyle: pw.TextStyle(
@@ -392,11 +385,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                 ),
               ),
             ],
-            pw.SizedBox(height: 20),
-            pw.Text(
-              'Gerado em ${DateFormat('dd/MM/yyyy HH:mm').format(now)} - Sistema UAI Capoeira',
-              style: pw.TextStyle(fontSize: 7, color: PdfColors.grey),
-            ),
+
           ],
         ),
       );
@@ -427,6 +416,62 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
           pw.Text(
             valor,
             style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
+          ),
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _pdfResumoBox(
+    String label,
+    String valor,
+    PdfColor cor,
+  ) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+      decoration: pw.BoxDecoration(
+        color: cor,
+        borderRadius: pw.BorderRadius.circular(6),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            label,
+            style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey700),
+          ),
+          pw.SizedBox(height: 2),
+          pw.Text(
+            valor,
+            maxLines: 1,
+            style: pw.TextStyle(
+              fontSize: 10,
+              fontWeight: pw.FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _pdfRodapePagina(pw.Context context) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.only(top: 7),
+      decoration: const pw.BoxDecoration(
+        border: pw.Border(
+          top: pw.BorderSide(color: PdfColors.grey400, width: .45),
+        ),
+      ),
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Text(
+            'Sistema UAI Capoeira - ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}',
+            style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey600),
+          ),
+          pw.Text(
+            'Página ${context.pageNumber}/${context.pagesCount}',
+            style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey600),
           ),
         ],
       ),
@@ -497,7 +542,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
             final ts = data['data_venda'] as Timestamp;
             final date = ts.toDate();
             if (_dataInicio != null && date.isBefore(_dataInicio!))
-              return false;
+              { return false; }
             if (_dataFim != null && date.isAfter(_dataFim!)) return false;
             return true;
           } catch (_) {
@@ -1082,7 +1127,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                       width: 28,
                       height: 28,
                       decoration: BoxDecoration(
-                        color: cor.withOpacity(0.2),
+                        color: cor.withAlpha(51),
                         shape: BoxShape.circle,
                       ),
                       child: Center(
@@ -1117,7 +1162,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                   ],
                 ),
               );
-            }).toList(),
+            }),
           ],
         ),
       ),

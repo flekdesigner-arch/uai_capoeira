@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 class LogoService {
@@ -71,13 +72,25 @@ class LogoService {
       future: getLogoUrl(),
       builder: (context, snapshot) {
         if (snapshot.hasData && snapshot.data != null) {
+          final target = (height * MediaQuery.devicePixelRatioOf(context))
+              .round()
+              .clamp(128, 1024);
           return CachedNetworkImage(
             imageUrl: snapshot.data!,
             height: height,
             fit: fit,
-            placeholder: (context, url) => Container(
+            memCacheHeight: target,
+            maxHeightDiskCache: target,
+            fadeInDuration: const Duration(milliseconds: 120),
+            fadeOutDuration: Duration.zero,
+            placeholder: (context, url) => SizedBox(
               height: height,
-              child: const Center(child: CircularProgressIndicator()),
+              child: const Center(
+                child: SizedBox.square(
+                  dimension: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
             ),
             errorWidget: (context, url, error) => _buildFallbackLogo(height),
           );
@@ -92,8 +105,9 @@ class LogoService {
       'assets/images/logo_uai.png',
       height: height,
       fit: BoxFit.contain,
+      cacheHeight: kIsWeb ? (height * 2).round().clamp(128, 1024) : null,
       errorBuilder: (context, error, stack) {
-        print('❌ ERRO AO CARREGAR LOGO: $error');
+        if (kDebugMode) debugPrint('❌ ERRO AO CARREGAR LOGO: $error');
         return Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [

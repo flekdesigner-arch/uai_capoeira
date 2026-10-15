@@ -778,9 +778,9 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: fg.withOpacity(0.14),
+              color: fg.withAlpha(36),
               borderRadius: BorderRadius.circular(t.buttonRadius),
-              border: Border.all(color: fg.withOpacity(0.16)),
+              border: Border.all(color: fg.withAlpha(41)),
             ),
             child: Icon(Icons.shopping_bag_rounded, color: fg, size: 23),
           ),
@@ -803,7 +803,7 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: fg.withOpacity(0.82),
+                    color: fg.withAlpha(209),
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                   ),
@@ -878,9 +878,9 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(info.withOpacity(0.08), t.cardAlt),
+        color: Color.alphaBlend(info.withAlpha(20), t.cardAlt),
         borderRadius: BorderRadius.circular(t.inputRadius),
-        border: Border.all(color: info.withOpacity(0.16)),
+        border: Border.all(color: info.withAlpha(41)),
       ),
       child: Row(
         children: [
@@ -908,6 +908,8 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
       _mostrarSemPermissao('Você não tem permissão para adicionar camisas.');
       return false;
     }
+
+    if (!mounted) return false;
 
     final nome = _nomeController.text.trim();
     final tamanho = _tamanhoSelecionado?.trim() ?? '';
@@ -1032,6 +1034,8 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
       return;
     }
 
+    if (!mounted) return;
+
     final TextEditingController valorEditController = TextEditingController(
       text: valorAtual.toStringAsFixed(2).replaceAll('.', ','),
     );
@@ -1096,6 +1100,8 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
       _mostrarSemPermissao('Você não tem permissão para editar camisa.');
       return;
     }
+
+    if (!mounted) return;
 
     String tempModelagem = _modelagemDaCamisa(data);
     String tempTipo = _tipoDaCamisa(data);
@@ -1218,6 +1224,8 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
       return;
     }
 
+    if (!mounted) return;
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -1317,7 +1325,7 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
                 Expanded(
                   child: ListView.separated(
                     itemCount: opcoes.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
                     itemBuilder: (context, index) {
                       final value = normalizar(opcoes[index]);
                       final selected = value == normalizar(valorAtual);
@@ -1325,7 +1333,7 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
                       return Material(
                         color: selected
                             ? Color.alphaBlend(
-                                accent.withOpacity(0.14),
+                                accent.withAlpha(36),
                                 t.cardAlt,
                               )
                             : t.cardAlt,
@@ -1451,7 +1459,7 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
                                 decoration: BoxDecoration(
                                   color: selected
                                       ? Color.alphaBlend(
-                                          accent.withOpacity(0.18),
+                                          accent.withAlpha(46),
                                           t.cardAlt,
                                         )
                                       : t.cardAlt,
@@ -1805,9 +1813,9 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
       margin: EdgeInsets.zero,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(visible.withOpacity(0.10), t.card),
+        color: Color.alphaBlend(visible.withAlpha(26), t.card),
         borderRadius: BorderRadius.circular(t.cardRadius),
-        border: Border.all(color: visible.withOpacity(0.18)),
+        border: Border.all(color: visible.withAlpha(46)),
         boxShadow: t.softShadow,
       ),
       child: Row(
@@ -1881,9 +1889,9 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: t.associacao.withOpacity(0.12),
+                  color: t.associacao.withAlpha(31),
                   borderRadius: BorderRadius.circular(t.buttonRadius),
-                  border: Border.all(color: t.associacao.withOpacity(0.18)),
+                  border: Border.all(color: t.associacao.withAlpha(46)),
                 ),
                 child: Icon(
                   Icons.analytics_rounded,
@@ -1920,9 +1928,9 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  color: t.associacao.withOpacity(0.10),
+                  color: t.associacao.withAlpha(26),
                   borderRadius: BorderRadius.circular(99),
-                  border: Border.all(color: t.associacao.withOpacity(0.16)),
+                  border: Border.all(color: t.associacao.withAlpha(41)),
                 ),
                 child: Text(
                   'Total: ${docs.length}',
@@ -1949,11 +1957,11 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
                     ),
                     decoration: BoxDecoration(
                       color: Color.alphaBlend(
-                        accent.withOpacity(0.10),
+                        accent.withAlpha(26),
                         t.cardAlt,
                       ),
                       borderRadius: BorderRadius.circular(99),
-                      border: Border.all(color: accent.withOpacity(0.14)),
+                      border: Border.all(color: accent.withAlpha(36)),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -2099,7 +2107,7 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(t.cardRadius - 6),
-        side: BorderSide(color: visibleCardColor.withOpacity(0.36), width: 1),
+        side: BorderSide(color: visibleCardColor.withAlpha(92), width: 1),
       ),
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -2115,14 +2123,14 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        visibleCardColor.withOpacity(0.72),
+                        visibleCardColor.withAlpha(184),
                         visibleCardColor,
                       ],
                     ),
                     borderRadius: BorderRadius.circular(14),
                     boxShadow: [
                       BoxShadow(
-                        color: visibleCardColor.withOpacity(0.18),
+                        color: visibleCardColor.withAlpha(46),
                         blurRadius: 8,
                         offset: const Offset(0, 3),
                       ),
@@ -2284,9 +2292,9 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), t.cardAlt),
+        color: Color.alphaBlend(accent.withAlpha(20), t.cardAlt),
         borderRadius: BorderRadius.circular(t.inputRadius),
-        border: Border.all(color: accent.withOpacity(0.14)),
+        border: Border.all(color: accent.withAlpha(36)),
       ),
       child: Row(
         children: [
@@ -2305,7 +2313,14 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
           Switch.adaptive(
             value: value,
             onChanged: _podeGerenciarCamisas ? onChanged : null,
-            activeColor: accent,
+            activeThumbColor: switch (Theme.of(context).platform) {
+              TargetPlatform.iOS || TargetPlatform.macOS => null,
+              _ => accent,
+            },
+            activeTrackColor: switch (Theme.of(context).platform) {
+              TargetPlatform.iOS || TargetPlatform.macOS => accent,
+              _ => null,
+            },
           ),
         ],
       ),
@@ -2603,9 +2618,9 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: t.error.withOpacity(0.08),
+        color: t.error.withAlpha(20),
         borderRadius: BorderRadius.circular(t.cardRadius),
-        border: Border.all(color: t.error.withOpacity(0.20)),
+        border: Border.all(color: t.error.withAlpha(51)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,

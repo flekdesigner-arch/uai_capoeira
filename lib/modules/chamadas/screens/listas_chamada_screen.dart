@@ -1,7 +1,7 @@
+import 'package:uai_capoeira/core/session_log/session_log_service.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:uai_capoeira/modules/alunos/screens/aluno_detalhe_screen.dart';
 import 'package:uai_capoeira/modules/chamadas/screens/editar_chamada_turma_screen.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
@@ -9,6 +9,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:uai_capoeira/modules/chamadas/services/aluno_foto_resolver.dart';
+import 'package:uai_capoeira/core/image_cache/uai_student_photo.dart';
 
 Color _readableOn(Color background) {
   return background.computeLuminance() > 0.48
@@ -17,7 +19,7 @@ Color _readableOn(Color background) {
 }
 
 Color _onCard(BuildContext context) => _readableOn(context.uai.card);
-Color _onCardMuted(BuildContext context) => _onCard(context).withOpacity(0.68);
+Color _onCardMuted(BuildContext context) => _onCard(context).withAlpha(173);
 Color _onPrimary(BuildContext context) => _readableOn(context.uai.primary);
 
 // Cache em memória para fotos antigas de chamadas.
@@ -68,7 +70,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
 
   Color _onCard([BuildContext? c]) => _readableOn((c ?? context).uai.card);
   Color _onCardMuted([BuildContext? c]) =>
-      _onCard(c ?? context).withOpacity(0.68);
+      _onCard(c ?? context).withAlpha(173);
   Color _onPrimary([BuildContext? c]) =>
       _readableOn((c ?? context).uai.primary);
 
@@ -96,7 +98,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
     // em base escura. Mantém a identidade da cor, mas tira o efeito "radioativo"
     // e melhora a leitura dentro do modal.
     if (_temaPrimarioMuitoClaroEmFundoEscuro()) {
-      return Color.alphaBlend(primary.withOpacity(0.52), context.uai.surface);
+      return Color.alphaBlend(primary.withAlpha(133), context.uai.surface);
     }
 
     return primary;
@@ -173,6 +175,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   void initState() {
     super.initState();
     _buscaController.addListener(_onBuscaChanged);
+    _scrollController.addListener(_onScrollPaginacaoInteligente);
     _carregarPermissoes();
     _carregarPrimeirasChamadas();
   }
@@ -180,9 +183,45 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   @override
   void dispose() {
     _buscaDebounce?.cancel();
+    _scrollController.removeListener(_onScrollPaginacaoInteligente);
     _scrollController.dispose();
     _buscaController.dispose();
     super.dispose();
+  }
+
+  void _onScrollPaginacaoInteligente() {
+    if (!_scrollController.hasClients ||
+        _isLoading ||
+        _isLoadingMais ||
+        !_temMaisChamadas ||
+        _ultimoDocumento == null) {
+      return;
+    }
+
+    // Pré-carrega antes do usuário encostar no fim. Em uma página de 10 itens,
+    // normalmente dispara enquanto o 7º/8º card está chegando à tela.
+    final position = _scrollController.position;
+    final restante = position.maxScrollExtent - position.pixels;
+    final gatilho = position.viewportDimension * 1.35;
+
+    if (restante <= gatilho) {
+      unawaited(_carregarMaisChamadas());
+    }
+  }
+
+  void _acionarPaginacaoPorIndice(int index, int totalVisivel) {
+    if (_isLoadingMais || !_temMaisChamadas || _ultimoDocumento == null) return;
+    if (totalVisivel < 7) return;
+
+    // Na primeira página (10 itens), o 7º card já prepara a próxima página.
+    // Depois disso, mantemos uma janela de 3 itens antes do fim.
+    final indiceGatilho = totalVisivel <= 10 ? 6 : totalVisivel - 3;
+    if (index >= indiceGatilho) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        unawaited(_carregarMaisChamadas());
+      });
+    }
   }
 
   void _onBuscaChanged() {
@@ -195,7 +234,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
 
       // 🔥 Busca leve:
       // Não carrega histórico infinito. Carrega só algumas páginas extras uma vez.
-      // Se quiser ver tudo, o usuário ainda pode tocar em "Carregar mais chamadas".
+      // A paginação automática continua ampliando o histórico conforme a rolagem.
       if (termo.isNotEmpty &&
           _temMaisChamadas &&
           !_carregandoBuscaCompleta &&
@@ -253,7 +292,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                'Busca otimizada: pesquisando nas chamadas carregadas. Use "Carregar mais" para ampliar o histórico.',
+                'Busca otimizada: pesquisando nas chamadas carregadas. Role a lista para ampliar o histórico automaticamente.',
               ),
               backgroundColor: context.uai.cardAlt,
               behavior: SnackBarBehavior.floating,
@@ -341,7 +380,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                         borderRadius: BorderRadius.circular(26),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.22),
+                            color: Colors.black.withAlpha(56),
                             blurRadius: 22,
                             offset: Offset(0, 10),
                           ),
@@ -366,9 +405,8 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                                         Container(
                                           padding: EdgeInsets.all(10),
                                           decoration: BoxDecoration(
-                                            color: context.uai.card.withOpacity(
-                                              0.15,
-                                            ),
+                                            color: context.uai.card.withAlpha((255.0 * (
+                                              0.15)).round()),
                                             borderRadius: BorderRadius.circular(
                                               15,
                                             ),
@@ -440,7 +478,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                                                     : '${chamadasDoMes.length} chamada${chamadasDoMes.length == 1 ? '' : 's'} no mês',
                                                 style: TextStyle(
                                                   color: context.uai.card
-                                                      .withOpacity(0.78),
+                                                      .withAlpha(199),
                                                   fontSize: 11,
                                                 ),
                                               ),
@@ -472,7 +510,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                                       LinearProgressIndicator(
                                         minHeight: 3,
                                         backgroundColor: context.uai.error
-                                            .withOpacity(0.10),
+                                            .withAlpha(26),
                                         valueColor:
                                         AlwaysStoppedAnimation<Color>(
                                           context.uai.primary,
@@ -1009,18 +1047,18 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
             color: isSelecionado
                 ? context.uai.primary
                 : temChamada
-                ? corTipo.withOpacity(0.12)
+                ? corTipo.withAlpha(31)
                 : mesAtual
                 ? context.uai.background
-                : context.uai.cardAlt.withOpacity(0.45),
+                : context.uai.cardAlt.withAlpha(115),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: isSelecionado
                   ? context.uai.primary
                   : isHoje
-                  ? context.uai.error.withOpacity(0.70)
+                  ? context.uai.error.withAlpha(179)
                   : temChamada
-                  ? corTipo.withOpacity(0.55)
+                  ? corTipo.withAlpha(140)
                   : context.uai.border,
               width: isHoje || isSelecionado ? 1.4 : 1,
             ),
@@ -1156,7 +1194,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                 borderRadius: BorderRadius.circular(24),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.18),
+                    color: Colors.black.withAlpha(46),
                     blurRadius: 18,
                     offset: Offset(0, 8),
                   ),
@@ -1210,9 +1248,9 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                         return Container(
                           margin: EdgeInsets.only(bottom: 8),
                           decoration: BoxDecoration(
-                            color: cor.withOpacity(0.07),
+                            color: cor.withAlpha(18),
                             borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: cor.withOpacity(0.18)),
+                            border: Border.all(color: cor.withAlpha(46)),
                           ),
                           child: ListTile(
                             leading: CircleAvatar(
@@ -1322,9 +1360,9 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
       width: double.infinity,
       padding: EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: context.uai.error.withOpacity(0.10),
+        color: context.uai.error.withAlpha(26),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: context.uai.error.withOpacity(0.16)),
+        border: Border.all(color: context.uai.error.withAlpha(41)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1345,9 +1383,9 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
               return Container(
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
                 decoration: BoxDecoration(
-                  color: cor.withOpacity(0.10),
+                  color: cor.withAlpha(26),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: cor.withOpacity(0.18)),
+                  border: Border.all(color: cor.withAlpha(46)),
                 ),
                 child: Text(
                   '${e.key}: ${e.value}',
@@ -1396,70 +1434,36 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
     final turmaLabel = data['turma_nome']?.toString().trim().isNotEmpty == true
         ? data['turma_nome'].toString()
         : widget.turmaNome;
+    final resumo = [
+      _buildResumoExclusaoLista('Turma', turmaLabel),
+      _buildResumoExclusaoLista('Data', dataLabel),
+      _buildResumoExclusaoLista('Presentes', '$presentes'),
+      _buildResumoExclusaoLista('Ausentes', '$ausentes'),
+      _buildResumoExclusaoLista('Total alunos', '$totalAlunos'),
+    ];
+    final errorColor = context.uai.error;
+    final textSecondary = context.uai.textSecondary;
 
-    final confirmar = await showDialog<bool>(
+    await showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (dialogContext) {
-        var excluindo = false;
-        return StatefulBuilder(
-          builder: (context, setDialogState) => AlertDialog(
-            title: const Text('Excluir chamada?'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Esta ação funciona como um CTRL + Z da chamada. A chamada será apagada, os logs serão removidos e os contadores dos alunos serão recalculados.',
-                ),
-                const SizedBox(height: 16),
-                _buildResumoExclusaoLista('Turma', turmaLabel),
-                _buildResumoExclusaoLista('Data', dataLabel),
-                _buildResumoExclusaoLista('Presentes', '$presentes'),
-                _buildResumoExclusaoLista('Ausentes', '$ausentes'),
-                _buildResumoExclusaoLista('Total alunos', '$totalAlunos'),
-                if (excluindo) ...[
-                  const SizedBox(height: 16),
-                  LinearProgressIndicator(color: context.uai.error),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Desfazendo chamada e recalculando contadores...',
-                    style: TextStyle(
-                      color: context.uai.textSecondary,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ],
+      builder: (_) => ConfirmarExclusaoChamadaDialog(
+        resumo: resumo,
+        errorColor: errorColor,
+        textSecondary: textSecondary,
+        onConfirm: () => _excluirChamadaLista(chamada),
+        onUnexpectedError: (error) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(_mensagemErroExcluirChamadaLista(error)),
+              backgroundColor: context.uai.error,
+              behavior: SnackBarBehavior.floating,
             ),
-            actions: [
-              TextButton(
-                onPressed: excluindo
-                    ? null
-                    : () => Navigator.pop(dialogContext, false),
-                child: const Text('Cancelar'),
-              ),
-              ElevatedButton(
-                onPressed: excluindo
-                    ? null
-                    : () => Navigator.pop(dialogContext, true),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: context.uai.error,
-                  foregroundColor: _readableOn(context.uai.error),
-                ),
-                child: excluindo
-                    ? const Text('Excluindo...')
-                    : const Text('Excluir chamada'),
-              ),
-            ],
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
-
-    if (confirmar == true) {
-      await _excluirChamadaLista(chamada);
-    }
   }
 
   Widget _buildResumoExclusaoLista(String label, String valor) {
@@ -1494,6 +1498,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   Future<void> _excluirChamadaLista(
       QueryDocumentSnapshot<Map<String, dynamic>> chamada,
       ) async {
+    if (!mounted || _excluindoChamadaId != null) return;
     final data = chamada.data();
     final turmaId = data['turma_id']?.toString().trim().isNotEmpty == true
         ? data['turma_id'].toString()
@@ -1506,6 +1511,10 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
         'excluirChamada',
       );
       await callable.call({'chamadaId': chamada.id, 'turmaId': turmaId});
+      unawaited(SessionLogService.instance.recordEntityOperation(
+        module: 'chamadas', entityType: 'chamada',
+        entityId: chamada.id, operation: 'excluiu', result: 'sucesso',
+      ));
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1517,6 +1526,10 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
       );
       await _carregarPrimeirasChamadas();
     } catch (e) {
+      unawaited(SessionLogService.instance.recordEntityOperation(
+        module: 'chamadas', entityType: 'chamada',
+        entityId: chamada.id, operation: 'excluiu', result: 'falha',
+      ));
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1599,8 +1612,9 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
     final today = DateTime(now.year, now.month, now.day);
     final chamadaDay = DateTime(date.year, date.month, date.day);
 
-    if (chamadaDay == today)
+    if (chamadaDay == today) {
       return 'Hoje • ${DateFormat('HH:mm').format(date)}';
+    }
     if (chamadaDay == today.subtract(const Duration(days: 1))) {
       return 'Ontem • ${DateFormat('HH:mm').format(date)}';
     }
@@ -1675,8 +1689,8 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
     final headerBg = _modalHeaderBg();
     final headerGradient = _modalHeaderGradient(headerBg);
     final headerFg = _readableOn(headerBg);
-    final headerMuted = headerFg.withOpacity(0.78);
-    final headerGlass = headerFg.withOpacity(0.13);
+    final headerMuted = headerFg.withAlpha(199);
+    final headerGlass = headerFg.withAlpha(33);
     final progressColor = _ensureVisible(context.uai.success, headerBg);
 
     return Container(
@@ -1687,7 +1701,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
         borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: headerBg.withOpacity(0.25),
+            color: headerBg.withAlpha(64),
             blurRadius: 16,
             offset: Offset(0, 8),
           ),
@@ -1703,7 +1717,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                 decoration: BoxDecoration(
                   color: headerGlass,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: headerFg.withOpacity(0.12)),
+                  border: Border.all(color: headerFg.withAlpha(31)),
                 ),
                 child: Icon(
                   Icons.assignment_turned_in_rounded,
@@ -1739,7 +1753,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                 decoration: BoxDecoration(
                   color: headerGlass,
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: headerFg.withOpacity(0.12)),
+                  border: Border.all(color: headerFg.withAlpha(31)),
                 ),
                 child: Text(
                   '${(media * 100).round()}%',
@@ -1784,7 +1798,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
             child: LinearProgressIndicator(
               value: media,
               minHeight: 8,
-              backgroundColor: headerFg.withOpacity(0.20),
+              backgroundColor: headerFg.withAlpha(51),
               valueColor: AlwaysStoppedAnimation<Color>(progressColor),
             ),
           ),
@@ -1806,9 +1820,9 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
         margin: EdgeInsets.only(right: 8),
         padding: EdgeInsets.symmetric(vertical: 10, horizontal: 8),
         decoration: BoxDecoration(
-          color: headerFg.withOpacity(0.12),
+          color: headerFg.withAlpha(31),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: headerFg.withOpacity(0.15)),
+          border: Border.all(color: headerFg.withAlpha(38)),
         ),
         child: Column(
           children: [
@@ -1825,7 +1839,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
             SizedBox(height: 2),
             Text(
               label,
-              style: TextStyle(color: headerFg.withOpacity(0.76), fontSize: 10),
+              style: TextStyle(color: headerFg.withAlpha(194), fontSize: 10),
             ),
           ],
         ),
@@ -1909,10 +1923,10 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
               width: double.infinity,
               padding: EdgeInsets.symmetric(horizontal: 12, vertical: 9),
               decoration: BoxDecoration(
-                color: context.uai.success.withOpacity(0.10),
+                color: context.uai.success.withAlpha(26),
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
-                  color: context.uai.success.withOpacity(0.16),
+                  color: context.uai.success.withAlpha(41),
                 ),
               ),
               child: Row(
@@ -2106,7 +2120,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
         borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: statusAccent.withOpacity(0.10),
+            color: statusAccent.withAlpha(26),
             blurRadius: 14,
             offset: Offset(0, 6),
           ),
@@ -2119,7 +2133,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(22),
-          side: BorderSide(color: statusAccent.withOpacity(0.18)),
+          side: BorderSide(color: statusAccent.withAlpha(46)),
         ),
         child: Theme(
           data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
@@ -2161,7 +2175,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                         style: TextStyle(
                           fontSize: 8,
                           fontWeight: FontWeight.w700,
-                          color: cardFg.withOpacity(0.78),
+                          color: cardFg.withAlpha(199),
                         ),
                       ),
                     ],
@@ -2212,10 +2226,10 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                   Container(
                     margin: EdgeInsets.only(left: 8),
                     decoration: BoxDecoration(
-                      color: context.uai.info.withOpacity(0.10),
+                      color: context.uai.info.withAlpha(26),
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
-                        color: context.uai.info.withOpacity(0.16),
+                        color: context.uai.info.withAlpha(41),
                       ),
                     ),
                     child: IconButton(
@@ -2234,10 +2248,10 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                   Container(
                     margin: EdgeInsets.only(left: 8),
                     decoration: BoxDecoration(
-                      color: context.uai.error.withOpacity(0.10),
+                      color: context.uai.error.withAlpha(26),
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
-                        color: context.uai.error.withOpacity(0.16),
+                        color: context.uai.error.withAlpha(41),
                       ),
                     ),
                     child: IconButton(
@@ -2376,9 +2390,9 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.10),
+        color: accent.withAlpha(26),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: accent.withOpacity(0.20)),
+        border: Border.all(color: accent.withAlpha(51)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -2413,9 +2427,9 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.10),
+        color: accent.withAlpha(26),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: accent.withOpacity(0.22)),
+        border: Border.all(color: accent.withAlpha(56)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -2465,12 +2479,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   }
 
   String? _fotoAlunoChamada(Map<String, dynamic> alunoMap) {
-    final fotoSnapshot = _alunoFotoFromMap(alunoMap);
-    if (fotoSnapshot != null && fotoSnapshot.isNotEmpty) return fotoSnapshot;
-
-    final alunoId = _alunoIdFromMap(alunoMap);
-    if (alunoId.isEmpty) return null;
-    return _FotosAlunosChamadaCache.fotosPorAlunoId[alunoId];
+    return AlunoFotoResolver.resolverSincrono(alunoMap);
   }
 
   List<String> _idsAlunosSemFotoNaChamada(Iterable<dynamic> alunosRaw) {
@@ -2481,8 +2490,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
       final alunoMap = Map<String, dynamic>.from(raw);
       final alunoId = _alunoIdFromMap(alunoMap);
       if (alunoId.isEmpty) continue;
-      if (_alunoFotoFromMap(alunoMap) != null) continue;
-      if (_FotosAlunosChamadaCache.idsConsultados.contains(alunoId)) continue;
+      if (AlunoFotoResolver.atualEmCache(alunoId) != null) continue;
       ids.add(alunoId);
     }
 
@@ -2490,35 +2498,9 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   }
 
   Future<void> _carregarFotosFallbackDosAlunos(List<String> alunoIds) async {
-    final pendentes = alunoIds
-        .where((id) => id.trim().isNotEmpty)
-        .where((id) => !_FotosAlunosChamadaCache.idsConsultados.contains(id))
-        .toSet()
-        .toList();
-
-    if (pendentes.isEmpty) return;
-
-    for (var i = 0; i < pendentes.length; i += 10) {
-      final lote = pendentes.skip(i).take(10).toList();
-      _FotosAlunosChamadaCache.idsConsultados.addAll(lote);
-
-      try {
-        final snapshot = await _firestore
-            .collection('alunos')
-            .where(FieldPath.documentId, whereIn: lote)
-            .get(const GetOptions(source: Source.server));
-
-        for (final doc in snapshot.docs) {
-          final foto = _alunoFotoFromMap(doc.data());
-          if (foto != null && foto.isNotEmpty) {
-            _FotosAlunosChamadaCache.fotosPorAlunoId[doc.id] = foto;
-          }
-        }
-      } catch (e) {
-        debugPrint('⚠️ Erro ao carregar fotos em lote da chamada: $e');
-      }
-    }
-
+    final ids = alunoIds.where((id) => id.trim().isNotEmpty).toSet();
+    if (ids.isEmpty) return;
+    await AlunoFotoResolver.carregarAtuaisEmLote(ids);
     if (mounted) setState(() {});
   }
 
@@ -2552,6 +2534,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   }
 
   Widget _buildAlunoAvatarResumo({
+    required String alunoId,
     required String nome,
     required bool presente,
     required String? fotoUrl,
@@ -2560,7 +2543,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
     final statusBase = presente ? context.uai.success : context.uai.error;
     final statusAccent = _ensureVisible(statusBase, background);
     final avatarBg = Color.alphaBlend(
-      statusAccent.withOpacity(0.18),
+      statusAccent.withAlpha(46),
       background,
     );
     final avatarFg = _readableOn(avatarBg);
@@ -2571,44 +2554,38 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
       decoration: BoxDecoration(
         color: avatarBg,
         shape: BoxShape.circle,
-        border: Border.all(color: statusAccent.withOpacity(0.25)),
+        border: Border.all(color: statusAccent.withAlpha(64)),
       ),
       clipBehavior: Clip.antiAlias,
       child: fotoUrl != null && fotoUrl.isNotEmpty
-          ? CachedNetworkImage(
-        imageUrl: fotoUrl,
-        fit: BoxFit.cover,
-        placeholder: (context, url) => Center(
-          child: Text(
-            _iniciaisAluno(nome),
-            style: TextStyle(
-              color: avatarFg,
-              fontWeight: FontWeight.w900,
-              fontSize: 11,
-            ),
-          ),
-        ),
-        errorWidget: (context, url, error) => Center(
-          child: Text(
-            _iniciaisAluno(nome),
-            style: TextStyle(
-              color: avatarFg,
-              fontWeight: FontWeight.w900,
-              fontSize: 11,
-            ),
-          ),
-        ),
-      )
+          ? UaiStudentPhoto(
+              studentId: alunoId,
+              imageUrl: fotoUrl,
+              profile: UaiStudentPhotoProfile.compact,
+              fit: BoxFit.cover,
+              width: 34,
+              height: 34,
+              fallback: Center(
+                child: Text(
+                  _iniciaisAluno(nome),
+                  style: TextStyle(
+                    color: avatarFg,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+            )
           : Center(
-        child: Text(
-          _iniciaisAluno(nome),
-          style: TextStyle(
-            color: avatarFg,
-            fontWeight: FontWeight.w900,
-            fontSize: 11,
-          ),
-        ),
-      ),
+              child: Text(
+                _iniciaisAluno(nome),
+                style: TextStyle(
+                  color: avatarFg,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 11,
+                ),
+              ),
+            ),
     );
   }
 
@@ -2654,7 +2631,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
 
     final statusBase = presente ? context.uai.success : context.uai.error;
     final rowBg = Color.alphaBlend(
-      statusBase.withOpacity(0.08),
+      statusBase.withAlpha(20),
       context.uai.cardAlt,
     );
     final rowFg = _readableOn(rowBg);
@@ -2666,7 +2643,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
       decoration: BoxDecoration(
         color: rowBg,
         borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: statusAccent.withOpacity(0.20)),
+        border: Border.all(color: statusAccent.withAlpha(51)),
       ),
       child: Material(
         color: Colors.transparent,
@@ -2678,6 +2655,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
             child: Row(
               children: [
                 _buildAlunoAvatarResumo(
+                  alunoId: alunoId,
                   nome: nome,
                   presente: presente,
                   fotoUrl: fotoUrl,
@@ -2732,7 +2710,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                               : 'Tocar para abrir perfil',
                           style: TextStyle(
                             fontSize: 10,
-                            color: rowFg.withOpacity(0.58),
+                            color: rowFg.withAlpha(148),
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -2746,9 +2724,9 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: statusAccent.withOpacity(0.12),
+                    color: statusAccent.withAlpha(31),
                     borderRadius: BorderRadius.circular(99),
-                    border: Border.all(color: statusAccent.withOpacity(0.18)),
+                    border: Border.all(color: statusAccent.withAlpha(46)),
                   ),
                   child: Text(
                     presente ? 'PRESENTE' : 'AUSENTE',
@@ -2765,7 +2743,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                       ? Icons.info_outline_rounded
                       : Icons.chevron_right_rounded,
                   size: 18,
-                  color: rowFg.withOpacity(0.50),
+                  color: rowFg.withAlpha(128),
                 ),
               ],
             ),
@@ -2786,7 +2764,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.10),
+        color: accent.withAlpha(26),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -2805,7 +2783,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
           SizedBox(width: 4),
           Text(
             label,
-            style: TextStyle(fontSize: 10, color: accent.withOpacity(0.90)),
+            style: TextStyle(fontSize: 10, color: accent.withAlpha(230)),
           ),
         ],
       ),
@@ -2853,7 +2831,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                       Theme.of(context).appBarTheme.backgroundColor ??
                           context.uai.primary,
                     ))
-                    .withOpacity(0.72),
+                    .withAlpha(184),
               ),
             ),
           ],
@@ -2874,7 +2852,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
             onPressed: _carregarPrimeirasChamadas,
             icon: Container(
               decoration: BoxDecoration(
-                color: context.uai.card.withOpacity(0.1),
+                color: context.uai.card.withAlpha(26),
                 shape: BoxShape.circle,
               ),
               padding: EdgeInsets.all(6),
@@ -2940,17 +2918,23 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
             else
               SliverList(
                 delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                    if (index == chamadasFiltradas.length)
+                  (context, index) {
+                    if (index == chamadasFiltradas.length) {
                       return _buildLoadingMaisItem();
+                    }
+
+                    _acionarPaginacaoPorIndice(
+                      index,
+                      chamadasFiltradas.length,
+                    );
+
                     return _buildCardChamada(
                       chamadasFiltradas[index],
                       index,
                     );
                   },
                   childCount:
-                  chamadasFiltradas.length +
-                      (_temMaisChamadas ? 1 : 0),
+                      chamadasFiltradas.length + (_isLoadingMais ? 1 : 0),
                 ),
               ),
             SliverToBoxAdapter(child: SizedBox(height: 90)),
@@ -2989,39 +2973,40 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   }
 
   Widget _buildLoadingMaisItem() {
-    return Container(
-      margin: EdgeInsets.symmetric(vertical: 18),
+    if (!_isLoadingMais) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
       child: Center(
-        child: _isLoadingMais
-            ? Column(
-          children: [
-            CircularProgressIndicator(color: context.uai.primary),
-            SizedBox(height: 8),
-            Text(
-              'Carregando mais chamadas...',
-              style: TextStyle(
-                fontSize: 12,
-                color: context.uai.textSecondary,
-              ),
-            ),
-          ],
-        )
-            : ElevatedButton.icon(
-          onPressed: _carregarMaisChamadas,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: context.uai.surface,
-            foregroundColor: context.uai.primary,
-            elevation: 1,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(22),
-            ),
-            padding: const EdgeInsets.symmetric(
-              horizontal: 18,
-              vertical: 12,
-            ),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          decoration: BoxDecoration(
+            color: context.uai.card,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: context.uai.border),
           ),
-          icon: Icon(Icons.history_rounded, size: 16),
-          label: Text('Carregar mais chamadas'),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 15,
+                height: 15,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: context.uai.primary,
+                ),
+              ),
+              const SizedBox(width: 9),
+              Text(
+                'Carregando histórico...',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: context.uai.textSecondary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -3046,7 +3031,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                       valueColor: AlwaysStoppedAnimation<Color>(
                         context.uai.primary,
                       ),
-                      backgroundColor: context.uai.error.withOpacity(0.16),
+                      backgroundColor: context.uai.error.withAlpha(41),
                     ),
                   ),
                 ),
@@ -3090,13 +3075,13 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
               width: 108,
               height: 108,
               decoration: BoxDecoration(
-                color: context.uai.error.withOpacity(0.10),
+                color: context.uai.error.withAlpha(26),
                 shape: BoxShape.circle,
               ),
               child: Icon(
                 Icons.error_outline_rounded,
                 size: 54,
-                color: context.uai.error.withOpacity(0.70),
+                color: context.uai.error.withAlpha(179),
               ),
             ),
             SizedBox(height: 20),
@@ -3154,7 +3139,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
               width: 124,
               height: 124,
               decoration: BoxDecoration(
-                color: context.uai.error.withOpacity(0.16),
+                color: context.uai.error.withAlpha(41),
                 shape: BoxShape.circle,
               ),
               child: Icon(
@@ -3205,6 +3190,94 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Mantém a confirmação visível até a operação terminar, inclusive se falhar.
+class ConfirmarExclusaoChamadaDialog extends StatefulWidget {
+  final List<Widget> resumo;
+  final Color errorColor;
+  final Color textSecondary;
+  final Future<void> Function() onConfirm;
+  final void Function(Object)? onUnexpectedError;
+
+  const ConfirmarExclusaoChamadaDialog({
+    super.key,
+    required this.resumo,
+    required this.errorColor,
+    required this.textSecondary,
+    required this.onConfirm,
+    this.onUnexpectedError,
+  });
+
+  @override
+  State<ConfirmarExclusaoChamadaDialog> createState() =>
+      _ConfirmarExclusaoChamadaDialogState();
+}
+
+class _ConfirmarExclusaoChamadaDialogState
+    extends State<ConfirmarExclusaoChamadaDialog> {
+  bool _excluindo = false;
+
+  Future<void> _confirmar() async {
+    if (_excluindo) return;
+    setState(() => _excluindo = true);
+    try {
+      await widget.onConfirm();
+    } catch (error) {
+      widget.onUnexpectedError?.call(error);
+    } finally {
+      if (mounted) Navigator.of(context).pop();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: !_excluindo,
+      child: AlertDialog(
+        title: const Text('Excluir chamada?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Esta ação funciona como um CTRL + Z da chamada. A chamada será apagada, os logs serão removidos e os contadores dos alunos serão recalculados.',
+            ),
+            const SizedBox(height: 16),
+            ...widget.resumo,
+            if (_excluindo) ...[
+              const SizedBox(height: 16),
+              LinearProgressIndicator(color: widget.errorColor),
+              const SizedBox(height: 10),
+              Text(
+                'Desfazendo chamada e recalculando contadores...',
+                style: TextStyle(
+                  color: widget.textSecondary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: _excluindo ? null : () => Navigator.of(context).pop(),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: _excluindo ? null : _confirmar,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: widget.errorColor,
+              foregroundColor: _readableOn(widget.errorColor),
+            ),
+            child: _excluindo
+                ? const Text('Excluindo...')
+                : const Text('Excluir chamada'),
+          ),
+        ],
       ),
     );
   }
@@ -3387,8 +3460,9 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
       if (_filtroAluno == 'PRESENTES' && !presente) return false;
       if (_filtroAluno == 'AUSENTES' && presente) return false;
       if (_filtroAluno == 'COM_OBS' &&
-          (_observacaoControllers[a['aluno_id']]?.text.trim().isEmpty ?? true))
+          (_observacaoControllers[a['aluno_id']]?.text.trim().isEmpty ?? true)) {
         return false;
+      }
 
       if (_buscaAluno.isEmpty) return true;
       final termo = _normalizar(_buscaAluno);
@@ -3481,7 +3555,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
     // em base escura. Mantém a identidade da cor, mas tira o efeito "radioativo"
     // e melhora a leitura dentro do modal.
     if (_temaPrimarioMuitoClaroEmFundoEscuro()) {
-      return Color.alphaBlend(primary.withOpacity(0.52), context.uai.surface);
+      return Color.alphaBlend(primary.withAlpha(133), context.uai.surface);
     }
 
     return primary;
@@ -3631,6 +3705,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
     );
     if (data == null) return;
 
+    if (!mounted) return;
     final hora = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(_dataChamadaEdit),
@@ -3706,10 +3781,10 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
             Container(
               padding: EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: context.uai.warning.withOpacity(0.10),
+                color: context.uai.warning.withAlpha(26),
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
-                  color: context.uai.warning.withOpacity(0.28),
+                  color: context.uai.warning.withAlpha(71),
                 ),
               ),
               child: Text(
@@ -4008,6 +4083,10 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
       });
 
       await batch.commit();
+      unawaited(SessionLogService.instance.recordEntityOperation(
+        module: 'chamadas', entityType: 'chamada',
+        entityId: widget.chamadaId, operation: 'atualizou', result: 'sucesso',
+      ));
 
       setState(() {
         _operacaoAtual = 'Recalculando últimas presenças...';
@@ -4049,6 +4128,10 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
         );
       }
     } catch (e) {
+      unawaited(SessionLogService.instance.recordEntityOperation(
+        module: 'chamadas', entityType: 'chamada',
+        entityId: widget.chamadaId, operation: 'atualizou', result: 'falha',
+      ));
       debugPrint('Erro ao salvar edição completa: $e');
       if (mounted) {
         setState(() {
@@ -4159,9 +4242,9 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
             Container(
               padding: EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: context.uai.error.withOpacity(0.10),
+                color: context.uai.error.withAlpha(26),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: context.uai.error.withOpacity(0.28)),
+                border: Border.all(color: context.uai.error.withAlpha(71)),
               ),
               child: Text(
                 'Atenção: esta operação não pode ser desfeita.',
@@ -4287,6 +4370,10 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
         'chamadaId': widget.chamadaId,
         'turmaId': widget.chamadaData['turma_id'],
       });
+      unawaited(SessionLogService.instance.recordEntityOperation(
+        module: 'chamadas', entityType: 'chamada',
+        entityId: widget.chamadaId, operation: 'excluiu', result: 'sucesso',
+      ));
 
       if (!mounted) return;
       setState(() {
@@ -4317,6 +4404,10 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
         );
       }
     } catch (e) {
+      unawaited(SessionLogService.instance.recordEntityOperation(
+        module: 'chamadas', entityType: 'chamada',
+        entityId: widget.chamadaId, operation: 'excluiu', result: 'falha',
+      ));
       debugPrint('Erro ao excluir chamada: $e');
       if (mounted) {
         setState(() {
@@ -4387,8 +4478,8 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
     final headerBg = _modalHeaderBg();
     final headerGradient = _modalHeaderGradient(headerBg);
     final headerFg = _readableOn(headerBg);
-    final headerMuted = headerFg.withOpacity(0.78);
-    final headerSoft = headerFg.withOpacity(0.14);
+    final headerMuted = headerFg.withAlpha(199);
+    final headerSoft = headerFg.withAlpha(36);
     final progressColor = _ensureVisible(context.uai.success, headerBg);
 
     return Column(
@@ -4408,7 +4499,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
                     width: 44,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: headerFg.withOpacity(0.35),
+                      color: headerFg.withAlpha(89),
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -4421,7 +4512,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
                       decoration: BoxDecoration(
                         color: headerSoft,
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: headerFg.withOpacity(0.12)),
+                        border: Border.all(color: headerFg.withAlpha(31)),
                       ),
                       child: Icon(
                         Icons.edit_calendar_rounded,
@@ -4503,7 +4594,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
                   child: LinearProgressIndicator(
                     value: percentual,
                     minHeight: 7,
-                    backgroundColor: headerFg.withOpacity(0.20),
+                    backgroundColor: headerFg.withAlpha(51),
                     valueColor: AlwaysStoppedAnimation<Color>(progressColor),
                   ),
                 ),
@@ -4554,9 +4645,9 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
       child: Container(
         padding: EdgeInsets.symmetric(vertical: 10, horizontal: 8),
         decoration: BoxDecoration(
-          color: headerFg.withOpacity(0.13),
+          color: headerFg.withAlpha(33),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: headerFg.withOpacity(0.12)),
+          border: Border.all(color: headerFg.withAlpha(31)),
         ),
         child: Column(
           children: [
@@ -4573,7 +4664,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
             Text(
               label,
               style: TextStyle(
-                color: headerFg.withOpacity(0.82),
+                color: headerFg.withAlpha(209),
                 fontSize: 10,
                 fontWeight: FontWeight.w700,
               ),
@@ -4588,7 +4679,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
     final outerBg = context.uai.background;
     final fieldBg = context.uai.card;
     final fieldFg = _readableOn(fieldBg);
-    final mutedFg = fieldFg.withOpacity(0.66);
+    final mutedFg = fieldFg.withAlpha(168);
     final primaryOnField = _ensureVisible(context.uai.primary, fieldBg);
     final border = context.uai.border;
 
@@ -4673,7 +4764,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
           ),
           SizedBox(height: 12),
           DropdownButtonFormField<String>(
-            value: _tipoAulaEdit,
+            initialValue: _tipoAulaEdit,
             dropdownColor: context.uai.surface,
             iconEnabledColor: primaryOnField,
             style: TextStyle(color: fieldFg, fontWeight: FontWeight.w800),
@@ -4743,7 +4834,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
       ) {
     final base = context.uai.card;
     final accent = _ensureVisible(color, base);
-    final fill = Color.alphaBlend(accent.withOpacity(0.10), base);
+    final fill = Color.alphaBlend(accent.withAlpha(26), base);
 
     return InkWell(
       onTap: _isSaving || _isDeleting ? null : onTap,
@@ -4753,7 +4844,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
         decoration: BoxDecoration(
           color: fill,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: accent.withOpacity(0.25)),
+          border: Border.all(color: accent.withAlpha(64)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -4787,12 +4878,12 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
           cursorColor: iconColor,
           decoration: InputDecoration(
             hintText: 'Buscar aluno ou observação...',
-            hintStyle: TextStyle(color: fieldFg.withOpacity(0.55)),
+            hintStyle: TextStyle(color: fieldFg.withAlpha(140)),
             prefixIcon: Icon(Icons.search_rounded, color: iconColor),
             suffixIcon: _buscaAluno.isEmpty
                 ? null
                 : IconButton(
-              icon: Icon(Icons.close, color: fieldFg.withOpacity(0.72)),
+              icon: Icon(Icons.close, color: fieldFg.withAlpha(184)),
               onPressed: () => _buscaController.clear(),
             ),
             filled: true,
@@ -4828,10 +4919,9 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
     final selected = _filtroAluno == value;
     final selectedBg = context.uai.primary;
     final unselectedBg = context.uai.cardAlt;
-    final bg = selected ? selectedBg : unselectedBg;
     final fg = selected
         ? _readableOn(selectedBg)
-        : _readableOn(unselectedBg).withOpacity(0.82);
+        : _readableOn(unselectedBg).withAlpha(209);
     final borderColor = selected ? selectedBg : context.uai.border;
 
     return Expanded(
@@ -4851,7 +4941,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
           selectedColor: selectedBg,
           backgroundColor: unselectedBg,
           disabledColor: context.uai.border,
-          side: BorderSide(color: borderColor.withOpacity(selected ? 1 : 0.55)),
+          side: BorderSide(color: borderColor.withAlpha(selected ? 255 : 140)),
           checkmarkColor: fg,
         ),
       ),
@@ -4864,7 +4954,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
     final presente = aluno['presente'] == true;
     final statusBase = presente ? context.uai.success : context.uai.error;
     final cardBg = Color.alphaBlend(
-      statusBase.withOpacity(0.12),
+      statusBase.withAlpha(31),
       context.uai.cardAlt,
     );
     final statusAccent = _ensureVisible(statusBase, cardBg);
@@ -4879,7 +4969,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
       decoration: BoxDecoration(
         color: cardBg,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: statusAccent.withOpacity(0.28)),
+        border: Border.all(color: statusAccent.withAlpha(71)),
       ),
       child: Padding(
         padding: EdgeInsets.all(12),
@@ -4889,7 +4979,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
               children: [
                 Switch(
                   value: presente,
-                  activeColor: statusAccent,
+                  activeThumbColor: statusAccent,
                   onChanged: _isSaving || _isDeleting
                       ? null
                       : (v) => setState(() => aluno['presente'] = v),
@@ -4913,7 +5003,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
                         presente ? 'Presente' : 'Ausente',
                         style: TextStyle(
                           fontSize: 11,
-                          color: cardFg.withOpacity(0.72),
+                          color: cardFg.withAlpha(184),
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -4931,8 +5021,9 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
                     setState(() {
                       final atual =
                           _observacaoControllers[alunoId]?.text ?? '';
-                      if (atual.isEmpty)
+                      if (atual.isEmpty) {
                         _observacaoControllers[alunoId]?.text = '';
+                      }
                     });
                   },
                 ),
@@ -4944,7 +5035,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
               enabled: !_isSaving && !_isDeleting,
               decoration: InputDecoration(
                 hintText: 'Observação do aluno...',
-                hintStyle: TextStyle(color: noteFg.withOpacity(0.55)),
+                hintStyle: TextStyle(color: noteFg.withAlpha(140)),
                 prefixIcon: Icon(Icons.note_rounded, size: 18, color: warning),
                 filled: true,
                 fillColor: noteBg,
@@ -4984,7 +5075,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
     final buttonBg = _appButtonBg();
     final buttonFg = _appButtonFg();
     final footerBg = context.uai.card;
-    final cancelFg = _readableOn(footerBg).withOpacity(0.76);
+    final cancelFg = _readableOn(footerBg).withAlpha(194);
 
     return Container(
       padding: EdgeInsets.all(16),
@@ -4992,7 +5083,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
         color: footerBg,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
+            color: Colors.black.withAlpha(15),
             blurRadius: 12,
             offset: Offset(0, -5),
           ),
@@ -5065,7 +5156,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
     final headerBg = _modalHeaderBg();
     final headerGradient = _modalHeaderGradient(headerBg);
     final headerFg = _readableOn(headerBg);
-    final headerMuted = headerFg.withOpacity(0.80);
+    final headerMuted = headerFg.withAlpha(204);
     final progressColor = _ensureVisible(context.uai.success, headerBg);
 
     return Column(
@@ -5085,7 +5176,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
                     width: 44,
                     height: 4,
                     decoration: BoxDecoration(
-                      color: headerFg.withOpacity(0.30),
+                      color: headerFg.withAlpha(77),
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -5096,9 +5187,9 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
                     Container(
                       padding: EdgeInsets.all(14),
                       decoration: BoxDecoration(
-                        color: headerFg.withOpacity(0.18),
+                        color: headerFg.withAlpha(46),
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: headerFg.withOpacity(0.12)),
+                        border: Border.all(color: headerFg.withAlpha(31)),
                       ),
                       child: Icon(
                         _isDeleting
@@ -5137,9 +5228,9 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
                         vertical: 6,
                       ),
                       decoration: BoxDecoration(
-                        color: headerFg.withOpacity(0.18),
+                        color: headerFg.withAlpha(46),
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: headerFg.withOpacity(0.12)),
+                        border: Border.all(color: headerFg.withAlpha(31)),
                       ),
                       child: Text(
                         '$_etapaAtual/$_totalEtapas',
@@ -5156,7 +5247,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
                   borderRadius: BorderRadius.circular(10),
                   child: LinearProgressIndicator(
                     value: progress,
-                    backgroundColor: headerFg.withOpacity(0.20),
+                    backgroundColor: headerFg.withAlpha(51),
                     valueColor: AlwaysStoppedAnimation<Color>(progressColor),
                     minHeight: 9,
                   ),
@@ -5175,7 +5266,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
                   Container(
                     padding: EdgeInsets.all(26),
                     decoration: BoxDecoration(
-                      color: context.uai.error.withOpacity(0.10),
+                      color: context.uai.error.withAlpha(26),
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
@@ -5317,7 +5408,7 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
     final primary = context.uai.primary;
 
     if (_temaPrimarioMuitoClaroEmFundoEscuro(context)) {
-      return Color.alphaBlend(primary.withOpacity(0.52), context.uai.surface);
+      return Color.alphaBlend(primary.withAlpha(133), context.uai.surface);
     }
 
     return primary;
@@ -5385,52 +5476,21 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
   }
 
   String? _fotoAlunoDetalhes(Map<String, dynamic> alunoMap) {
-    final fotoSnapshot = _alunoFotoFromMap(alunoMap);
-    if (fotoSnapshot != null && fotoSnapshot.isNotEmpty) return fotoSnapshot;
-
-    final alunoId = _alunoIdFromMap(alunoMap);
-    if (alunoId.isEmpty) return null;
-    return _FotosAlunosChamadaCache.fotosPorAlunoId[alunoId];
+    return AlunoFotoResolver.resolverSincrono(alunoMap);
   }
 
   Future<void> _carregarFotosFallbackDetalhes() async {
     final alunosRaw = widget.data['alunos'];
     if (alunosRaw is! List) return;
-
     final ids = <String>{};
     for (final raw in alunosRaw) {
       if (raw is! Map) continue;
       final alunoMap = Map<String, dynamic>.from(raw);
-      final alunoId = _alunoIdFromMap(alunoMap);
-      if (alunoId.isEmpty) continue;
-      if (_alunoFotoFromMap(alunoMap) != null) continue;
-      if (_FotosAlunosChamadaCache.idsConsultados.contains(alunoId)) continue;
-      ids.add(alunoId);
+      final id = _alunoIdFromMap(alunoMap);
+      if (id.isNotEmpty) ids.add(id);
     }
-
     if (ids.isEmpty) return;
-
-    for (var i = 0; i < ids.length; i += 10) {
-      final lote = ids.skip(i).take(10).toList();
-      _FotosAlunosChamadaCache.idsConsultados.addAll(lote);
-
-      try {
-        final snapshot = await _firestore
-            .collection('alunos')
-            .where(FieldPath.documentId, whereIn: lote)
-            .get(const GetOptions(source: Source.server));
-
-        for (final doc in snapshot.docs) {
-          final foto = _alunoFotoFromMap(doc.data());
-          if (foto != null && foto.isNotEmpty) {
-            _FotosAlunosChamadaCache.fotosPorAlunoId[doc.id] = foto;
-          }
-        }
-      } catch (e) {
-        debugPrint('⚠️ Erro ao carregar fotos em lote nos detalhes: $e');
-      }
-    }
-
+    await AlunoFotoResolver.carregarAtuaisEmLote(ids);
     if (mounted) setState(() {});
   }
 
@@ -5548,7 +5608,7 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
     final headerBg = _headerDetalhesBg(context);
     final headerGradient = _headerDetalhesGradient(headerBg);
     final headerFg = _readableOn(headerBg);
-    final headerMuted = headerFg.withOpacity(0.78);
+    final headerMuted = headerFg.withAlpha(199);
     final statusAccent = _ensureVisible(
       _getStatusColor(context, percentual),
       headerBg,
@@ -5575,7 +5635,7 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
                       Theme.of(context).appBarTheme.backgroundColor ??
                           context.uai.primary,
                     ))
-                    .withOpacity(0.72),
+                    .withAlpha(184),
               ),
             ),
           ],
@@ -5604,7 +5664,7 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
                 borderRadius: BorderRadius.circular(22),
                 boxShadow: [
                   BoxShadow(
-                    color: headerBg.withOpacity(0.25),
+                    color: headerBg.withAlpha(64),
                     blurRadius: 16,
                     offset: const Offset(0, 7),
                   ),
@@ -5641,9 +5701,9 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: headerFg.withOpacity(0.16),
+                          color: headerFg.withAlpha(41),
                           shape: BoxShape.circle,
-                          border: Border.all(color: headerFg.withOpacity(0.14)),
+                          border: Border.all(color: headerFg.withAlpha(36)),
                         ),
                         child: Icon(
                           Icons.assignment_turned_in_rounded,
@@ -5701,7 +5761,7 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
                         child: CircularProgressIndicator(
                           value: percentual,
                           strokeWidth: 12,
-                          backgroundColor: headerFg.withOpacity(0.22),
+                          backgroundColor: headerFg.withAlpha(56),
                           valueColor: AlwaysStoppedAnimation<Color>(
                             statusAccent,
                           ),
@@ -5895,14 +5955,14 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
             cursorColor: iconColor,
             decoration: InputDecoration(
               hintText: 'Buscar aluno ou observação...',
-              hintStyle: TextStyle(color: fieldFg.withOpacity(0.55)),
+              hintStyle: TextStyle(color: fieldFg.withAlpha(140)),
               prefixIcon: Icon(Icons.search_rounded, color: iconColor),
               suffixIcon: _busca.isEmpty
                   ? null
                   : IconButton(
                 icon: Icon(
                   Icons.close_rounded,
-                  color: fieldFg.withOpacity(0.72),
+                  color: fieldFg.withAlpha(184),
                 ),
                 onPressed: () => _buscaController.clear(),
               ),
@@ -5991,9 +6051,9 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
           decoration: BoxDecoration(
             color: selected
                 ? bg
-                : Color.alphaBlend(fg.withOpacity(0.08), context.uai.card),
+                : Color.alphaBlend(fg.withAlpha(20), context.uai.card),
             borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: selected ? bg : fg.withOpacity(0.20)),
+            border: Border.all(color: selected ? bg : fg.withAlpha(51)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -6024,9 +6084,9 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.14),
+        color: color.withAlpha(36),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withOpacity(0.16)),
+        border: Border.all(color: color.withAlpha(41)),
       ),
       child: Row(
         children: [
@@ -6083,11 +6143,11 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
     final neonHeader =
         !bgIsDark && context.uai.background.computeLuminance() < 0.28;
     final mainText = neonHeader ? _readableOn(background) : foreground;
-    final mutedText = mainText.withOpacity(neonHeader ? 0.82 : 0.74);
+    final mutedText = mainText.withAlpha(neonHeader ? 209 : 189);
     final iconAccent = neonHeader
         ? _readableOn(background)
         : _ensureVisible(color, background);
-    final chipBg = mainText.withOpacity(neonHeader ? 0.16 : 0.14);
+    final chipBg = mainText.withAlpha(neonHeader ? 41 : 36);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -6097,7 +6157,7 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
           decoration: BoxDecoration(
             color: chipBg,
             shape: BoxShape.circle,
-            border: Border.all(color: mainText.withOpacity(0.16)),
+            border: Border.all(color: mainText.withAlpha(41)),
           ),
           child: Icon(icon, size: 20, color: iconAccent),
         ),
@@ -6137,9 +6197,9 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
     final cardAltBg = context.uai.cardAlt;
     final statusBase = presente ? context.uai.success : context.uai.error;
     final statusAccent = _ensureVisible(statusBase, cardBg);
-    final badgeBg = Color.alphaBlend(statusAccent.withOpacity(0.16), cardAltBg);
+    final badgeBg = Color.alphaBlend(statusAccent.withAlpha(41), cardAltBg);
     final badgeFg = _ensureVisible(statusAccent, badgeBg);
-    final iconBg = Color.alphaBlend(statusAccent.withOpacity(0.18), cardAltBg);
+    final iconBg = Color.alphaBlend(statusAccent.withAlpha(46), cardAltBg);
     final noteAccent = _ensureVisible(context.uai.warning, cardBg);
     final nameColor = _readableOn(cardBg);
 
@@ -6160,6 +6220,7 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
               child: Row(
                 children: [
                   _buildAlunoAvatarDetalhes(
+                    alunoId: alunoId,
                     nome: nome,
                     fotoUrl: fotoUrl,
                     presente: presente,
@@ -6179,7 +6240,7 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
                             decoration: !presente
                                 ? TextDecoration.lineThrough
                                 : null,
-                            decorationColor: nameColor.withOpacity(0.55),
+                            decorationColor: nameColor.withAlpha(140),
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -6192,7 +6253,7 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
                                   ? Icons.info_outline_rounded
                                   : Icons.open_in_new_rounded,
                               size: 12,
-                              color: nameColor.withOpacity(0.58),
+                              color: nameColor.withAlpha(148),
                             ),
                             const SizedBox(width: 4),
                             Expanded(
@@ -6202,7 +6263,7 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
                                     : 'Tocar para abrir perfil',
                                 style: TextStyle(
                                   fontSize: 10.5,
-                                  color: nameColor.withOpacity(0.58),
+                                  color: nameColor.withAlpha(148),
                                   fontWeight: FontWeight.w600,
                                 ),
                                 maxLines: 1,
@@ -6250,7 +6311,7 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
                     decoration: BoxDecoration(
                       color: badgeBg,
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: statusAccent.withOpacity(0.14)),
+                      border: Border.all(color: statusAccent.withAlpha(36)),
                     ),
                     child: Text(
                       presente ? 'PRESENTE' : 'AUSENTE',
@@ -6267,7 +6328,7 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
                     color: context.uai.surface,
                     icon: Icon(
                       Icons.more_vert_rounded,
-                      color: nameColor.withOpacity(0.70),
+                      color: nameColor.withAlpha(179),
                     ),
                     onSelected: (value) {
                       if (value == 'perfil') _abrirPerfilAluno(alunoId);
@@ -6302,6 +6363,7 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
   }
 
   Widget _buildAlunoAvatarDetalhes({
+    required String alunoId,
     required String nome,
     required String? fotoUrl,
     required bool presente,
@@ -6322,44 +6384,38 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
           decoration: BoxDecoration(
             color: background,
             shape: BoxShape.circle,
-            border: Border.all(color: statusAccent.withOpacity(0.20)),
+            border: Border.all(color: statusAccent.withAlpha(51)),
           ),
           clipBehavior: Clip.antiAlias,
           child: fotoUrl != null && fotoUrl.isNotEmpty
-              ? CachedNetworkImage(
-            imageUrl: fotoUrl,
-            fit: BoxFit.cover,
-            placeholder: (context, url) => Center(
-              child: Text(
-                _iniciaisAluno(nome),
-                style: TextStyle(
-                  color: fg,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 12,
-                ),
-              ),
-            ),
-            errorWidget: (context, url, error) => Center(
-              child: Text(
-                _iniciaisAluno(nome),
-                style: TextStyle(
-                  color: fg,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 12,
-                ),
-              ),
-            ),
-          )
+              ? UaiStudentPhoto(
+                  studentId: alunoId,
+                  imageUrl: fotoUrl,
+                  profile: UaiStudentPhotoProfile.compact,
+                  fit: BoxFit.cover,
+                  width: 42,
+                  height: 42,
+                  fallback: Center(
+                    child: Text(
+                      _iniciaisAluno(nome),
+                      style: TextStyle(
+                        color: fg,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                )
               : Center(
-            child: Text(
-              _iniciaisAluno(nome),
-              style: TextStyle(
-                color: fg,
-                fontWeight: FontWeight.w900,
-                fontSize: 12,
-              ),
-            ),
-          ),
+                  child: Text(
+                    _iniciaisAluno(nome),
+                    style: TextStyle(
+                      color: fg,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
         ),
         Positioned(
           right: -2,

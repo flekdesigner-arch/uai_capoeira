@@ -7,12 +7,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image/image.dart' as img;
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:uai_capoeira/modules/alunos/services/aluno_historico_edicao_service.dart';
 
 class CadastroAlunoTurmaScreen extends StatefulWidget {
   final String? alunoId;
@@ -22,7 +24,7 @@ class CadastroAlunoTurmaScreen extends StatefulWidget {
   final String academiaNome;
   final Map<String, dynamic>? dadosIniciais;
 
-  CadastroAlunoTurmaScreen({
+  const CadastroAlunoTurmaScreen({
     super.key,
     this.alunoId,
     required this.turmaId,
@@ -44,19 +46,7 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
         : const Color(0xFFFFFFFF);
   }
 
-  Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance())
-        .abs();
-    if (diff >= 0.26) return color;
 
-    final bgIsDark = background.computeLuminance() < 0.45;
-    final hsl = HSLColor.fromColor(color);
-
-    return hsl
-        .withLightness(bgIsDark ? 0.72 : 0.32)
-        .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
-        .toColor();
-  }
 
   final _formKey = GlobalKey<FormState>();
 
@@ -88,6 +78,7 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
   List<DropdownMenuItem<String>> _graduacaoItems = [];
   Map<String, Map<String, dynamic>> _graduacoesData = {};
   XFile? _pickedImage;
+  Uint8List? _pickedImageBytes;
   String? _networkImageUrl;
 
   bool _isLoading = true;
@@ -96,6 +87,11 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
   bool _fotoCarregada = false;
   bool _fotoVeioDaInscricao = false;
   bool _salvando = false;
+  String? _alunoCriadoId;
+  DateTime? _fotoCapturadaEm;
+  String? _fotoUploadPath;
+  String _fotoCadastroVersao = '';
+  bool _fotoUploadConcluido = false;
 
   String? _usuarioLogadoNome;
   String? _usuarioLogadoEmail;
@@ -318,7 +314,7 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
                       stops: [0.5, 0.5],
                     ),
                     border: Border.all(
-                      color: context.uai.textPrimary.withOpacity(0.38),
+                      color: context.uai.textPrimary.withAlpha(97),
                       width: 1,
                     ),
                   ),
@@ -413,10 +409,11 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
         String ruaNumero = partes[0];
         String resto = partes.sublist(1).join(', ');
         List<String> ruaNumeroParts = ruaNumero.split(' - ');
-        if (ruaNumeroParts.length >= 1) {
+        if (ruaNumeroParts.isNotEmpty) {
           _controllers['rua']!.text = ruaNumeroParts[0];
-          if (ruaNumeroParts.length >= 2)
+          if (ruaNumeroParts.length >= 2) {
             _controllers['numero']!.text = ruaNumeroParts[1];
+          }
         }
         List<String> restoParts = resto.split(', ');
         if (restoParts.length >= 2) {
@@ -648,8 +645,17 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
         return;
       }
 
+      Uint8List? bytesEditados;
+      if (kIsWeb) {
+        bytesEditados = await arquivoEditado.readAsBytes();
+      }
+
       _safeSetState(() {
         _pickedImage = XFile(arquivoEditado.path);
+        _fotoCadastroVersao = DateTime.now().microsecondsSinceEpoch.toString();
+        _fotoUploadPath = null;
+        _fotoUploadConcluido = false;
+        _pickedImageBytes = bytesEditados;
         _networkImageUrl = null;
         _fotoCarregada = true;
         _fotoVeioDaInscricao = false;
@@ -672,8 +678,17 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
         maxWidth: 800,
       );
       if (image != null && _isMounted) {
+        final bytes = kIsWeb ? await image.readAsBytes() : null;
         _safeSetState(() {
           _pickedImage = image;
+          _fotoCapturadaEm = source == ImageSource.camera
+              ? DateTime.now()
+              : null;
+          _fotoCadastroVersao = DateTime.now().microsecondsSinceEpoch
+              .toString();
+          _fotoUploadPath = null;
+          _fotoUploadConcluido = false;
+          _pickedImageBytes = bytes;
           _networkImageUrl = null;
           _fotoCarregada = true;
           _fotoVeioDaInscricao = false;
@@ -692,10 +707,12 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
     String digits = value.replaceAll(RegExp(r'[^0-9]'), '');
     if (digits.length > 11) digits = digits.substring(0, 11);
     if (digits.length <= 3) return digits;
-    if (digits.length <= 6)
+    if (digits.length <= 6) {
       return '${digits.substring(0, 3)}.${digits.substring(3)}';
-    if (digits.length <= 9)
+    }
+    if (digits.length <= 9) {
       return '${digits.substring(0, 3)}.${digits.substring(3, 6)}.${digits.substring(6)}';
+    }
     return '${digits.substring(0, 3)}.${digits.substring(3, 6)}.${digits.substring(6, 9)}-${digits.substring(9, 11)}';
   }
 
@@ -703,10 +720,12 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
     String digits = value.replaceAll(RegExp(r'[^0-9]'), '');
     if (digits.length > 11) digits = digits.substring(0, 11);
     if (digits.length <= 2) return '($digits';
-    if (digits.length <= 6)
+    if (digits.length <= 6) {
       return '(${digits.substring(0, 2)}) ${digits.substring(2)}';
-    if (digits.length <= 10)
+    }
+    if (digits.length <= 10) {
       return '(${digits.substring(0, 2)}) ${digits.substring(2, 6)}-${digits.substring(6)}';
+    }
     return '(${digits.substring(0, 2)}) ${digits.substring(2, 7)}-${digits.substring(7, 11)}';
   }
 
@@ -720,14 +739,17 @@ class _CadastroAlunoTurmaScreenState extends State<CadastroAlunoTurmaScreen> {
     List<String> partes = [];
     if (_controllers['rua']!.text.isNotEmpty) {
       String ruaNumero = _controllers['rua']!.text;
-      if (_controllers['numero']!.text.isNotEmpty)
+      if (_controllers['numero']!.text.isNotEmpty) {
         ruaNumero += ' - ${_controllers['numero']!.text}';
+      }
       partes.add(ruaNumero);
     }
-    if (_controllers['bairro']!.text.isNotEmpty)
+    if (_controllers['bairro']!.text.isNotEmpty) {
       partes.add(_controllers['bairro']!.text);
-    if (_controllers['cidade']!.text.isNotEmpty)
+    }
+    if (_controllers['cidade']!.text.isNotEmpty) {
       partes.add(_controllers['cidade']!.text);
+    }
     return partes.join(', ');
   }
 
@@ -1033,9 +1055,9 @@ No site, toque em *Área do Aluno* e preencha:
         margin: EdgeInsets.only(bottom: 14),
         padding: EdgeInsets.all(13),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.07),
+          color: color.withAlpha(18),
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: color.withOpacity(0.16)),
+          border: Border.all(color: color.withAlpha(41)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1046,7 +1068,7 @@ No site, toque em *Área do Aluno* e preencha:
                   width: 39,
                   height: 39,
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.13),
+                    color: color.withAlpha(33),
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: Icon(icon, color: color, size: 22),
@@ -1084,10 +1106,10 @@ No site, toque em *Área do Aluno* e preencha:
                 width: double.infinity,
                 padding: EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: context.uai.warning.withOpacity(0.10),
+                  color: context.uai.warning.withAlpha(26),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: context.uai.warning.withOpacity(0.16),
+                    color: context.uai.warning.withAlpha(41),
                   ),
                 ),
                 child: Text(
@@ -1211,6 +1233,36 @@ No site, toque em *Área do Aluno* e preencha:
                     '$nomeAluno foi cadastrado com sucesso na turma ${widget.turmaNome}.',
                     style: TextStyle(fontSize: 14),
                   ),
+                  if (_isFromInscricao &&
+                      (widget.dadosIniciais?['email_confirmado'] == true)) ...[
+                    SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      padding: EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: context.uai.success.withAlpha(20),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: context.uai.success.withAlpha(64),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.mark_email_read_rounded,
+                            color: context.uai.success,
+                          ),
+                          SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              "O e-mail profissional de aprovação e acesso à Área do Aluno será enviado automaticamente para ${widget.dadosIniciais?['email_conta_uai'] ?? 'o e-mail confirmado'}.",
+                              style: TextStyle(fontSize: 12.5, height: 1.3),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                   SizedBox(height: 16),
                   if (temGrupo)
                     buildSecao(
@@ -1278,8 +1330,38 @@ No site, toque em *Área do Aluno* e preencha:
           .collection('inscricoes')
           .doc(inscricaoId)
           .get();
-      if (!inscricaoDoc.exists) return;
+      if (!inscricaoDoc.exists) {
+        final aprovada = await FirebaseFirestore.instance
+            .collection('inscricoes_aprovadas')
+            .doc(inscricaoId)
+            .get();
+        if (aprovada.data()?['aluno_id'] == alunoId) return;
+        throw StateError(
+          'A inscrição não está mais disponível para aprovação.',
+        );
+      }
       final dadosInscricao = inscricaoDoc.data()!;
+      final timelineAprovada = <dynamic>[
+        ...((dadosInscricao['timeline'] is List)
+            ? dadosInscricao['timeline'] as List
+            : const []),
+        {
+          'tipo': 'inscricao_aprovada',
+          'titulo': 'Inscrição aprovada',
+          'descricao': 'Convertida em aluno na turma ${widget.turmaNome}.',
+          'data': Timestamp.now(),
+          'origem': 'cadastro_aluno_turma',
+          'usuario_uid': _usuarioLogadoUid,
+        },
+      ];
+
+      await AlunoHistoricoEdicaoService().registrarProcessoInscricao(
+        alunoId: alunoId,
+        inscricaoId: inscricaoId.toString(),
+        timeline: timelineAprovada,
+        alunoNome: _controllers['nome']!.text,
+      );
+
       final dadosAprovados = {
         ...dadosInscricao,
         'aluno_id': alunoId,
@@ -1293,22 +1375,25 @@ No site, toque em *Área do Aluno* e preencha:
         'aprovado_por': _usuarioLogadoNome ?? _usuarioLogadoEmail ?? 'Sistema',
         'aprovado_por_uid': _usuarioLogadoUid,
         'status': 'aprovado',
+        'etapa_atendimento': 'convertida_em_aluno',
+        'timeline': timelineAprovada,
       };
-      await FirebaseFirestore.instance
-          .collection('inscricoes_aprovadas')
-          .doc(inscricaoId)
-          .set(dadosAprovados);
-      await FirebaseFirestore.instance
-          .collection('inscricoes')
-          .doc(inscricaoId)
-          .delete();
+      final firestore = FirebaseFirestore.instance;
+      final batch = firestore.batch();
+      batch.set(
+        firestore.collection('inscricoes_aprovadas').doc(inscricaoId),
+        dadosAprovados,
+      );
+      batch.delete(firestore.collection('inscricoes').doc(inscricaoId));
+      await batch.commit();
     } catch (e) {
       debugPrint('Erro ao mover inscrição: $e');
+      rethrow;
     }
   }
 
   Future<void> _saveForm() async {
-    if (!_formKey.currentState!.validate() || !_isMounted) return;
+    if (_salvando || !_isMounted || !_formKey.currentState!.validate()) return;
 
     if (_turmaCheia) {
       final capacidadeMaxima = _turmaData['capacidade_maxima'] ?? 0;
@@ -1343,13 +1428,23 @@ No site, toque em *Área do Aluno* e preencha:
     _safeSetState(() => _salvando = true);
 
     try {
-      if (_pickedImage != null) {
+      if (_pickedImage != null && !_fotoUploadConcluido) {
+        _fotoUploadPath ??=
+            'cadastro_${DateTime.now().microsecondsSinceEpoch}_${FirebaseFirestore.instance.collection('alunos').doc().id}.jpg';
         final ref = FirebaseStorage.instance
             .ref()
             .child('foto_alunos')
-            .child('${widget.alunoId ?? UniqueKey().toString()}.jpg');
-        await ref.putFile(File(_pickedImage!.path));
+            .child(_fotoUploadPath!);
+
+        if (kIsWeb) {
+          final bytes = _pickedImageBytes ?? await _pickedImage!.readAsBytes();
+          await ref.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
+        } else {
+          await ref.putFile(File(_pickedImage!.path));
+        }
+
         _networkImageUrl = await ref.getDownloadURL();
+        _fotoUploadConcluido = true;
       }
 
       Map<String, dynamic> dataToSave = {};
@@ -1373,12 +1468,52 @@ No site, toque em *Área do Aluno* e preencha:
       });
 
       dataToSave['endereco'] = _montarEndereco();
-      if (_controllers['cidade']!.text.trim().isNotEmpty)
+      if (_controllers['cidade']!.text.trim().isNotEmpty) {
         dataToSave['cidade'] = _controllers['cidade']!.text.trim();
+      }
       dataToSave['academia_id'] = widget.academiaId;
       dataToSave['academia'] = widget.academiaNome;
       dataToSave['turma_id'] = widget.turmaId;
       dataToSave['turma'] = widget.turmaNome;
+
+      // Se o cadastro veio da inscrição pública, preserva a Conta UAI
+      // confirmada para que o aluno mantenha o mesmo acesso sem senha.
+      if (_isFromInscricao && widget.dadosIniciais != null) {
+        final origem = widget.dadosIniciais!;
+        for (final campo in [
+          'nome_contato_emergencia',
+          'contato_emergencia',
+          'grau_emergencia',
+          'contatos_emergencia_adicionais',
+        ]) {
+          if (origem[campo] != null) dataToSave[campo] = origem[campo];
+        }
+        if (origem['is_maior_idade'] == true &&
+            (origem['nome_contato_emergencia']?.toString() ?? '').isNotEmpty) {
+          dataToSave.remove('nome_responsavel');
+          dataToSave.remove('contato_responsavel');
+        }
+        // Ponte para a ficha restrita: nunca copiar saúde para o documento comum.
+        if (origem['ficha_inscricao_id'] != null) {
+          dataToSave['ficha_inscricao_id'] = origem['ficha_inscricao_id'];
+        }
+        if (origem['grau_responsavel'] != null) {
+          dataToSave['grau_responsavel'] = origem['grau_responsavel'];
+        }
+        final emailContaUai =
+            origem['email_conta_uai']?.toString().trim().toLowerCase() ?? '';
+        final contaUaiUid = origem['conta_uai_uid']?.toString().trim() ?? '';
+        if (emailContaUai.isNotEmpty) {
+          dataToSave['email_conta_uai'] = emailContaUai;
+        }
+        if (contaUaiUid.isNotEmpty) dataToSave['conta_uai_uid'] = contaUaiUid;
+        if (origem['email_confirmado'] == true) {
+          dataToSave['email_confirmado'] = true;
+        }
+        final metodo =
+            origem['metodo_confirmacao_email']?.toString().trim() ?? '';
+        if (metodo.isNotEmpty) dataToSave['metodo_confirmacao_email'] = metodo;
+      }
 
       final graduacaoRef = _graduacaoId != null
           ? FirebaseFirestore.instance
@@ -1388,6 +1523,39 @@ No site, toque em *Área do Aluno* e preencha:
       final graduacaoData = _graduacaoId != null
           ? _graduacoesData[_graduacaoId]
           : null;
+
+      // A origem acompanha a PRIMEIRA gravação do aluno: o evento no servidor
+      // pode arquivar as duas imagens mesmo que o aplicativo feche em seguida.
+      if (_isFromInscricao) {
+        final origem = widget.dadosIniciais!;
+        dataToSave['inscricao_id'] = origem['id'];
+        final fotoInscricao = (origem['foto_url'] ?? '').toString();
+        if (fotoInscricao.isNotEmpty) {
+          dataToSave['foto_inscricao_url'] = fotoInscricao;
+          final captura = origem['foto_capturada_em_ms'];
+          dataToSave['foto_inscricao_em'] = captura is num && captura > 0
+              ? Timestamp.fromMillisecondsSinceEpoch(captura.toInt())
+              : (origem['data_inscricao'] is Timestamp
+                    ? origem['data_inscricao']
+                    : FieldValue.serverTimestamp());
+          dataToSave['foto_inscricao_data_tipo'] = captura is num && captura > 0
+              ? 'captura'
+              : 'envio';
+        }
+      }
+      if (!_isEditing || _pickedImage != null) {
+        if (_fotoCadastroVersao.isEmpty) {
+          _fotoCadastroVersao = DateTime.now().microsecondsSinceEpoch
+              .toString();
+        }
+        dataToSave['foto_cadastro_versao'] = _fotoCadastroVersao;
+        dataToSave['foto_cadastro_em'] = _fotoCapturadaEm != null
+            ? Timestamp.fromDate(_fotoCapturadaEm!)
+            : FieldValue.serverTimestamp();
+        dataToSave['foto_cadastro_data_tipo'] = _fotoCapturadaEm != null
+            ? 'captura'
+            : 'cadastro';
+      }
 
       final camposObrigatorios = {
         'sexo': _sexo,
@@ -1413,8 +1581,9 @@ No site, toque em *Área do Aluno* e preencha:
         }
       }
 
-      if (_controllers['cpf']!.text.trim().isNotEmpty)
+      if (_controllers['cpf']!.text.trim().isNotEmpty) {
         dataToSave['cpf'] = _limparMascara(_controllers['cpf']!.text.trim());
+      }
       dataToSave.addAll(camposObrigatorios);
 
       if (_isEditing) {
@@ -1439,17 +1608,72 @@ No site, toque em *Área do Aluno* e preencha:
             _usuarioLogadoNome ?? _usuarioLogadoEmail ?? 'Sistema';
         dataToSave['cadastro_realizado_por_uid'] = _usuarioLogadoUid;
         dataToSave['cadastro_realizado_em'] = FieldValue.serverTimestamp();
-        if (!dataToSave.containsKey('tempo_capoeira'))
+        if (!dataToSave.containsKey('tempo_capoeira')) {
           dataToSave['tempo_capoeira'] = FieldValue.serverTimestamp();
-
-        final docRef = await FirebaseFirestore.instance
-            .collection('alunos')
-            .add(dataToSave);
-        await _atualizarContadorTurma();
-
-        if (_isFromInscricao && widget.dadosIniciais?['id'] != null) {
-          await docRef.update({'inscricao_id': widget.dadosIniciais!['id']});
         }
+
+        // Repetir após falha parcial não cria um segundo aluno. Inscrições
+        // usam ID determinístico também entre reinícios do aplicativo.
+        _alunoCriadoId ??=
+            _isFromInscricao && widget.dadosIniciais?['id'] != null
+            ? 'inscricao_${widget.dadosIniciais!['id']}'
+            : FirebaseFirestore.instance.collection('alunos').doc().id;
+        final docRef = FirebaseFirestore.instance
+            .collection('alunos')
+            .doc(_alunoCriadoId);
+        await FirebaseFirestore.instance.runTransaction((tx) async {
+          final existing = await tx.get(docRef);
+          if (_isFromInscricao) {
+            final origem = await tx.get(
+              FirebaseFirestore.instance
+                  .collection('inscricoes')
+                  .doc(widget.dadosIniciais!['id'].toString()),
+            );
+            if (!origem.exists) {
+              final aprovada = await tx.get(
+                FirebaseFirestore.instance
+                    .collection('inscricoes_aprovadas')
+                    .doc(widget.dadosIniciais!['id'].toString()),
+              );
+              if (existing.exists &&
+                  existing.data()?['inscricao_id'] ==
+                      widget.dadosIniciais!['id'] &&
+                  aprovada.data()?['aluno_id'] == docRef.id &&
+                  aprovada.data()?['atualizacao_aluno_existente'] != true) {
+                return; // A mesma aprovação já terminou: não duplicar nem regravar.
+              }
+              throw StateError(
+                'Esta inscrição já foi concluída ou removida. Atualize a lista antes de continuar.',
+              );
+            }
+          }
+          if (!existing.exists) {
+            tx.set(docRef, dataToSave);
+          } else {
+            // Uma falha ao arquivar a inscrição pode deixar o aluno salvo.
+            // A nova tentativa deve aplicar correções/foto substituta, sem
+            // mudar autoria nem a data original de criação.
+            if (_isFromInscricao &&
+                existing.data()?['inscricao_id'] !=
+                    widget.dadosIniciais?['id']) {
+              throw StateError(
+                'Este cadastro não corresponde à inscrição selecionada.',
+              );
+            }
+            final atualizacao = Map<String, dynamic>.from(dataToSave);
+            for (final key in [
+              'criado_em',
+              'data_do_cadastro',
+              'cadastro_realizado_por',
+              'cadastro_realizado_por_uid',
+              'cadastro_realizado_em',
+            ]) {
+              atualizacao.remove(key);
+            }
+            tx.set(docRef, atualizacao, SetOptions(merge: true));
+          }
+        });
+        await _atualizarContadorTurma();
 
         if (_isFromInscricao) await _moverInscricaoParaAprovadas(docRef.id);
 
@@ -1544,10 +1768,11 @@ No site, toque em *Área do Aluno* e preencha:
           Navigator.of(context).popUntil((route) => route.isFirst);
         }
       } catch (e) {
-        if (_isMounted)
+        if (_isMounted) {
           ScaffoldMessenger.of(
             context,
           ).showSnackBar(SnackBar(content: Text("Erro ao excluir aluno: $e")));
+        }
       }
     }
   }
@@ -1568,7 +1793,11 @@ No site, toque em *Área do Aluno* e preencha:
         (_networkImageUrl != null && _networkImageUrl!.isNotEmpty);
 
     final ImageProvider? imageProvider = _pickedImage != null
-        ? FileImage(File(_pickedImage!.path))
+        ? (kIsWeb
+              ? (_pickedImageBytes != null
+                    ? MemoryImage(_pickedImageBytes!)
+                    : null)
+              : FileImage(File(_pickedImage!.path)) as ImageProvider)
         : (_networkImageUrl != null && _networkImageUrl!.isNotEmpty
               ? CachedNetworkImageProvider(_networkImageUrl!)
               : null);
@@ -1659,8 +1888,8 @@ No site, toque em *Área do Aluno* e preencha:
 
     return Card(
       color: _turmaCheia
-          ? context.uai.error.withOpacity(0.10)
-          : context.uai.info.withOpacity(0.10),
+          ? context.uai.error.withAlpha(26)
+          : context.uai.info.withAlpha(26),
       child: Padding(
         padding: EdgeInsets.all(12),
         child: Column(
@@ -1899,7 +2128,7 @@ No site, toque em *Área do Aluno* e preencha:
   Widget _buildGraduacaoSection() => Column(
     children: [
       DropdownButtonFormField<String>(
-        value: _graduacaoId,
+        initialValue: _graduacaoId,
         items: _graduacaoItems,
         onChanged: _salvando ? null : (v) => setState(() => _graduacaoId = v),
         decoration: InputDecoration(
@@ -1936,9 +2165,9 @@ No site, toque em *Área do Aluno* e preencha:
   Widget _buildStatusContainer() => Container(
     padding: EdgeInsets.all(12),
     decoration: BoxDecoration(
-      color: context.uai.success.withOpacity(0.10),
+      color: context.uai.success.withAlpha(26),
       borderRadius: BorderRadius.circular(8),
-      border: Border.all(color: context.uai.success.withOpacity(0.30)),
+      border: Border.all(color: context.uai.success.withAlpha(77)),
     ),
     child: Row(
       children: [
@@ -2010,8 +2239,9 @@ No site, toque em *Área do Aluno* e preencha:
       if (isRequired) {
         if (value == null || value.trim().isEmpty) return 'Campo obrigatório';
         final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
-        if (digits.length != 11)
+        if (digits.length != 11) {
           return 'Telefone deve ter 11 dígitos (DDD + 9 números)';
+        }
       }
       return null;
     },
@@ -2061,8 +2291,9 @@ No site, toque em *Área do Aluno* e preencha:
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading)
+    if (_isLoading) {
       return Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
 
     if (_salvando) {
       return Scaffold(
@@ -2159,7 +2390,7 @@ No site, toque em *Área do Aluno* e preencha:
               _buildCpfField(),
               SizedBox(height: 16),
               DropdownButtonFormField<String>(
-                value: _sexo,
+                initialValue: _sexo,
                 items: [
                   DropdownMenuItem(
                     value: null,
@@ -2228,16 +2459,16 @@ class _CpfInputFormatter extends TextInputFormatter {
     String digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
     if (digits.length > 11) digits = digits.substring(0, 11);
     String formatted = '';
-    if (digits.length <= 3)
+    if (digits.length <= 3) {
       formatted = digits;
-    else if (digits.length <= 6)
-      formatted = '${digits.substring(0, 3)}.${digits.substring(3)}';
+    } else if (digits.length <= 6)
+      { formatted = '${digits.substring(0, 3)}.${digits.substring(3)}'; }
     else if (digits.length <= 9)
-      formatted =
-          '${digits.substring(0, 3)}.${digits.substring(3, 6)}.${digits.substring(6)}';
+      { formatted =
+          '${digits.substring(0, 3)}.${digits.substring(3, 6)}.${digits.substring(6)}'; }
     else
-      formatted =
-          '${digits.substring(0, 3)}.${digits.substring(3, 6)}.${digits.substring(6, 9)}-${digits.substring(9)}';
+      { formatted =
+          '${digits.substring(0, 3)}.${digits.substring(3, 6)}.${digits.substring(6, 9)}-${digits.substring(9)}'; }
     return TextEditingValue(
       text: formatted,
       selection: TextSelection.collapsed(offset: formatted.length),
@@ -2254,16 +2485,16 @@ class _PhoneInputFormatter extends TextInputFormatter {
     String digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
     if (digits.length > 11) digits = digits.substring(0, 11);
     String formatted = '';
-    if (digits.length <= 2)
+    if (digits.length <= 2) {
       formatted = '($digits';
-    else if (digits.length <= 6)
-      formatted = '(${digits.substring(0, 2)}) ${digits.substring(2)}';
+    } else if (digits.length <= 6)
+      { formatted = '(${digits.substring(0, 2)}) ${digits.substring(2)}'; }
     else if (digits.length <= 10)
-      formatted =
-          '(${digits.substring(0, 2)}) ${digits.substring(2, 6)}-${digits.substring(6)}';
+      { formatted =
+          '(${digits.substring(0, 2)}) ${digits.substring(2, 6)}-${digits.substring(6)}'; }
     else
-      formatted =
-          '(${digits.substring(0, 2)}) ${digits.substring(2, 7)}-${digits.substring(7, 11)}';
+      { formatted =
+          '(${digits.substring(0, 2)}) ${digits.substring(2, 7)}-${digits.substring(7, 11)}'; }
     return TextEditingValue(
       text: formatted,
       selection: TextSelection.collapsed(offset: formatted.length),
@@ -2276,7 +2507,7 @@ class _EditorFotoAlunoDialog extends StatefulWidget {
   final File imageFile;
   final String nomeAluno;
 
-  _EditorFotoAlunoDialog({required this.imageFile, required this.nomeAluno});
+  const _EditorFotoAlunoDialog({required this.imageFile, required this.nomeAluno});
 
   @override
   State<_EditorFotoAlunoDialog> createState() => _EditorFotoAlunoDialogState();
@@ -2432,7 +2663,7 @@ class _EditorFotoAlunoDialogState extends State<_EditorFotoAlunoDialog> {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              color: context.uai.card.withOpacity(0.78),
+                              color: context.uai.card.withAlpha(199),
                               fontSize: 12,
                             ),
                           ),
@@ -2568,7 +2799,7 @@ class _EditorFotoAlunoDialogState extends State<_EditorFotoAlunoDialog> {
           border: Border.all(color: context.uai.success, width: 2.2),
           boxShadow: [
             BoxShadow(
-              color: context.uai.textPrimary.withOpacity(0.12),
+              color: context.uai.textPrimary.withAlpha(31),
               blurRadius: 14,
               offset: Offset(0, 5),
             ),
@@ -2610,7 +2841,7 @@ class _EditorFotoAlunoDialogState extends State<_EditorFotoAlunoDialog> {
                             begin: Alignment.bottomCenter,
                             end: Alignment.center,
                             colors: [
-                              Colors.black.withOpacity(0.55),
+                              Colors.black.withAlpha(140),
                               Colors.transparent,
                             ],
                           ),
@@ -2637,7 +2868,7 @@ class _EditorFotoAlunoDialogState extends State<_EditorFotoAlunoDialog> {
               Container(
                 width: double.infinity,
                 padding: EdgeInsets.fromLTRB(9, 9, 9, 10),
-                color: context.uai.success.withOpacity(0.10),
+                color: context.uai.success.withAlpha(26),
                 child: Center(
                   child: Container(
                     width: 128,
@@ -2723,7 +2954,7 @@ class _GuiaRostoPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.white.withOpacity(0.82)
+      ..color = Colors.white.withAlpha(209)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.2;
 
@@ -2737,7 +2968,7 @@ class _GuiaRostoPainter extends CustomPainter {
     canvas.drawOval(oval, paint);
 
     final linePaint = Paint()
-      ..color = Colors.white.withOpacity(0.35)
+      ..color = Colors.white.withAlpha(89)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.2;
 

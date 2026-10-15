@@ -54,7 +54,7 @@ class _EventosScreenState extends State<EventosScreen>
 
   Color _onCard() => _readableOn(context.uai.card);
 
-  Color _onCardMuted() => _onCard().withOpacity(0.68);
+  Color _onCardMuted() => _onCard().withAlpha(173);
 
   Color _appBarBg() =>
       Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primaryDark;
@@ -89,9 +89,9 @@ class _EventosScreenState extends State<EventosScreen>
   double get _dashboardMaxWidth {
     final width = MediaQuery.sizeOf(context).width;
 
-    if (width >= 1600) return 1320;
-    if (width >= 1180) return 1180;
-    if (width >= 900) return 1040;
+    if (width >= 1600) return 1480;
+    if (width >= 1180) return 1360;
+    if (width >= 900) return 1180;
 
     return width;
   }
@@ -391,12 +391,12 @@ class _EventosScreenState extends State<EventosScreen>
                               height: 46,
                               decoration: BoxDecoration(
                                 color: Color.alphaBlend(
-                                  accent.withOpacity(0.10),
+                                  accent.withAlpha(26),
                                   sheetBg,
                                 ),
                                 borderRadius: BorderRadius.circular(17),
                                 border: Border.all(
-                                  color: accent.withOpacity(0.16),
+                                  color: accent.withAlpha(41),
                                 ),
                               ),
                               child: Icon(
@@ -423,7 +423,7 @@ class _EventosScreenState extends State<EventosScreen>
                                     style: TextStyle(
                                       fontSize: 12.5,
                                       fontWeight: FontWeight.w700,
-                                      color: sheetOn.withOpacity(0.62),
+                                      color: sheetOn.withAlpha(158),
                                     ),
                                   ),
                                 ],
@@ -475,7 +475,7 @@ class _EventosScreenState extends State<EventosScreen>
                                 style: OutlinedButton.styleFrom(
                                   foregroundColor: accent,
                                   side: BorderSide(
-                                    color: accent.withOpacity(0.22),
+                                    color: accent.withAlpha(56),
                                   ),
                                   padding: const EdgeInsets.symmetric(
                                     vertical: 13,
@@ -537,7 +537,7 @@ class _EventosScreenState extends State<EventosScreen>
     final accent = _ensureVisible(context.uai.primary, base);
 
     return DropdownButtonFormField<String>(
-      value: value,
+      initialValue: value,
       dropdownColor: context.uai.surface,
       style: TextStyle(
         color: _readableOn(context.uai.surface),
@@ -712,7 +712,7 @@ class _EventosScreenState extends State<EventosScreen>
         indicatorWeight: 3,
         indicatorSize: TabBarIndicatorSize.label,
         labelColor: fg,
-        unselectedLabelColor: fg.withOpacity(0.62),
+        unselectedLabelColor: fg.withAlpha(158),
         labelStyle: const TextStyle(
           fontWeight: FontWeight.w900,
           fontSize: 12,
@@ -742,9 +742,9 @@ class _EventosScreenState extends State<EventosScreen>
         Container(
           margin: EdgeInsets.only(right: isCompact ? 4 : 8),
           decoration: BoxDecoration(
-            color: fg.withOpacity(0.14),
+            color: fg.withAlpha(36),
             borderRadius: BorderRadius.circular(13),
-            border: Border.all(color: fg.withOpacity(0.10)),
+            border: Border.all(color: fg.withAlpha(26)),
           ),
           child: IconButton(
             icon: const Icon(Icons.filter_list_rounded),
@@ -896,7 +896,7 @@ class _EventosScreenState extends State<EventosScreen>
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.10),
+            color: Colors.black.withAlpha(26),
             blurRadius: 18,
             offset: const Offset(0, 8),
           ),
@@ -963,9 +963,9 @@ class _EventosScreenState extends State<EventosScreen>
       width: _isWideDashboard ? 58 : 52,
       height: _isWideDashboard ? 58 : 52,
       decoration: BoxDecoration(
-        color: heroFg.withOpacity(0.14),
+        color: heroFg.withAlpha(36),
         borderRadius: BorderRadius.circular(19),
-        border: Border.all(color: heroFg.withOpacity(0.18)),
+        border: Border.all(color: heroFg.withAlpha(46)),
       ),
       child: Icon(icon, color: heroFg, size: _isWideDashboard ? 30 : 28),
     );
@@ -996,7 +996,7 @@ class _EventosScreenState extends State<EventosScreen>
           maxLines: _isWideDashboard ? 2 : 3,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            color: heroFg.withOpacity(0.78),
+            color: heroFg.withAlpha(199),
             fontSize: _isWideDashboard ? 13.5 : 12.2,
             height: 1.25,
             fontWeight: FontWeight.w700,
@@ -1056,9 +1056,9 @@ class _EventosScreenState extends State<EventosScreen>
                   vertical: 9,
                 ),
                 decoration: BoxDecoration(
-                  color: heroFg.withOpacity(0.10),
+                  color: heroFg.withAlpha(26),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: heroFg.withOpacity(0.14)),
+                  border: Border.all(color: heroFg.withAlpha(36)),
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -1082,7 +1082,7 @@ class _EventosScreenState extends State<EventosScreen>
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: heroFg.withOpacity(0.72),
+                        color: heroFg.withAlpha(184),
                         fontSize: 9.5,
                         height: 1,
                         fontWeight: FontWeight.w800,
@@ -1115,7 +1115,7 @@ class _EventosScreenState extends State<EventosScreen>
         border: Border.all(color: context.uai.border),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.035),
+            color: Colors.black.withAlpha(9),
             blurRadius: 12,
             offset: const Offset(0, 5),
           ),
@@ -1182,9 +1182,9 @@ class _EventosScreenState extends State<EventosScreen>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(visibleAccent.withOpacity(0.08), base),
+        color: Color.alphaBlend(visibleAccent.withAlpha(20), base),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: visibleAccent.withOpacity(0.18)),
+        border: Border.all(color: visibleAccent.withAlpha(46)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1225,27 +1225,22 @@ class _EventosScreenState extends State<EventosScreen>
         final width = constraints.maxWidth;
         final spacing = width < 420 ? 10.0 : 12.0;
 
-        final columns = width < 330
+        final columns = width < 340
             ? 1
-            : width < 470
-            ? 2
-            : width < 760
-            ? 3
-            : width < 980
-            ? 3
-            : width < 1220
-            ? 4
-            : 5;
+            : width < 720
+                ? 2
+                : width < 1080
+                    ? 3
+                    : 4;
 
         final itemWidth = (width - (spacing * (columns - 1))) / columns;
-
-        final heightFactor = itemWidth < 180
-            ? 1.44
-            : itemWidth < 230
-            ? 1.36
-            : 1.30;
-
-        final itemHeight = itemWidth * heightFactor;
+        final imageHeight = itemWidth < 220
+            ? itemWidth * .78
+            : itemWidth < 320
+                ? itemWidth * .68
+                : itemWidth * .58;
+        final bodyHeight = itemWidth < 220 ? 118.0 : 126.0;
+        final itemHeight = imageHeight + bodyHeight;
 
         return Wrap(
           alignment: WrapAlignment.center,
@@ -1351,11 +1346,11 @@ class _EventosScreenState extends State<EventosScreen>
             height: 72,
             decoration: BoxDecoration(
               color: Color.alphaBlend(
-                context.uai.info.withOpacity(0.08),
+                context.uai.info.withAlpha(20),
                 context.uai.cardAlt,
               ),
               shape: BoxShape.circle,
-              border: Border.all(color: context.uai.info.withOpacity(0.16)),
+              border: Border.all(color: context.uai.info.withAlpha(41)),
             ),
             child: Icon(
               Icons.event_busy_rounded,
@@ -1413,10 +1408,10 @@ class _EventosScreenState extends State<EventosScreen>
               decoration: BoxDecoration(
                 color: cardBg,
                 borderRadius: BorderRadius.circular(26),
-                border: Border.all(color: visibleAccent.withOpacity(0.14)),
+                border: Border.all(color: visibleAccent.withAlpha(36)),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.045),
+                    color: Colors.black.withAlpha(11),
                     blurRadius: 18,
                     offset: const Offset(0, 8),
                   ),
@@ -1430,12 +1425,12 @@ class _EventosScreenState extends State<EventosScreen>
                     height: 76,
                     decoration: BoxDecoration(
                       color: Color.alphaBlend(
-                        visibleAccent.withOpacity(0.10),
+                        visibleAccent.withAlpha(26),
                         context.uai.cardAlt,
                       ),
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: visibleAccent.withOpacity(0.16),
+                        color: visibleAccent.withAlpha(41),
                       ),
                     ),
                     child: Center(
@@ -1475,7 +1470,7 @@ class _EventosScreenState extends State<EventosScreen>
                       label: Text(actionLabel),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: visibleAccent,
-                        side: BorderSide(color: visibleAccent.withOpacity(0.25)),
+                        side: BorderSide(color: visibleAccent.withAlpha(64)),
                         padding: const EdgeInsets.symmetric(
                           horizontal: 16,
                           vertical: 12,
@@ -1591,7 +1586,7 @@ class _EventosScreenState extends State<EventosScreen>
               label,
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: accent.withOpacity(0.78),
+                color: accent.withAlpha(199),
                 fontSize: 10.5,
                 fontWeight: FontWeight.w900,
               ),
@@ -1625,7 +1620,7 @@ class _EventosScreenState extends State<EventosScreen>
         status == 'andamento' && !permissoes.podeVerEventosAndamento;
 
     final borderAccent = bloqueadoAndamento
-        ? context.uai.warning.withOpacity(0.28)
+        ? context.uai.warning.withAlpha(71)
         : context.uai.border;
 
     return Material(
@@ -1650,7 +1645,7 @@ class _EventosScreenState extends State<EventosScreen>
             border: Border.all(color: borderAccent),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.04),
+                color: Colors.black.withAlpha(10),
                 blurRadius: 12,
                 offset: const Offset(0, 5),
               ),
@@ -1708,18 +1703,18 @@ class _EventosScreenState extends State<EventosScreen>
                         if (bloqueadoAndamento)
                           Container(
                             color: Color.alphaBlend(
-                              context.uai.warning.withOpacity(0.10),
-                              context.uai.card.withOpacity(0.74),
+                              context.uai.warning.withAlpha(26),
+                              context.uai.card.withAlpha(189),
                             ),
                             child: Center(
                               child: Container(
                                 width: isTiny ? 42 : 50,
                                 height: isTiny ? 42 : 50,
                                 decoration: BoxDecoration(
-                                  color: context.uai.card.withOpacity(0.88),
+                                  color: context.uai.card.withAlpha(224),
                                   shape: BoxShape.circle,
                                   border: Border.all(
-                                    color: context.uai.warning.withOpacity(0.24),
+                                    color: context.uai.warning.withAlpha(61),
                                   ),
                                 ),
                                 child: Icon(
@@ -1838,7 +1833,7 @@ class _EventosScreenState extends State<EventosScreen>
         borderRadius: BorderRadius.circular(99),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.16),
+            color: Colors.black.withAlpha(41),
             blurRadius: 6,
             offset: const Offset(0, 2),
           ),

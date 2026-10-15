@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
+import 'package:flutter/foundation.dart';
 import 'package:xml/xml.dart' as xml;
 
 class SvgService {
@@ -9,9 +9,10 @@ class SvgService {
     if (_svgContent != null) return _svgContent;
 
     try {
-      _svgContent = await DefaultAssetBundle.of(
+      final rawSvg = await DefaultAssetBundle.of(
         context,
       ).loadString('assets/images/corda.svg');
+      _svgContent = _sanitizeNonVisualMetadataOnWindows(rawSvg);
       return _svgContent;
     } catch (e) {
       debugPrint('Erro ao carregar SVG: $e');
@@ -41,7 +42,7 @@ class SvgService {
         if (element.name.local.isNotEmpty) {
           final style = element.getAttribute('style') ?? '';
           final hex =
-              '#${color.value.toRadixString(16).substring(2).toLowerCase()}';
+              '#${color.toARGB32().toRadixString(16).substring(2).toLowerCase()}';
           final newStyle = style.replaceAll(
             RegExp(r'fill:#[0-9a-fA-F]{6}'),
             '',
@@ -61,4 +62,20 @@ class SvgService {
       return null;
     }
   }
+  static String _sanitizeNonVisualMetadataOnWindows(String svg) {
+    final isWindowsDesktop =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+    if (!isWindowsDesktop || !svg.contains('<metadata')) return svg;
+
+    return svg
+        .replaceAll(
+          RegExp(r'<metadata\b[^>]*>[\s\S]*?</metadata\s*>', caseSensitive: false),
+          '',
+        )
+        .replaceAll(
+          RegExp(r'<metadata\b[^>]*/\s*>', caseSensitive: false),
+          '',
+        );
+  }
+
 }

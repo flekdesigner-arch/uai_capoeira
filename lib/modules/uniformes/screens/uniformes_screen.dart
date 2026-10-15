@@ -1,4 +1,6 @@
+import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
@@ -31,8 +33,24 @@ import 'fornecedores_list_screen.dart';
 // Dialogs
 import 'package:uai_capoeira/modules/uniformes/dialogs/quantidade_dialog.dart';
 import 'package:uai_capoeira/modules/uniformes/dialogs/pagamento_dialog.dart';
+import 'package:uai_capoeira/modules/uniformes/dialogs/pedidos_relatorio_dialog.dart';
 import 'package:uai_capoeira/modules/uniformes/widgets/detalhes_venda_bottom_sheet.dart';
 
+
+bool get _uaiUniformesWindowsSafeMode =>
+    !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+
+/// No Windows evitamos listeners realtime do cloud_firestore neste modulo.
+/// O plugin nativo estava emitindo query/document fora da platform thread e
+/// derrubando o processo. Android/Web continuam realtime.
+Stream<QuerySnapshot> _uaiUniformesQueryStream(Query query) {
+  if (_uaiUniformesWindowsSafeMode) {
+    return Stream<QuerySnapshot>.fromFuture(
+      query.get(const GetOptions(source: Source.serverAndCache)),
+    );
+  }
+  return query.snapshots();
+}
 class UniformesScreen extends StatefulWidget {
   const UniformesScreen({super.key});
 
@@ -58,7 +76,15 @@ class _UniformesScreenState extends State<UniformesScreen>
 
   bool _podeEditar = false;
   bool _podeExcluir = false;
+  bool _ehAdmin = false;
   bool _carregandoPermissoes = true;
+  bool _acaoVendaEmAndamento = false;
+
+  // IDs confirmados como excluídos nesta sessão. Protege a UI contra um
+  // snapshot local/stale do Firestore (especialmente no Windows).
+  final Set<String> _vendasExcluidasLocal = <String>{};
+  final Set<String> _pedidosExcluidosLocal = <String>{};
+  final Set<String> _remessasExcluidasLocal = <String>{};
 
   // ---------------------------------------------------------------------------
   // Helpers de contraste
@@ -93,7 +119,7 @@ class _UniformesScreenState extends State<UniformesScreen>
 
   Color _tabSelectedFg() => _readableOn(_tabSelectedBg());
 
-  Color _tabUnselectedFg() => _appBarFg().withOpacity(0.82);
+  Color _tabUnselectedFg() => _appBarFg().withAlpha(209);
 
   @override
   void initState() {
@@ -123,6 +149,22 @@ class _UniformesScreenState extends State<UniformesScreen>
     final uid = currentUser?.uid;
     if (uid != null) {
       try {
+        final userDoc = await FirebaseFirestore.instance
+            .collection('usuarios')
+            .doc(uid)
+            .get();
+        final userData = userDoc.data() ?? const <String, dynamic>{};
+        final peso = (userData['peso_permissao'] as num?)?.toInt() ?? 0;
+        final tipo = (userData['tipo'] ?? '').toString().toLowerCase();
+        _ehAdmin = peso >= 90 ||
+            tipo == 'admin' ||
+            tipo == 'administrador' ||
+            userData['admin'] == true ||
+            userData['administrador'] == true ||
+            userData['isAdmin'] == true ||
+            userData['super_admin'] == true ||
+            userData['superadmin'] == true;
+
         final permissoesDoc = await FirebaseFirestore.instance
             .collection('usuarios')
             .doc(uid)
@@ -131,22 +173,14 @@ class _UniformesScreenState extends State<UniformesScreen>
             .get();
         if (permissoesDoc.exists) {
           final permissoes = permissoesDoc.data()!;
-          _podeEditar = permissoes['pode_editar_venda'] ?? false;
-          _podeExcluir = permissoes['pode_excluir_venda'] ?? false;
+          _podeEditar = _ehAdmin || (permissoes['pode_editar_venda'] ?? false);
+          _podeExcluir = _ehAdmin || (permissoes['pode_excluir_venda'] ?? false);
         } else {
-          final userDoc = await FirebaseFirestore.instance
-              .collection('usuarios')
-              .doc(uid)
-              .get();
-          if (userDoc.exists) {
-            final userData = userDoc.data()!;
-            final peso = userData['peso_permissao'] ?? 0;
-            _podeEditar = peso >= 100;
-            _podeExcluir = peso >= 100;
-          }
+          _podeEditar = _ehAdmin;
+          _podeExcluir = _ehAdmin;
         }
       } catch (e) {
-        print('Erro ao verificar permissões: $e');
+        developer.log('Erro ao verificar permissões: $e');
       }
     }
     if (mounted) setState(() => _carregandoPermissoes = false);
@@ -183,24 +217,32 @@ class _UniformesScreenState extends State<UniformesScreen>
     return Scaffold(
       backgroundColor: context.uai.background,
       appBar: AppBar(
+        // Mesmo respiro visual da Home / mockup aprovado:
+        // barra principal mais alta + navegação de Uniformes em faixa separada.
+        toolbarHeight: 64,
         backgroundColor: _appBarBg(),
         foregroundColor: _appBarFg(),
         iconTheme: IconThemeData(color: _appBarFg()),
         actionsIconTheme: IconThemeData(color: _appBarFg()),
-        titleTextStyle: TextStyle(
-          color: _appBarFg(),
-          fontWeight: FontWeight.w900,
-          fontSize: 18,
+        title: Text(
+          'GESTÃO DE UNIFORMES',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: _appBarFg(),
+            fontWeight: FontWeight.w900,
+            fontSize: 18,
+          ),
         ),
-        title: const Text('GESTÃO DE UNIFORMES'),
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(54),
+          preferredSize: const Size.fromHeight(70),
           child: Container(
             width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 6),
             decoration: BoxDecoration(
-              color: _appBarFg().withOpacity(0.08),
+              color: _appBarFg().withAlpha(20),
               border: Border(
-                top: BorderSide(color: _appBarFg().withOpacity(0.10)),
+                top: BorderSide(color: _appBarFg().withAlpha(26)),
               ),
             ),
             child: TabBar(
@@ -208,7 +250,7 @@ class _UniformesScreenState extends State<UniformesScreen>
               isScrollable: true,
               dividerColor: Colors.transparent,
               indicatorSize: TabBarIndicatorSize.tab,
-              indicatorPadding: const EdgeInsets.fromLTRB(6, 7, 6, 7),
+              indicatorPadding: const EdgeInsets.fromLTRB(6, 5, 6, 5),
               indicator: BoxDecoration(
                 color: _tabSelectedBg(),
                 borderRadius: BorderRadius.circular(14),
@@ -224,7 +266,7 @@ class _UniformesScreenState extends State<UniformesScreen>
                 fontWeight: FontWeight.w700,
               ),
               overlayColor: WidgetStatePropertyAll(
-                _appBarFg().withOpacity(0.08),
+                _appBarFg().withAlpha(20),
               ),
               tabs: const [
                 Tab(icon: Icon(Icons.inventory_rounded), text: 'ESTOQUE'),
@@ -248,6 +290,12 @@ class _UniformesScreenState extends State<UniformesScreen>
             tooltip: 'Relatório Financeiro',
             onPressed: () => _abrirRelatorioFinanceiro(),
           ),
+          if (_tabController.index == 3)
+            IconButton(
+              icon: const Icon(Icons.more_vert_rounded),
+              tooltip: 'Relatório de pedidos',
+              onPressed: () => PedidosRelatorioDialog.show(context),
+            ),
           if (_tabController.index == 4)
             IconButton(
               icon: const Icon(Icons.business_rounded),
@@ -264,28 +312,65 @@ class _UniformesScreenState extends State<UniformesScreen>
             ),
         ],
       ),
-      body: Column(
-        children: [
-          _buildSearchBar(),
-          ResumoCards(realFormat: _realFormat, onNovaVenda: _abrirNovaVenda),
-          const SizedBox(height: 8),
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                _buildEstoqueTab(),
-                _buildVendasTab(),
-                _buildPendenciasTab(),
-                _buildPedidosTab(),
-                _buildRemessasTab(),
-              ],
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final maxWidth = constraints.maxWidth >= 1500
+              ? 1420.0
+              : constraints.maxWidth >= 1100
+                  ? 1280.0
+                  : constraints.maxWidth;
+
+          return Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: maxWidth),
+              child: Column(
+                children: [
+                  _buildSearchBar(),
+                  ResumoCards(
+                    realFormat: _realFormat,
+                    onNovaVenda: _abrirNovaVenda,
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: _uaiUniformesWindowsSafeMode
+                        ? _buildCurrentTabWindows()
+                        : TabBarView(
+                            controller: _tabController,
+                            children: [
+                              _buildEstoqueTab(),
+                              _buildVendasTab(),
+                              _buildPendenciasTab(),
+                              _buildPedidosTab(),
+                              _buildRemessasTab(),
+                            ],
+                          ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
 
+  Widget _buildCurrentTabWindows() {
+    switch (_tabController.index) {
+      case 0:
+        return _buildEstoqueTab();
+      case 1:
+        return _buildVendasTab();
+      case 2:
+        return _buildPendenciasTab();
+      case 3:
+        return _buildPedidosTab();
+      case 4:
+        return _buildRemessasTab();
+      default:
+        return _buildEstoqueTab();
+    }
+  }
   String _getAddTooltip() {
     switch (_tabController.index) {
       case 0:
@@ -344,10 +429,11 @@ class _UniformesScreenState extends State<UniformesScreen>
   // ==================== ABA ESTOQUE (CATEGORIAS EXPANSÍVEIS) ====================
   Widget _buildEstoqueTab() {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('uniformes_estoque')
-          .where('status', isEqualTo: 'ativo')
-          .snapshots(),
+      stream: _uaiUniformesQueryStream(
+        FirebaseFirestore.instance
+            .collection('uniformes_estoque')
+            .where('status', isEqualTo: 'ativo'),
+      ),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           return Center(
@@ -504,10 +590,11 @@ class _UniformesScreenState extends State<UniformesScreen>
   // ==================== ABA VENDAS ====================
   Widget _buildVendasTab() {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('vendas_uniformes')
-          .orderBy('data_venda', descending: true)
-          .snapshots(),
+      stream: _uaiUniformesQueryStream(
+        FirebaseFirestore.instance
+            .collection('vendas_uniformes')
+            .orderBy('data_venda', descending: true),
+      ),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           return Center(
@@ -524,7 +611,9 @@ class _UniformesScreenState extends State<UniformesScreen>
           );
         }
 
-        var vendas = snapshot.data?.docs ?? [];
+        var vendas = (snapshot.data?.docs ?? [])
+            .where((doc) => !_vendasExcluidasLocal.contains(doc.id))
+            .toList();
 
         if (vendas.isEmpty) {
           return Center(
@@ -558,19 +647,65 @@ class _UniformesScreenState extends State<UniformesScreen>
           }).toList();
         }
 
-        return ListView.builder(
-          padding: const EdgeInsets.all(12),
-          itemCount: vendas.length,
-          itemBuilder: (context, index) {
-            var doc = vendas[index];
-            var data = doc.data() as Map<String, dynamic>;
-            return VendaCard(
-              docId: doc.id,
-              data: data,
-              realFormat: _realFormat,
-              onTap: _abrirDetalhesVenda,
-              podeEditar: _podeEditar,
-              podeExcluir: _podeExcluir,
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final width = constraints.maxWidth;
+            final colunas = width >= 1700
+                ? 4
+                : width >= 1250
+                    ? 3
+                    : width >= 900
+                        ? 2
+                        : 1;
+
+            Widget buildVenda(dynamic doc) {
+              final data = doc.data() as Map<String, dynamic>;
+              return VendaCard(
+                docId: doc.id,
+                data: data,
+                realFormat: _realFormat,
+                onTap: _abrirDetalhesVenda,
+                podeEditar: _podeEditar,
+                podeExcluir: _podeExcluir,
+              );
+            }
+
+            if (colunas == 1) {
+              return ListView.builder(
+                padding: const EdgeInsets.all(12),
+                itemCount: vendas.length,
+                itemBuilder: (context, index) => buildVenda(vendas[index]),
+              );
+            }
+
+            const spacing = 12.0;
+            final maxWidth = width >= 1700
+                ? 1500.0
+                : width >= 1250
+                    ? 1220.0
+                    : 920.0;
+            final contentWidth = width < maxWidth ? width : maxWidth;
+            final cardWidth =
+                (contentWidth - 24 - (spacing * (colunas - 1))) / colunas;
+
+            return SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 20),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: maxWidth),
+                  child: Wrap(
+                    spacing: spacing,
+                    runSpacing: spacing,
+                    alignment: WrapAlignment.start,
+                    children: vendas.map((doc) {
+                      return SizedBox(
+                        width: cardWidth,
+                        child: buildVenda(doc),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
             );
           },
         );
@@ -581,11 +716,12 @@ class _UniformesScreenState extends State<UniformesScreen>
   // ==================== ABA PENDÊNCIAS ====================
   Widget _buildPendenciasTab() {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('vendas_uniformes')
-          .where('status_pagamento', whereIn: ['pendente', 'parcial'])
-          .orderBy('data_venda', descending: true)
-          .snapshots(),
+      stream: _uaiUniformesQueryStream(
+        FirebaseFirestore.instance
+            .collection('vendas_uniformes')
+            .where('status_pagamento', whereIn: ['pendente', 'parcial'])
+            .orderBy('data_venda', descending: true),
+      ),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           return Center(
@@ -602,7 +738,12 @@ class _UniformesScreenState extends State<UniformesScreen>
           );
         }
 
-        var vendasPendentes = snapshot.data?.docs ?? [];
+        var vendasPendentes = (snapshot.data?.docs ?? []).where((doc) {
+          if (_vendasExcluidasLocal.contains(doc.id)) return false;
+          final data = doc.data() as Map<String, dynamic>;
+          return (data['status'] ?? 'ativa').toString().toLowerCase() !=
+              'cancelada';
+        }).toList();
 
         if (vendasPendentes.isEmpty) {
           return Center(
@@ -647,7 +788,7 @@ class _UniformesScreenState extends State<UniformesScreen>
               decoration: BoxDecoration(
                 color: context.uai.card,
                 borderRadius: BorderRadius.circular(context.uai.cardRadius),
-                border: Border.all(color: context.uai.error.withOpacity(0.2)),
+                border: Border.all(color: context.uai.error.withAlpha(51)),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -704,10 +845,11 @@ class _UniformesScreenState extends State<UniformesScreen>
   // ==================== ABA PEDIDOS ====================
   Widget _buildPedidosTab() {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('pedidos_uniformes')
-          .orderBy('data_pedido', descending: true)
-          .snapshots(),
+      stream: _uaiUniformesQueryStream(
+        FirebaseFirestore.instance
+            .collection('pedidos_uniformes')
+            .orderBy('data_pedido', descending: true),
+      ),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           return Center(
@@ -724,7 +866,9 @@ class _UniformesScreenState extends State<UniformesScreen>
           );
         }
 
-        var pedidos = snapshot.data?.docs ?? [];
+        var pedidos = (snapshot.data?.docs ?? [])
+            .where((doc) => !_pedidosExcluidosLocal.contains(doc.id))
+            .toList();
 
         if (pedidos.isEmpty) {
           return Center(
@@ -793,6 +937,8 @@ class _UniformesScreenState extends State<UniformesScreen>
               onExcluir: _podeExcluir ? _excluirPedido : null,
               podeEditar: _podeEditar,
               podeExcluir: _podeExcluir,
+              podeRegistrarPagamento: _podeEditar,
+              podeAlterarStatus: _podeEditar,
               onTap: _abrirDetalhesPedido,
             );
           },
@@ -820,7 +966,9 @@ class _UniformesScreenState extends State<UniformesScreen>
           );
         }
 
-        var remessas = snapshot.data?.docs ?? [];
+        var remessas = (snapshot.data?.docs ?? [])
+            .where((doc) => !_remessasExcluidasLocal.contains(doc.id))
+            .toList();
         if (remessas.isEmpty) {
           return Center(
             child: Column(
@@ -880,6 +1028,8 @@ class _UniformesScreenState extends State<UniformesScreen>
               onTap: () => _abrirDetalhesRemessa(doc.id, data),
               onEditar: () => _editarRemessa(doc.id, data),
               onExcluir: () => _excluirRemessa(doc.id, data),
+              podeEditar: _podeEditar,
+              podeExcluir: _podeExcluir,
             );
           },
         );
@@ -955,8 +1105,12 @@ class _UniformesScreenState extends State<UniformesScreen>
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) =>
-            RemessaDetalhesScreen(remessaId: remessaId, remessaData: data),
+        builder: (_) => RemessaDetalhesScreen(
+          remessaId: remessaId,
+          remessaData: data,
+          podeEditar: _podeEditar,
+          podeExcluir: _podeExcluir,
+        ),
       ),
     );
     setState(() {});
@@ -1003,17 +1157,22 @@ class _UniformesScreenState extends State<UniformesScreen>
     if (confirmar != true) return;
 
     try {
-      for (var doc in pedidosSnapshot.docs) {
-        await doc.reference.delete();
-      }
-      await _remessaService.excluirRemessa(remessaId);
+      final removidos = await _remessaService.excluirRemessaComPedidos(
+        remessaId,
+      );
 
       if (mounted) {
+        setState(() {
+          _remessasExcluidasLocal.add(remessaId);
+          for (final doc in pedidosSnapshot.docs) {
+            _pedidosExcluidosLocal.add(doc.id);
+          }
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              qtdPedidos > 0
-                  ? '✅ Remessa e $qtdPedidos pedido(s) excluídos!'
+              removidos > 0
+                  ? '✅ Remessa e $removidos pedido(s) excluídos!'
                   : '✅ Remessa excluída!',
               style: TextStyle(color: _readableOn(context.uai.success)),
             ),
@@ -1027,7 +1186,7 @@ class _UniformesScreenState extends State<UniformesScreen>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '❌ Erro ao excluir: $e',
+              'Não foi possível cancelar a venda agora. Tente novamente.',
               style: TextStyle(color: _readableOn(context.uai.error)),
             ),
             backgroundColor: context.uai.error,
@@ -1284,7 +1443,7 @@ class _UniformesScreenState extends State<UniformesScreen>
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text(
-                    '❌ Erro ao registrar pagamento: $e',
+                    'Não foi possível registrar o pagamento agora. Verifique os dados e tente novamente.',
                     style: TextStyle(color: _readableOn(context.uai.error)),
                   ),
                   backgroundColor: context.uai.error,
@@ -1347,7 +1506,7 @@ class _UniformesScreenState extends State<UniformesScreen>
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text(
-                    '❌ Erro ao registrar pagamento: $e',
+                    'Não foi possível registrar o pagamento agora. Verifique os dados e tente novamente.',
                     style: TextStyle(color: _readableOn(context.uai.error)),
                   ),
                   backgroundColor: context.uai.error,
@@ -1377,7 +1536,9 @@ class _UniformesScreenState extends State<UniformesScreen>
         realFormat: _realFormat,
         onRegistrarPagamento: _registrarPagamento,
         onEditar: _podeEditar ? _editarVenda : null,
-        onExcluir: _podeExcluir ? _excluirVenda : null,
+        onCancelar: _podeExcluir ? _cancelarVenda : null,
+        onExcluirDefinitivamente:
+            _podeExcluir ? _excluirVendaDefinitivamente : null,
         podeEditar: _podeEditar,
         podeExcluir: _podeExcluir,
       ),
@@ -1416,63 +1577,169 @@ class _UniformesScreenState extends State<UniformesScreen>
     }
   }
 
-  void _excluirVenda(String docId, Map<String, dynamic> data) async {
+  Future<void> _executarAcaoVenda({
+    required String mensagem,
+    required Future<void> Function() acao,
+  }) async {
+    if (_acaoVendaEmAndamento) return;
+    _acaoVendaEmAndamento = true;
+    if (mounted) setState(() {});
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          content: Row(
+            children: [
+              const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.5)),
+              const SizedBox(width: 16),
+              Expanded(child: Text(mensagem)),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    try {
+      await acao();
+    } finally {
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        _acaoVendaEmAndamento = false;
+        setState(() {});
+      } else {
+        _acaoVendaEmAndamento = false;
+      }
+    }
+  }
+
+  Future<void> _cancelarVenda(String docId, Map<String, dynamic> data) async {
+    if (_acaoVendaEmAndamento) return;
+    final motivoController = TextEditingController(text: 'Cancelamento administrativo');
     final confirmar = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(
-          '🗑️ Confirmar Exclusão',
-          style: TextStyle(color: context.uai.textPrimary),
-        ),
-        content: Text(
-          'Tem certeza que deseja excluir esta venda?\n\n'
-          'Aluno: ${data['aluno_nome']}\n'
-          'Valor: ${_realFormat.format(data['valor_total'] ?? 0)}',
-          style: TextStyle(color: context.uai.textSecondary),
+        title: const Text('Cancelar venda'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('A venda ficará cancelada e continuará disponível para auditoria.\n\nAluno: ${data['aluno_nome']}'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: motivoController,
+              minLines: 1,
+              maxLines: 3,
+              decoration: const InputDecoration(labelText: 'Motivo do cancelamento'),
+            ),
+          ],
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('CANCELAR'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('VOLTAR')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('CANCELAR VENDA')),
+        ],
+      ),
+    );
+    if (confirmar != true) {
+      motivoController.dispose();
+      return;
+    }
+
+    final motivo = motivoController.text.trim();
+    motivoController.dispose();
+    if (motivo.length < 3) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Informe um motivo para cancelar a venda.')));
+      return;
+    }
+
+    try {
+      await _executarAcaoVenda(
+        mensagem: 'Cancelando venda...',
+        acao: () => _uniformesService.cancelarVenda(vendaId: docId, motivo: motivo),
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Venda cancelada com sucesso', style: TextStyle(color: _readableOn(context.uai.success))), backgroundColor: context.uai.success),
+        );
+      }
+    } catch (e, st) {
+      debugPrint('[UNIFORMES] erro ao cancelar venda $docId: $e');
+      debugPrintStack(stackTrace: st);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Não foi possível cancelar a venda agora. Tente novamente.', style: TextStyle(color: _readableOn(context.uai.error))), backgroundColor: context.uai.error),
+        );
+      }
+    }
+  }
+
+  Future<void> _excluirVendaDefinitivamente(String docId, Map<String, dynamic> data) async {
+    if (_acaoVendaEmAndamento) return;
+
+    String? bloqueio;
+    try {
+      bloqueio = await _uniformesService.verificarExclusaoDefinitiva(docId);
+    } catch (e, st) {
+      debugPrint('[UNIFORMES] erro ao verificar exclusão $docId: $e');
+      debugPrintStack(stackTrace: st);
+      bloqueio = 'Não foi possível verificar se esta venda pode ser excluída com segurança.';
+    }
+
+    if (bloqueio != null) {
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Exclusão definitiva indisponível'),
+          content: Text(bloqueio!),
+          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('ENTENDI'))],
+        ),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    final confirmar = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Excluir definitivamente'),
+        content: Text(
+          '${_ehAdmin
+              ? 'Esta ação ADMINISTRATIVA removerá definitivamente a venda, seus eventos vinculados e os lançamentos financeiros automáticos desta venda. O estoque vinculado será restaurado.\n\n'
+              : 'Esta ação removerá definitivamente esta venda e restaurará o estoque vinculado.\n\n'}Aluno: ${data['aluno_nome']}\nValor: ${_realFormat.format(data['valor_total'] ?? 0)}\n\nDeseja continuar?',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('NÃO EXCLUIR')),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: context.uai.error,
-              foregroundColor: _readableOn(context.uai.error),
-            ),
-            child: const Text('EXCLUIR'),
+            style: ElevatedButton.styleFrom(backgroundColor: context.uai.error, foregroundColor: _readableOn(context.uai.error)),
+            child: const Text('EXCLUIR DEFINITIVAMENTE'),
           ),
         ],
       ),
     );
     if (confirmar != true) return;
+
     try {
-      await FirebaseFirestore.instance
-          .collection('vendas_uniformes')
-          .doc(docId)
-          .delete();
+      await _executarAcaoVenda(
+        mensagem: 'Excluindo venda...',
+        acao: () => _uniformesService.excluirVendaDefinitivamente(vendaId: docId),
+      );
       if (mounted) {
+        setState(() => _vendasExcluidasLocal.add(docId));
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '✅ Venda excluída com sucesso!',
-              style: TextStyle(color: _readableOn(context.uai.success)),
-            ),
-            backgroundColor: context.uai.success,
-          ),
+          SnackBar(content: Text('Venda excluída com sucesso', style: TextStyle(color: _readableOn(context.uai.success))), backgroundColor: context.uai.success),
         );
       }
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('[UNIFORMES] erro ao excluir venda $docId: $e');
+      debugPrintStack(stackTrace: st);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '❌ Erro ao excluir: $e',
-              style: TextStyle(color: _readableOn(context.uai.error)),
-            ),
-            backgroundColor: context.uai.error,
-          ),
+          SnackBar(content: Text('Não foi possível excluir esta venda com segurança.', style: TextStyle(color: _readableOn(context.uai.error))), backgroundColor: context.uai.error),
         );
       }
     }
@@ -1533,17 +1800,14 @@ class _UniformesScreenState extends State<UniformesScreen>
     if (confirmar != true) return;
 
     try {
-      final remessaId = data['remessa_id'] as String?;
-      if (remessaId != null && remessaId.isNotEmpty) {
-        await _remessaService.desvincularPedido(docId, remessaId);
-      }
-
-      await FirebaseFirestore.instance
-          .collection('pedidos_uniformes')
-          .doc(docId)
-          .delete();
+      final remessaId = data['remessa_id']?.toString();
+      await _remessaService.excluirPedidoDefinitivamente(
+        docId,
+        remessaId: remessaId,
+      );
 
       if (mounted) {
+        setState(() => _pedidosExcluidosLocal.add(docId));
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -1560,7 +1824,7 @@ class _UniformesScreenState extends State<UniformesScreen>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '❌ Erro ao excluir: $e',
+              'Não foi possível cancelar a venda agora. Tente novamente.',
               style: TextStyle(color: _readableOn(context.uai.error)),
             ),
             backgroundColor: context.uai.error,
@@ -1783,14 +2047,14 @@ class _CategoriaEstoqueExpansivelState
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(context.uai.cardRadius),
             border: Border.all(color: context.uai.border),
-            boxShadow: context.uai.cardShadow,
+            boxShadow: const [],
           ),
           child: ExpansionTile(
             leading: Container(
               width: 50,
               height: 50,
               decoration: BoxDecoration(
-                color: corCat.withOpacity(0.15),
+                color: corCat.withAlpha(38),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: fotoUrl != null && fotoUrl.isNotEmpty
@@ -1841,18 +2105,19 @@ class _CategoriaEstoqueExpansivelState
             children: [
               if (_expanded)
                 StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance
-                      .collection('uniformes_estoque')
-                      .where('item_base_id', isEqualTo: widget.categoriaId)
-                      .where('status', isEqualTo: 'ativo')
-                      .snapshots(),
+                  stream: _uaiUniformesQueryStream(
+                    FirebaseFirestore.instance
+                        .collection('uniformes_estoque')
+                        .where('item_base_id', isEqualTo: widget.categoriaId)
+                        .where('status', isEqualTo: 'ativo'),
+                  ),
                   builder: (context, snapshot) {
                     if (!snapshot.hasData)
-                      return Center(
+                      { return Center(
                         child: CircularProgressIndicator(
                           color: context.uai.primary,
                         ),
-                      );
+                      ); }
                     final variacoes = snapshot.data!.docs;
                     if (variacoes.isEmpty) {
                       return Padding(
@@ -1889,3 +2154,4 @@ class _CategoriaEstoqueExpansivelState
     );
   }
 }
+

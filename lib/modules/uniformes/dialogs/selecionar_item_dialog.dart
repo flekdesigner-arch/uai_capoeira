@@ -33,19 +33,7 @@ class _SelecionarItemDialogState extends State<SelecionarItemDialog> {
         : const Color(0xFFFFFFFF);
   }
 
-  Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance())
-        .abs();
-    if (diff >= 0.26) return color;
 
-    final bgIsDark = background.computeLuminance() < 0.45;
-    final hsl = HSLColor.fromColor(color);
-
-    return hsl
-        .withLightness(bgIsDark ? 0.72 : 0.32)
-        .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
-        .toColor();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -237,8 +225,8 @@ class _SelecionarItemDialogState extends State<SelecionarItemDialog> {
                                 height: 40,
                                 decoration: BoxDecoration(
                                   color: semEstoque
-                                      ? context.uai.textMuted.withOpacity(0.15)
-                                      : context.uai.success.withOpacity(0.15),
+                                      ? context.uai.textMuted.withAlpha(38)
+                                      : context.uai.success.withAlpha(38),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Icon(
@@ -266,16 +254,9 @@ class _SelecionarItemDialogState extends State<SelecionarItemDialog> {
                                       : context.uai.textSecondary,
                                 ),
                               ),
-                              enabled: !semEstoque,
-                              onTap: semEstoque
-                                  ? null
-                                  : () {
-                                      _showQuantidadeDialog(
-                                        context,
-                                        doc.id,
-                                        data,
-                                      );
-                                    },
+                              onTap: () {
+                                _showQuantidadeDialog(context, doc.id, data);
+                              },
                             ),
                           ),
                         ),
@@ -296,119 +277,102 @@ class _SelecionarItemDialogState extends State<SelecionarItemDialog> {
     String itemId,
     Map<String, dynamic> data,
   ) {
-    final quantidadeController = TextEditingController();
-    int quantidadeMaxima = data['quantidade'] ?? 999;
-    bool controlaEstoque = data['controla_estoque'] ?? true;
+    final quantidadeController = TextEditingController(text: '1');
+    final quantidadeMaxima = (data['quantidade'] as num?)?.toInt() ?? 0;
+    String origem = quantidadeMaxima > 0 ? 'estoque' : 'fora_do_estoque';
 
     showDialog(
       context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          backgroundColor: context.uai.surface,
-          title: Text(
-            data['nome'] ?? 'Item',
-            style: TextStyle(
-              color: context.uai.textPrimary,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Preço unitário: ${_realFormat.format(data['preco_venda'] ?? 0)}',
-                style: TextStyle(color: context.uai.textSecondary),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setLocalState) {
+          final usandoEstoque = origem == 'estoque';
+          return AlertDialog(
+            backgroundColor: context.uai.surface,
+            title: Text(data['nome'] ?? 'Item', style: TextStyle(color: context.uai.textPrimary, fontWeight: FontWeight.bold)),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Preço unitário: ${_realFormat.format(data['preco_venda'] ?? 0)}', style: TextStyle(color: context.uai.textSecondary)),
+                  const SizedBox(height: 16),
+                  Text('ORIGEM DO ITEM', style: TextStyle(color: context.uai.textPrimary, fontWeight: FontWeight.w800, fontSize: 12)),
+                  RadioGroup<String>(
+                    groupValue: origem,
+                    onChanged: (v) {
+                      if (v != null) setLocalState(() => origem = v);
+                    },
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        RadioListTile<String>(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          value: 'estoque',
+                          enabled: quantidadeMaxima > 0,
+                          title: const Text('Estoque'),
+                          subtitle: Text(
+                            quantidadeMaxima > 0
+                                ? 'Retira automaticamente. Saldo: $quantidadeMaxima'
+                                : 'Sem saldo registrado',
+                          ),
+                        ),
+                        RadioListTile<String>(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          value: 'fora_do_estoque',
+                          title: const Text('Fora do estoque'),
+                          subtitle: const Text(
+                            'Registra a venda sem alterar o saldo.',
+                          ),
+                        ),
+                        RadioListTile<String>(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          value: 'encomenda',
+                          title: const Text('Encomenda'),
+                          subtitle: const Text(
+                            'Produto será providenciado para entrega.',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(controller: quantidadeController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: 'Quantidade', helperText: usandoEstoque ? 'Máximo: $quantidadeMaxima' : 'Não altera o estoque')),
+                ],
               ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: quantidadeController,
-                keyboardType: TextInputType.number,
-                style: TextStyle(color: context.uai.textPrimary),
-                decoration: InputDecoration(
-                  labelText: 'Quantidade',
-                  labelStyle: TextStyle(color: context.uai.textSecondary),
-                  helperText: controlaEstoque
-                      ? 'Máximo: $quantidadeMaxima'
-                      : null,
-                  helperStyle: TextStyle(color: context.uai.textMuted),
-                  filled: true,
-                  fillColor: context.uai.cardAlt,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(
-                      context.uai.inputRadius,
-                    ),
-                    borderSide: BorderSide(color: context.uai.border),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(
-                      context.uai.inputRadius,
-                    ),
-                    borderSide: BorderSide(color: context.uai.border),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(
-                      context.uai.inputRadius,
-                    ),
-                    borderSide: BorderSide(
-                      color: context.uai.primary,
-                      width: 1.4,
-                    ),
-                  ),
-                ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+              ElevatedButton(
+                onPressed: () {
+                  final quantidade = int.tryParse(quantidadeController.text) ?? 0;
+                  if (quantidade <= 0 || (usandoEstoque && quantidade > quantidadeMaxima)) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(usandoEstoque ? 'Quantidade inválida. Disponível: $quantidadeMaxima' : 'Informe uma quantidade válida.'), backgroundColor: context.uai.error));
+                    return;
+                  }
+                  Navigator.pop(ctx);
+                  Navigator.pop(context, {
+                    'item_id': itemId,
+                    'produto_id': itemId,
+                    'nome': data['nome'],
+                    'produto_nome': data['nome'],
+                    'categoria': data['categoria'] ?? '',
+                    'tamanho': data['tamanho'] ?? '',
+                    'quantidade': quantidade,
+                    'preco_unitario': (data['preco_venda'] as num?)?.toDouble() ?? 0,
+                    'origem': origem,
+                    'controla_estoque': origem == 'estoque',
+                    'status_entrega': 'aguardando',
+                  });
+                },
+                child: const Text('Adicionar'),
               ),
             ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text(
-                'Cancelar',
-                style: TextStyle(color: context.uai.textPrimary),
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                int quantidade = int.tryParse(quantidadeController.text) ?? 1;
-                if (quantidade <= 0) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: const Text('Quantidade deve ser maior que 0'),
-                      backgroundColor: context.uai.error,
-                    ),
-                  );
-                  return;
-                }
-                if (controlaEstoque && quantidade > quantidadeMaxima) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        'Quantidade máxima disponível: $quantidadeMaxima',
-                      ),
-                      backgroundColor: context.uai.error,
-                    ),
-                  );
-                  return;
-                }
-
-                Navigator.pop(ctx); // Fecha dialog de quantidade
-                Navigator.pop(context, {
-                  // Fecha dialog de seleção e retorna item
-                  'item_id': itemId,
-                  'nome': data['nome'],
-                  'quantidade': quantidade,
-                  'preco_unitario': data['preco_venda'] ?? 0,
-                  'controla_estoque': controlaEstoque,
-                });
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: context.uai.primary,
-                foregroundColor: _readableOn(context.uai.primary),
-              ),
-              child: const Text('Adicionar'),
-            ),
-          ],
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }

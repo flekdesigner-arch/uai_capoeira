@@ -1,15 +1,29 @@
+import '../experiencia/avaliacao_inscricao_button.dart';
+import 'package:uai_capoeira/modules/inscricoes/ficha/pendencia_pulsante_uai.dart';
+import 'package:uai_capoeira/modules/inscricoes/ficha/revisao_rolavel_uai.dart';
+import 'package:uai_capoeira/modules/inscricoes/ficha/ficha_complementar_fields.dart';
 import 'dart:async';
-import 'dart:typed_data';
+import 'package:uai_capoeira/modules/inscricoes/widgets/inscricao_cidade_field.dart';
+import 'package:uai_capoeira/modules/inscricoes/services/inscricao_cidades_service.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
+import '../widgets/confirmar_email_dialog.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/inscricoes/public/signature_screen.dart';
+import 'package:uai_capoeira/modules/inscricoes/public/inscricao_publica_entrada.dart';
+import 'package:uai_capoeira/modules/inscricoes/services/inscricao_security_service.dart';
+import 'package:uai_capoeira/modules/minha_uai/screens/minha_uai_home_screen.dart';
+import 'package:uai_capoeira/modules/minha_uai/services/conta_uai_service.dart';
 import 'package:uai_capoeira/modules/rastreio/services/rastreio_site.dart';
 import 'package:uai_capoeira/modules/site/screens/landing_page.dart';
 import 'package:uai_capoeira/modules/site/widgets/regimento_dialog.dart';
@@ -25,7 +39,57 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
   final _firestore = FirebaseFirestore.instance;
   final _storage = FirebaseStorage.instance;
   final _rastreioService = RastreioSiteService();
+  final _securityService = InscricaoSecurityService();
+  final _contaUaiService = ContaUaiService();
   final _pageController = PageController();
+  final _fieldFocus = <TextEditingController, FocusNode>{};
+  FocusNode _focusFor(TextEditingController c) =>
+      _fieldFocus.putIfAbsent(c, () => FocusNode());
+
+  void _proximoCampo(TextEditingController controller) {
+    final candidates = switch (_currentStep) {
+      3 => [
+        'nome',
+        if (_campoVisivel('apelido', 'obrigatorio')) 'apelido',
+        'data_nascimento',
+      ],
+      4 => [
+        if (_campoVisivel('contato_aluno', 'obrigatorio')) 'contato_aluno',
+        'nome_responsavel',
+        'contato_responsavel',
+      ],
+      6 => ['rua', 'numero', 'bairro'],
+      _ => <String>[],
+    };
+    final index = candidates.indexWhere(
+      (k) => identical(_controllers[k], controller),
+    );
+    for (var i = index + 1; index >= 0 && i < candidates.length; i++) {
+      final node = _fieldFocus[_controllers[candidates[i]]];
+      if (node?.context != null && node!.canRequestFocus) {
+        node.requestFocus();
+        return;
+      }
+    }
+    FocusScope.of(context).unfocus();
+    _proximaEtapa();
+  }
+
+  Future<void> _permitirCaptura(bool permitir) async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    try {
+      await const MethodChannel(
+        'uai/inscricao_captura',
+      ).invokeMethod(permitir ? 'entrar' : 'sair');
+    } on MissingPluginException {
+      debugPrint(
+        'Captura: reinstale o APK atualizado para aplicar a configuração nativa.',
+      );
+    } on PlatformException catch (e) {
+      debugPrint('Captura: ${e.code}');
+    }
+  }
+
   final Map<String, Timer> _debounceRastreioCampos = {};
 
   final Map<String, TextEditingController> _controllers = {
@@ -40,9 +104,22 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
     'contato_aluno': TextEditingController(),
     'nome_responsavel': TextEditingController(),
     'contato_responsavel': TextEditingController(),
+    'email_conta_uai': TextEditingController(),
   };
 
+  final List<_ContatoEmergenciaAdicional> _contatosEmergenciaAdicionais = [];
+
+  Map<String, dynamic> _ficha = fichaUaiVazia();
+  final Set<int> _etapasTentadas = {};
+  final String _chaveEnvio = DateTime.now().microsecondsSinceEpoch.toString();
+  final Map<String, Timer> _parentescoTimers = {};
+  final Map<String, int> _consultasPorCampo = {};
+  int _consultaParentesco = 0;
+  List<Map<String, dynamic>> _perfisFamilia = [];
+  String _avisoParentesco = '';
+  bool _editandoRevisao = false;
   int _currentStep = 0;
+  bool _entradaEscolhida = false;
   DateTime _inicioTelaInscricao = DateTime.now();
   DateTime _inicioEtapaAtual = DateTime.now();
 
@@ -54,6 +131,18 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
   bool _carregando = true;
   bool _enviando = false;
   String _mensagem = '';
+  final _resultadosTelefoneKeys = <String, GlobalKey>{
+    'contato_aluno': GlobalKey(),
+    'contato_responsavel': GlobalKey(),
+  };
+  List<String> _cidadesAcademiasAtivas = [];
+  bool _carregandoCidadesAcademias = false;
+  final _cidadesService = InscricaoCidadesService.firebase();
+  String _avisoCidades = '';
+  bool _cidadesEmCache = false;
+  String _statusEnvio = 'Preparando inscrição...';
+  String _fotoOrigem = 'galeria';
+  DateTime? _fotoCapturadaEm;
   bool _autorizacao = false;
 
   int _idadeMinima = 5;
@@ -63,6 +152,13 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
   bool _configuracoesCarregadas = false;
   bool _temVagas = true;
   bool _recolherAssinatura = true;
+  Map<String, dynamic> _camposFormulario = const {};
+  String? _ultimaInscricaoId;
+  String? _ultimoVinculoToken;
+  bool _emailContaUaiConfirmado = false;
+  bool _confirmandoEmailContaUai = false;
+  String _metodoConfirmacaoEmail = '';
+  String _emailConfirmadoValor = '';
 
   String? _assinaturaUrl;
   Uint8List? _assinaturaBytes;
@@ -83,6 +179,9 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
     4: false,
     5: true,
     6: false,
+    7: false,
+    8: false,
+    9: false,
   };
 
   final Map<int, List<String>> _errosPorEtapa = {
@@ -93,63 +192,136 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
     4: [],
     5: [],
     6: [],
+    7: [],
+    8: [],
+    9: [],
   };
 
   static const List<String> _nomesEtapasRastreio = [
     'boas_vindas',
+    'acesso_email',
     'foto_aluno',
     'dados_aluno',
-    'contato',
-    'endereco',
+    'contatos',
     'documento',
+    'endereco',
+    'cuidados',
+    'experiencia_capoeira',
     'revisao',
   ];
 
   @override
   void initState() {
     super.initState();
-    _controllers['cidade']!.text = 'BOCAIÚVA-MG';
+    _controllers['cidade']!.text = '';
+    _carregarCidadesAcademiasAtivas();
+    for (final controller in _controllers.values) {
+      var anterior = controller.text;
+      controller.addListener(() {
+        if (controller.text == anterior) return;
+        anterior = controller.text;
+        _invalidarAssinatura();
+      });
+    }
+
     _configurarRastreioCamposDigitados();
-    _iniciarRastreioInscricao();
 
     _controllers['nome']!.addListener(_validarEtapa1);
     _controllers['apelido']!.addListener(_validarEtapa1);
     _controllers['data_nascimento']!.addListener(_validarEtapa1);
-    _controllers['contato_aluno']!.addListener(_validarEtapa2);
-    _controllers['nome_responsavel']!.addListener(_validarEtapa2);
-    _controllers['contato_responsavel']!.addListener(_validarEtapa2);
-    _controllers['rua']!.addListener(_validarEtapa3);
-    _controllers['numero']!.addListener(_validarEtapa3);
-    _controllers['bairro']!.addListener(_validarEtapa3);
-    _controllers['cidade']!.addListener(_validarEtapa3);
+    _controllers['contato_aluno']!.addListener(_validarEtapaContatos);
+    _controllers['nome_responsavel']!.addListener(_validarEtapaContatos);
+    _controllers['contato_responsavel']!.addListener(_validarEtapaContatos);
+    _controllers['email_conta_uai']!.addListener(_onEmailContaUaiAlterado);
+    _controllers['rua']!.addListener(_validarEtapaEndereco);
+    _controllers['numero']!.addListener(_validarEtapaEndereco);
+    _controllers['bairro']!.addListener(_validarEtapaEndereco);
+    _controllers['cidade']!.addListener(_validarEtapaEndereco);
 
+    final user = FirebaseAuth.instance.currentUser;
+    if (user?.emailVerified == true && (user?.email?.isNotEmpty ?? false)) {
+      _controllers['email_conta_uai']!.text = user!.email!.trim().toLowerCase();
+    }
+    unawaited(_permitirCaptura(true));
     _verificarInscricoes();
   }
 
   @override
   void dispose() {
+    unawaited(_permitirCaptura(false));
+    for (final node in _fieldFocus.values) {
+      node.dispose();
+    }
     _controllers['nome']!.removeListener(_validarEtapa1);
     _controllers['apelido']!.removeListener(_validarEtapa1);
     _controllers['data_nascimento']!.removeListener(_validarEtapa1);
-    _controllers['contato_aluno']!.removeListener(_validarEtapa2);
-    _controllers['nome_responsavel']!.removeListener(_validarEtapa2);
-    _controllers['contato_responsavel']!.removeListener(_validarEtapa2);
-    _controllers['rua']!.removeListener(_validarEtapa3);
-    _controllers['numero']!.removeListener(_validarEtapa3);
-    _controllers['bairro']!.removeListener(_validarEtapa3);
-    _controllers['cidade']!.removeListener(_validarEtapa3);
+    _controllers['contato_aluno']!.removeListener(_validarEtapaContatos);
+    _controllers['nome_responsavel']!.removeListener(_validarEtapaContatos);
+    _controllers['contato_responsavel']!.removeListener(_validarEtapaContatos);
+    _controllers['email_conta_uai']!.removeListener(_onEmailContaUaiAlterado);
+    _controllers['rua']!.removeListener(_validarEtapaEndereco);
+    _controllers['numero']!.removeListener(_validarEtapaEndereco);
+    _controllers['bairro']!.removeListener(_validarEtapaEndereco);
+    _controllers['cidade']!.removeListener(_validarEtapaEndereco);
 
     _registrarSaidaInscricaoSeNecessario(motivo: 'dispose');
 
     for (final controller in _controllers.values) {
       controller.dispose();
     }
+    for (final contato in _contatosEmergenciaAdicionais) {
+      contato.dispose();
+    }
     for (final timer in _debounceRastreioCampos.values) {
       timer.cancel();
     }
     _debounceRastreioCampos.clear();
     _pageController.dispose();
+    for (final timer in _parentescoTimers.values) {
+      timer.cancel();
+    }
     super.dispose();
+  }
+
+  Future<void> _carregarCidadesAcademiasAtivas() async {
+    if (_carregandoCidadesAcademias || !mounted) return;
+    setState(() {
+      _carregandoCidadesAcademias = true;
+      _avisoCidades = '';
+    });
+    try {
+      final result = await _cidadesService.carregar();
+      if (!mounted) return;
+      final selecionada = _controllers['cidade']!.text.trim().toUpperCase();
+      setState(() {
+        _cidadesAcademiasAtivas = result.cidades;
+        _cidadesEmCache = result.emCache;
+        _avisoCidades = result.aviso;
+        if (result.cidades.isEmpty) {
+          _avisoCidades =
+              'Nenhuma cidade está disponível para inscrição agora. Tente atualizar em instantes ou entre em contato com a UAI.';
+        }
+      });
+      // Só uma resposta válida pode invalidar uma escolha antiga.
+      if (!result.cidades.contains(selecionada)) {
+        _controllers['cidade']!.clear();
+      }
+    } catch (error) {
+      if (!mounted) return;
+      final code = error is FirebaseFunctionsException ? error.code : 'conexao';
+      debugPrint('Inscrição/cidades: falha final $code');
+      setState(() {
+        _cidadesEmCache = _cidadesAcademiasAtivas.isNotEmpty;
+        _avisoCidades = _cidadesEmCache
+            ? 'Não foi possível atualizar. Mantivemos suas opções e a cidade selecionada. A disponibilidade será confirmada ao enviar.'
+            : 'Não foi possível consultar as cidades. Confira a conexão e toque em Tentar novamente. Seus outros dados foram mantidos.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _carregandoCidadesAcademias = false);
+        _validarEtapaEndereco();
+      }
+    }
   }
 
   Color _readableOn(Color background) {
@@ -178,6 +350,23 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
   }
 
   bool _temFoto() => _fotoBytes != null || (_fotoUrl?.isNotEmpty == true);
+
+  String _campoModo(String campo, String padrao) {
+    final value = _camposFormulario[campo]?.toString().trim().toLowerCase();
+    if (value == 'obrigatorio' || value == 'opcional' || value == 'oculto') {
+      return value!;
+    }
+    return padrao;
+  }
+
+  bool _campoVisivel(String campo, String padrao) =>
+      _campoModo(campo, padrao) != 'oculto';
+
+  bool _campoObrigatorio(String campo, String padrao) =>
+      _campoModo(campo, padrao) == 'obrigatorio';
+
+  String _rotuloCampo(String base, String campo, String padrao) =>
+      '$base${_campoObrigatorio(campo, padrao) ? ' *' : ' (opcional)'}';
 
   bool _telefoneCompleto(String value) {
     return value.replaceAll(RegExp(r'[^0-9]'), '').length >= 10;
@@ -216,8 +405,9 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
   String _toUpperCase(String? text) => text?.toUpperCase().trim() ?? '';
 
   String _nomeEtapaRastreio(int etapa) {
-    if (etapa < 0 || etapa >= _nomesEtapasRastreio.length)
+    if (etapa < 0 || etapa >= _nomesEtapasRastreio.length) {
       return 'etapa_$etapa';
+    }
     return _nomesEtapasRastreio[etapa];
   }
 
@@ -365,7 +555,10 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
       _rastreioService.iniciarTela(
         'inscricao_publica',
         origem: 'landing_page',
-        metadata: {'formulario': 'aula_experimental', 'total_etapas': 7},
+        metadata: {
+          'formulario': 'aula_experimental',
+          'total_etapas': _nomesEtapasRastreio.length,
+        },
       ),
     );
 
@@ -373,6 +566,17 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
       _rastreioService.registrarPaginaVista(
         'inscricao_publica',
         'landing_page',
+      ),
+    );
+    unawaited(
+      _rastreioService.registrarMarcoFunilInscricao(
+        marco: 'inicio_formulario',
+        acao: 'iniciou',
+        origem: 'landing_page',
+        etapaNumero: 1,
+        etapaNome: _nomeEtapaRastreio(0),
+        duracaoTotalSegundos: 0,
+        metadata: {'total_etapas': _nomesEtapasRastreio.length},
       ),
     );
     unawaited(_registrarEntradaEtapa(0, origem: 'init'));
@@ -391,6 +595,15 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
       acao: 'entrou',
       origem: origem,
       metadata: _metadataResumoInscricao(),
+    );
+
+    await _rastreioService.registrarMarcoFunilInscricao(
+      marco: 'etapa_visualizada',
+      acao: 'entrou',
+      origem: origem,
+      etapaNumero: etapa + 1,
+      etapaNome: _nomeEtapaRastreio(etapa),
+      duracaoTotalSegundos: _tempoTotalInscricaoSegundos,
     );
   }
 
@@ -411,6 +624,19 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
         'duracao_etapa_segundos': _tempoEtapaAtualSegundos,
       },
     );
+
+    if (origem == 'avancar' || origem == 'conversao') {
+      await _rastreioService.registrarMarcoFunilInscricao(
+        marco: 'etapa_concluida',
+        acao: 'concluiu',
+        origem: origem,
+        etapaNumero: etapa + 1,
+        etapaNome: _nomeEtapaRastreio(etapa),
+        duracaoEtapaSegundos: _tempoEtapaAtualSegundos,
+        duracaoTotalSegundos: _tempoTotalInscricaoSegundos,
+        metadata: {'destino': destino},
+      );
+    }
   }
 
   void _rastrearAcaoInscricao(
@@ -443,6 +669,18 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
         metadata: {..._metadataResumoInscricao(), ...?metadata},
       ),
     );
+
+    unawaited(
+      _rastreioService.registrarMarcoFunilInscricao(
+        marco: 'erro_validacao',
+        acao: 'erro',
+        origem: origem ?? local,
+        etapaNumero: _currentStep + 1,
+        etapaNome: _etapaAtualRastreio(),
+        duracaoTotalSegundos: _tempoTotalInscricaoSegundos,
+        metadata: {'local': local, 'total_erros': erros.length, ...?metadata},
+      ),
+    );
   }
 
   void _registrarSaidaInscricaoSeNecessario({required String motivo}) {
@@ -462,6 +700,18 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
         acao: 'abandonou_inscricao',
         origem: motivo,
         metadata: _metadataResumoInscricao(),
+      ),
+    );
+
+    unawaited(
+      _rastreioService.registrarMarcoFunilInscricao(
+        marco: 'abandono',
+        acao: 'abandonou',
+        origem: motivo,
+        etapaNumero: _currentStep + 1,
+        etapaNome: _etapaAtualRastreio(),
+        duracaoEtapaSegundos: _tempoEtapaAtualSegundos,
+        duracaoTotalSegundos: _tempoTotalInscricaoSegundos,
       ),
     );
 
@@ -552,14 +802,12 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
       }
 
       final data = doc.data()!;
-      final inscricoesSnapshot = await _firestore
-          .collection('inscricoes')
-          .where('status', isEqualTo: 'pendente')
-          .get();
-
       final vagasTotal = data['vagas_disponiveis'] ?? 0;
-      final inscricoesPendentes = inscricoesSnapshot.docs.length;
-      final vagasRestantes = vagasTotal - inscricoesPendentes;
+      final inscricoesPendentes =
+          data['vagas_em_uso'] ?? data['total_inscricoes'] ?? 0;
+      final vagasRestantes =
+          vagasTotal -
+          (inscricoesPendentes is num ? inscricoesPendentes.toInt() : 0);
 
       if (!mounted) return;
       setState(() {
@@ -570,6 +818,9 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
         _idadeMinima = data['idade_minima'] ?? 5;
         _idadeMaxima = data['idade_maxima'] ?? 16;
         _recolherAssinatura = data['recolher_assinatura'] ?? true;
+        _camposFormulario = Map<String, dynamic>.from(
+          data['campos_formulario'] as Map? ?? const {},
+        );
         _configuracoesCarregadas = true;
         _etapaValida[0] = _inscricoesAbertas && _temVagas;
         _carregando = false;
@@ -620,7 +871,12 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
       );
     }
 
-    final apelidoValido = _validarNomePessoa(apelido);
+    final apelidoVisivel = _campoVisivel('apelido', 'obrigatorio');
+    final apelidoObrigatorio = _campoObrigatorio('apelido', 'obrigatorio');
+    final apelidoValido =
+        !apelidoVisivel ||
+        (!apelidoObrigatorio && apelido.isEmpty) ||
+        _validarNomePessoa(apelido);
     if (!apelidoValido) {
       erros.add(
         apelido.isEmpty
@@ -629,8 +885,14 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
       );
     }
 
-    final dataValida = dataNascimento.isNotEmpty;
-    if (!dataValida) erros.add('Informe a data de nascimento.');
+    bool dataValida = false;
+    try {
+      final d = DateFormat('dd/MM/yyyy').parseStrict(dataNascimento);
+      dataValida = d.year >= 1900 && !d.isAfter(DateTime.now());
+    } catch (_) {}
+    if (!dataValida) {
+      erros.add('Informe uma data válida no formato DD/MM/AAAA.');
+    }
 
     final sexoValido = _sexo != null;
     if (!sexoValido) erros.add('Selecione o sexo.');
@@ -645,39 +907,204 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
     }
 
     setState(() {
-      _etapaValida[2] =
+      _etapaValida[3] =
           nomeValido &&
           apelidoValido &&
           dataValida &&
           sexoValido &&
           idadeValida;
-      _errosPorEtapa[2] = erros;
+      _errosPorEtapa[3] = erros;
     });
   }
 
   void _validarEtapaFoto() {
     if (!mounted) return;
     final erros = <String>[];
-    if (!_temFoto()) erros.add('Tire a foto do aluno para identificação.');
+    final obrigatoria = _campoObrigatorio('foto', 'obrigatorio');
+    final visivel = _campoVisivel('foto', 'obrigatorio');
+    if (visivel && obrigatoria && !_temFoto()) {
+      erros.add('Tire a foto do aluno para identificação.');
+    }
     setState(() {
-      _etapaValida[1] = _temFoto();
+      _etapaValida[2] = !visivel || !obrigatoria || _temFoto();
+      _errosPorEtapa[2] = erros;
+    });
+  }
+
+  bool _emailFormatoValido(String value) {
+    final email = value.trim().toLowerCase();
+    return RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email);
+  }
+
+  void _onEmailContaUaiAlterado() {
+    for (final timer in _parentescoTimers.values) {
+      timer.cancel();
+    }
+    _consultaParentesco++;
+    _perfisFamilia = [];
+    _avisoParentesco = '';
+    final atual = _controllers['email_conta_uai']!.text.trim().toLowerCase();
+    if (_emailContaUaiConfirmado && atual != _emailConfirmadoValor) {
+      _emailContaUaiConfirmado = false;
+      _metodoConfirmacaoEmail = '';
+      _emailConfirmadoValor = '';
+    }
+
+    // Uma mãe/responsável pode cadastrar vários filhos com a mesma Conta UAI.
+    // Se a sessão atual já possui exatamente este e-mail verificado, não
+    // obrigamos um novo código a cada nova inscrição.
+    final user = FirebaseAuth.instance.currentUser;
+    final emailSessao = user?.email?.trim().toLowerCase() ?? '';
+    if (!_emailContaUaiConfirmado &&
+        atual.isNotEmpty &&
+        user?.emailVerified == true &&
+        emailSessao == atual) {
+      _emailContaUaiConfirmado = true;
+      _emailConfirmadoValor = atual;
+      _metodoConfirmacaoEmail = 'sessao_existente';
+    }
+    _validarEtapaAcesso();
+  }
+
+  Future<void> _confirmarEmailContaUaiPorGoogle() async {
+    if (_confirmandoEmailContaUai) return;
+    setState(() => _confirmandoEmailContaUai = true);
+    try {
+      await _contaUaiService.loginGoogle(finalidade: 'inscricao_publica');
+      final user = FirebaseAuth.instance.currentUser;
+      final email = user?.email?.trim().toLowerCase() ?? '';
+      if (email.isEmpty || user?.emailVerified != true) {
+        throw Exception('A conta Google não retornou um e-mail confirmado.');
+      }
+      _controllers['email_conta_uai']!.text = email;
+      if (!mounted) return;
+      setState(() {
+        _emailContaUaiConfirmado = true;
+        _emailConfirmadoValor = email;
+        _metodoConfirmacaoEmail = 'google';
+      });
+      _validarEtapaAcesso();
+      _showSuccessSnackbar('E-mail confirmado com Google.');
+      _avancarAposConfirmacao();
+    } catch (e) {
+      if (!mounted) return;
+      _showErrorSnackbar(
+        'Não foi possível confirmar com Google. Tente novamente.',
+      );
+    } finally {
+      if (mounted) setState(() => _confirmandoEmailContaUai = false);
+    }
+  }
+
+  void _avancarAposConfirmacao() {
+    if (!mounted) return;
+    setState(() => _confirmandoEmailContaUai = false);
+    if (_currentStep == 1 && _etapaValida[1] == true) _proximaEtapa();
+  }
+
+  Future<void> _confirmarEmailContaUaiPorCodigo() async {
+    if (_confirmandoEmailContaUai) return;
+    final email = _controllers['email_conta_uai']!.text.trim().toLowerCase();
+    if (!_emailFormatoValido(email)) {
+      _showErrorSnackbar('Digite um e-mail válido antes de confirmar.');
+      return;
+    }
+
+    setState(() => _confirmandoEmailContaUai = true);
+    try {
+      await _contaUaiService.solicitarCodigo(
+        email,
+        finalidade: 'inscricao_publica',
+      );
+      if (!mounted) return;
+      final confirmado = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => ConfirmarEmailDialog(
+          email: email,
+          confirmar: (codigo) =>
+              _contaUaiService.confirmarCodigo(email, codigo),
+        ),
+      );
+      if (confirmado != true) return;
+      if (!mounted) return;
+      setState(() {
+        _emailContaUaiConfirmado = true;
+        _emailConfirmadoValor = email;
+        _metodoConfirmacaoEmail = 'codigo_email';
+      });
+      _validarEtapaAcesso();
+      _showSuccessSnackbar('E-mail confirmado com sucesso.');
+      _avancarAposConfirmacao();
+    } on FirebaseFunctionsException catch (e) {
+      if (!mounted) return;
+      final msg = switch (e.code) {
+        'permission-denied' => 'Código incorreto. Confira e tente novamente.',
+        'failed-precondition' =>
+          'O código expirou ou já foi usado. Solicite outro.',
+        'resource-exhausted' =>
+          'Aguarde um pouco antes de solicitar outro código.',
+        _ => 'Não foi possível confirmar o e-mail agora. Tente novamente.',
+      };
+      _showErrorSnackbar(msg);
+    } catch (_) {
+      if (!mounted) return;
+      _showErrorSnackbar(
+        'Não foi possível confirmar o e-mail agora. Tente novamente.',
+      );
+    } finally {
+      if (mounted) setState(() => _confirmandoEmailContaUai = false);
+    }
+  }
+
+  void _validarEtapaAcesso() {
+    if (!mounted) return;
+    final erros = <String>[];
+
+    final email = _controllers['email_conta_uai']!.text.trim().toLowerCase();
+    final emailValido = _emailFormatoValido(email);
+    if (!emailValido) {
+      erros.add('Informe um e-mail válido para acompanhar a inscrição.');
+    } else if (!_emailContaUaiConfirmado || _emailConfirmadoValor != email) {
+      erros.add('Confirme o e-mail por código ou Google antes de continuar.');
+    }
+
+    setState(() {
+      _etapaValida[1] =
+          emailValido &&
+          _emailContaUaiConfirmado &&
+          _emailConfirmadoValor == email;
       _errosPorEtapa[1] = erros;
     });
   }
 
-  void _validarEtapa2() {
+  void _validarEtapaContatos() {
     if (!mounted) return;
     final erros = <String>[];
 
-    final contatoAlunoValido = _telefoneCompleto(
-      _controllers['contato_aluno']!.text,
+    final contatoAlunoVisivel = _campoVisivel('contato_aluno', 'obrigatorio');
+    final contatoAlunoObrigatorio = _campoObrigatorio(
+      'contato_aluno',
+      'obrigatorio',
     );
-    if (!contatoAlunoValido) erros.add('Informe o telefone completo do aluno.');
+    final contatoAlunoTexto = _controllers['contato_aluno']!.text;
+    final contatoAlunoValido =
+        !contatoAlunoVisivel ||
+        (!contatoAlunoObrigatorio && contatoAlunoTexto.trim().isEmpty) ||
+        _telefoneCompleto(contatoAlunoTexto);
+    if (!contatoAlunoValido) {
+      erros.add('Informe o telefone completo do aluno.');
+    }
 
+    if (!_grauResponsavelValido()) {
+      erros.add(
+        'Selecione o parentesco do responsável ou contato de emergência.',
+      );
+    }
     bool nomeRespValido = true;
     bool contatoRespValido = true;
 
-    if (!_isMaiorIdade()) {
+    {
       final nomeResp = _controllers['nome_responsavel']!.text.trim();
       nomeRespValido = _validarNomePessoa(nomeResp);
       if (!nomeRespValido) {
@@ -691,20 +1118,68 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
       contatoRespValido = _telefoneCompleto(
         _controllers['contato_responsavel']!.text,
       );
-      if (!contatoRespValido)
+      if (!contatoRespValido) {
         erros.add('Informe o telefone completo do responsável.');
+      }
     }
 
+    if (_isMaiorIdade() &&
+        _controllers['contato_aluno']!.text.replaceAll(RegExp(r'\D'), '') ==
+            _controllers['contato_responsavel']!.text.replaceAll(
+              RegExp(r'\D'),
+              '',
+            )) {
+      contatoRespValido = false;
+      erros.add('Informe outro telefone para o contato de emergência.');
+    }
+
+    var adicionaisValidos = true;
+    for (var i = 0; i < _contatosEmergenciaAdicionais.length; i++) {
+      final contato = _contatosEmergenciaAdicionais[i];
+      final nome = contato.nome.text.trim();
+      final telefone = contato.telefone.text.trim();
+      if (!_validarNomePessoa(nome)) {
+        adicionaisValidos = false;
+        erros.add('Confira o nome do contato de emergência ${i + 2}.');
+      }
+      if (!_telefoneCompleto(telefone)) {
+        adicionaisValidos = false;
+        erros.add('Informe o telefone completo do contato de emergência ${i + 2}.');
+      }
+      if (contato.grau == null || contato.grau!.trim().isEmpty) {
+        adicionaisValidos = false;
+        erros.add('Selecione o parentesco do contato de emergência ${i + 2}.');
+      }
+    }
     setState(() {
-      _etapaValida[3] =
-          contatoAlunoValido && nomeRespValido && contatoRespValido;
-      _errosPorEtapa[3] = erros;
+      _etapaValida[4] =
+          contatoAlunoValido &&
+          nomeRespValido &&
+          contatoRespValido &&
+          _grauResponsavelValido() &&
+          adicionaisValidos;
+      _errosPorEtapa[4] = erros;
     });
   }
 
-  void _validarEtapa3() {
+  void _validarEtapaEndereco() {
     if (!mounted) return;
     final erros = <String>[];
+    final enderecoVisivel = _campoVisivel('endereco', 'obrigatorio');
+    final enderecoObrigatorio = _campoObrigatorio('endereco', 'obrigatorio');
+    final algumPreenchido = [
+      'rua',
+      'numero',
+      'bairro',
+      'cidade',
+    ].any((k) => _controllers[k]!.text.trim().isNotEmpty);
+    if (!enderecoVisivel || (!enderecoObrigatorio && !algumPreenchido)) {
+      setState(() {
+        _etapaValida[6] = true;
+        _errosPorEtapa[6] = const [];
+      });
+      return;
+    }
 
     final rua = _controllers['rua']!.text.trim();
     final numero = _controllers['numero']!.text.trim();
@@ -712,10 +1187,11 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
     final cidade = _controllers['cidade']!.text.trim();
 
     final ruaValida = _validarEnderecoTexto(rua);
-    if (!ruaValida)
+    if (!ruaValida) {
       erros.add(
         rua.isEmpty ? 'Preencha a rua.' : 'A rua contém caracteres inválidos.',
       );
+    }
 
     final numeroValido = numero.isNotEmpty && numero.length <= 5;
     if (!numeroValido) {
@@ -727,30 +1203,44 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
     }
 
     final bairroValido = _validarEnderecoTexto(bairro);
-    if (!bairroValido)
+    if (!bairroValido) {
       erros.add(
         bairro.isEmpty
             ? 'Preencha o bairro.'
             : 'O bairro contém caracteres inválidos.',
       );
+    }
 
-    final cidadeValida = _validarEnderecoTexto(cidade);
-    if (!cidadeValida)
+    final cidadeValida = _cidadesAcademiasAtivas.contains(cidade.toUpperCase());
+    if (!cidadeValida) {
       erros.add(
         cidade.isEmpty
-            ? 'Preencha a cidade.'
-            : 'A cidade contém caracteres inválidos.',
+            ? (_carregandoCidadesAcademias
+                  ? 'Aguarde o carregamento das cidades.'
+                  : 'Selecione uma cidade. Se a lista não aparecer, toque em Tentar novamente.')
+            : 'Atualize a lista e selecione uma cidade disponível.',
       );
+    }
 
     setState(() {
-      _etapaValida[4] =
+      _etapaValida[6] =
           ruaValida && numeroValido && bairroValido && cidadeValida;
-      _errosPorEtapa[4] = erros;
+      _errosPorEtapa[6] = erros;
     });
   }
 
   void _validarEtapaFinal() {
-    final erros = <String>[];
+    _validarEtapa1();
+    _validarEtapaAcesso();
+    _validarEtapaContatos();
+    _validarEtapaEndereco();
+    _validarDocumento();
+    final erros = <String>[
+      for (final etapa in [2, 3, 4, 5, 6]) ...(_errosPorEtapa[etapa] ?? []),
+      ...validarFichaUai(_ficha),
+      if (_inicioCapoeiraAntesNascimento())
+        'O início na capoeira não pode ser anterior ao nascimento.',
+    ];
 
     if (!_autorizacao) erros.add('Aceite os termos de responsabilidade.');
 
@@ -760,16 +1250,21 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
       erros.add('Assine o termo digitalmente.');
     }
 
-    if (!_temFoto()) erros.add('A foto do aluno é obrigatória.');
+    final fotoObrigatoria = _campoObrigatorio('foto', 'obrigatorio');
+    final fotoVisivel = _campoVisivel('foto', 'obrigatorio');
+    if (fotoVisivel && fotoObrigatoria && !_temFoto()) {
+      erros.add('A foto do aluno é obrigatória.');
+    }
 
     setState(() {
-      _etapaValida[6] =
+      _etapaValida[9] =
+          erros.isEmpty &&
           _autorizacao &&
           (_recolherAssinatura
               ? (_assinaturaUrl != null || _assinaturaBytes != null)
               : true) &&
-          _temFoto();
-      _errosPorEtapa[6] = erros;
+          (!fotoVisivel || !fotoObrigatoria || _temFoto());
+      _errosPorEtapa[9] = erros;
     });
   }
 
@@ -786,6 +1281,14 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
     );
 
     if (erros.isEmpty) {
+      if (_currentStep == 0 && (!_inscricoesAbertas || !_temVagas)) {
+        _showErrorSnackbar(
+          !_inscricoesAbertas
+              ? 'As inscrições estão fechadas no momento.'
+              : 'No momento não há vagas disponíveis para continuar.',
+        );
+        return;
+      }
       _showErrorSnackbar('Preencha os campos obrigatórios.');
       return;
     }
@@ -850,11 +1353,11 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
                         color: Color.alphaBlend(
-                          danger.withOpacity(0.08),
+                          danger.withAlpha(20),
                           t.cardAlt,
                         ),
                         borderRadius: BorderRadius.circular(t.inputRadius),
-                        border: Border.all(color: danger.withOpacity(0.16)),
+                        border: Border.all(color: danger.withAlpha(41)),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -991,13 +1494,13 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
                         color: t.cardAlt,
                         borderRadius: BorderRadius.circular(24),
                         border: Border.all(
-                          color: t.success.withOpacity(0.80),
+                          color: t.success.withAlpha(204),
                           width: 2,
                         ),
                       ),
                       child: CustomPaint(
                         painter: _GuiaRostoInscricaoPainter(
-                          lineColor: t.success.withOpacity(0.60),
+                          lineColor: t.success.withAlpha(153),
                           borderColor: t.border,
                         ),
                         child: Center(
@@ -1066,6 +1569,59 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
     return result == true;
   }
 
+  Future<ImageSource?> _escolherOrigemFoto() async {
+    if (!mounted) return null;
+
+    return showModalBottomSheet<ImageSource>(
+      context: context,
+      useSafeArea: true,
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'Como deseja adicionar a foto?',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Se a câmera não abrir neste navegador, escolha uma foto da galeria.',
+                ),
+                const SizedBox(height: 14),
+                FilledButton.icon(
+                  onPressed: () => Navigator.pop(context, ImageSource.camera),
+                  icon: const Icon(Icons.camera_alt_rounded),
+                  label: const Text('Tirar foto agora'),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: () => Navigator.pop(context, ImageSource.gallery),
+                  icon: const Icon(Icons.photo_library_rounded),
+                  label: const Text('Escolher da galeria'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<XFile?> _abrirSeletorFoto(ImagePicker picker, ImageSource source) {
+    return picker.pickImage(
+      source: source,
+      preferredCameraDevice: CameraDevice.front,
+      imageQuality: 88,
+      maxWidth: 1200,
+      maxHeight: 1200,
+      requestFullMetadata: false,
+    );
+  }
+
   Future<void> _selecionarFoto() async {
     try {
       _rastrearAcaoInscricao('foto_orientacao_aberta', origem: 'etapa_foto');
@@ -1084,32 +1640,73 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
         origem: 'etapa_foto',
       );
 
-      _setProcessandoFotoLocal('Abrindo câmera...');
+      var origem = await _escolherOrigemFoto();
+      if (origem == null) {
+        _rastrearAcaoInscricao('foto_selecao_cancelada', origem: 'foto');
+        return;
+      }
+
+      _setProcessandoFotoLocal(
+        origem == ImageSource.camera
+            ? 'Abrindo câmera...'
+            : 'Abrindo galeria...',
+      );
 
       final picker = ImagePicker();
-
-      _rastrearAcaoInscricao('camera_aberta', origem: 'etapa_foto');
-
-      final image = await picker.pickImage(
-        source: ImageSource.camera,
-        preferredCameraDevice: CameraDevice.front,
-        imageQuality: 88,
-        maxWidth: 1200,
-        maxHeight: 1200,
+      _rastrearAcaoInscricao(
+        origem == ImageSource.camera ? 'camera_aberta' : 'galeria_aberta',
+        origem: 'etapa_foto',
       );
+
+      XFile? image;
+      try {
+        image = await _abrirSeletorFoto(picker, origem);
+      } catch (e) {
+        // Alguns navegadores móveis/PWAs não implementam corretamente o fluxo
+        // de captura direta. Nesse caso, não bloqueamos a inscrição: oferecemos
+        // automaticamente a galeria, que tem compatibilidade muito maior.
+        if (origem != ImageSource.camera) rethrow;
+
+        _rastrearErroInscricao('camera_indisponivel_fallback_galeria', [
+          'Falha ao abrir câmera; tentando galeria: $e',
+        ], origem: 'foto');
+        origem = ImageSource.gallery;
+        _setProcessandoFotoLocal('Câmera indisponível. Abrindo galeria...');
+        image = await _abrirSeletorFoto(picker, ImageSource.gallery);
+      }
 
       if (image == null) {
         _limparProcessandoFotoLocal();
-        _rastrearAcaoInscricao('foto_camera_cancelada', origem: 'camera');
+        _rastrearAcaoInscricao('foto_camera_cancelada', origem: 'foto');
         return;
       }
 
       _setProcessandoFotoLocal('Preparando foto...');
 
       final bytes = await image.readAsBytes();
+      if (bytes.isEmpty) {
+        throw Exception('O navegador retornou uma foto vazia.');
+      }
 
+      // A regra atual do Storage aceita até 5 MB. Mantemos margem para evitar
+      // falha tardia e exibimos uma mensagem compreensível ao responsável.
+      const limiteSeguro = 4 * 1024 * 1024;
+      if (bytes.length > limiteSeguro) {
+        _limparProcessandoFotoLocal();
+        _rastrearErroInscricao('foto_muito_grande', [
+          'Foto selecionada com ${bytes.length} bytes',
+        ], origem: 'foto');
+        _showErrorSnackbar(
+          'A foto ficou muito grande. Escolha outra foto ou use a câmera para gerar uma imagem menor.',
+        );
+        return;
+      }
+
+      if (!mounted) return;
       setState(() {
         _fotoBytes = bytes;
+        _fotoOrigem = origem == ImageSource.camera ? 'camera' : 'galeria';
+        _fotoCapturadaEm = origem == ImageSource.camera ? DateTime.now() : null;
         _fotoNome = 'foto_aluno_${DateTime.now().millisecondsSinceEpoch}.jpg';
         _fotoUrl = null;
         _uploadingFoto = false;
@@ -1119,10 +1716,11 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
 
       _rastrearAcaoInscricao(
         'foto_capturada',
-        origem: 'camera',
+        origem: origem == ImageSource.camera ? 'camera' : 'galeria',
         metadata: {'bytes': bytes.length},
       );
 
+      _invalidarAssinatura();
       _validarEtapaFoto();
       _showSuccessSnackbar(
         '📸 Foto registrada! Ela será enviada ao finalizar.',
@@ -1133,7 +1731,9 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
       ], origem: 'foto');
       _limparProcessandoFotoLocal();
       if (mounted) setState(() => _uploadingFoto = false);
-      _showErrorSnackbar('Erro ao tirar foto: $e');
+      _showErrorSnackbar(
+        'Não foi possível abrir ou preparar a foto neste navegador. Tente novamente e escolha “Galeria”.',
+      );
     }
   }
 
@@ -1163,7 +1763,7 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
         _fotoBytes!,
         SettableMetadata(
           contentType: 'image/jpeg',
-          customMetadata: {'origem': 'camera_inscricao_publica'},
+          customMetadata: {'origem': '${_fotoOrigem}_inscricao_publica'},
         ),
       );
 
@@ -1225,6 +1825,7 @@ class _InscricaoPublicaScreenState extends State<InscricaoPublicaScreen> {
                   _statusFotoLocal = '';
                 });
                 Navigator.pop(context);
+                _invalidarAssinatura();
                 _validarEtapaFoto();
                 _rastrearAcaoInscricao('foto_removida', origem: 'foto_aluno');
                 _showSuccessSnackbar('Foto removida com sucesso');
@@ -1401,20 +2002,36 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
   }
 
   Future<void> _enviarInscricao() async {
+    if (_enviando) return;
+    setState(() => _etapasTentadas.add(9));
     _rastrearAcaoInscricao('tentou_enviar_inscricao', origem: 'revisao');
+    unawaited(
+      _rastreioService.registrarMarcoFunilInscricao(
+        marco: 'envio_iniciado',
+        acao: 'enviou',
+        origem: 'revisao',
+        etapaNumero: _currentStep + 1,
+        etapaNome: _etapaAtualRastreio(),
+        duracaoTotalSegundos: _tempoTotalInscricaoSegundos,
+      ),
+    );
     _validarEtapaFinal();
 
-    if (!(_etapaValida[6] ?? false)) {
+    if (!(_etapaValida[9] ?? false)) {
       _rastrearErroInscricao(
         'revisao_envio',
-        _errosPorEtapa[6] ?? ['Revisão inválida'],
+        _errosPorEtapa[9] ?? ['Revisão inválida'],
         origem: 'tentativa_envio',
       );
       _mostrarFeedbackErros();
       return;
     }
 
-    setState(() => _enviando = true);
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _enviando = true;
+      _statusEnvio = 'Conferindo disponibilidade...';
+    });
 
     try {
       final configDoc = await _firestore
@@ -1422,25 +2039,7 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
           .doc('inscricoes')
           .get();
       final config = configDoc.data() ?? {};
-      final vagasDisponiveis = config['vagas_disponiveis'] ?? 0;
-
-      final inscricoesSnapshot = await _firestore
-          .collection('inscricoes')
-          .where('status', isEqualTo: 'pendente')
-          .get();
-
-      if (vagasDisponiveis > 0 &&
-          inscricoesSnapshot.docs.length >= vagasDisponiveis) {
-        setState(() {
-          _mensagem = 'Desculpe, as vagas para inscrições estão esgotadas.';
-          _enviando = false;
-        });
-        _rastrearErroInscricao('envio_inscricao', [
-          'Vagas esgotadas no momento do envio.',
-        ], origem: 'vagas');
-        _showErrorSnackbar('❌ Vagas esgotadas!');
-        return;
-      }
+      // A disponibilidade final é revalidada atomicamente pela Cloud Function.
 
       final isMaior = _isMaiorIdade();
 
@@ -1459,15 +2058,26 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
         'data_inscricao': FieldValue.serverTimestamp(),
         'is_maior_idade': isMaior,
         'assinatura_recolhida': _recolherAssinatura,
+        'email_conta_uai': _controllers['email_conta_uai']!.text
+            .trim()
+            .toLowerCase(),
+        'email_confirmado': _emailContaUaiConfirmado,
+        'metodo_confirmacao_email': _metodoConfirmacaoEmail,
       };
 
-      if (_fotoUrl == null || _fotoUrl!.isEmpty) {
+      if (_campoVisivel('foto', 'obrigatorio') &&
+          _temFoto() &&
+          (_fotoUrl == null || _fotoUrl!.isEmpty)) {
         await _uploadFotoFirebase();
       }
 
       if (_fotoUrl != null && _fotoUrl!.isNotEmpty) {
         dados['foto_url'] = _fotoUrl;
-      } else {
+        dados['foto_origem'] = _fotoOrigem;
+        dados['foto_capturada_em_ms'] =
+            _fotoCapturadaEm?.millisecondsSinceEpoch;
+      } else if (_campoObrigatorio('foto', 'obrigatorio') &&
+          _campoVisivel('foto', 'obrigatorio')) {
         throw Exception('Foto é obrigatória');
       }
 
@@ -1483,8 +2093,9 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
         throw Exception('Assinatura é obrigatória');
       }
 
-      if (_assinaturaUrl?.isNotEmpty == true)
+      if (_assinaturaUrl?.isNotEmpty == true) {
         dados['assinatura_url'] = _assinaturaUrl;
+      }
 
       if (!isMaior) {
         dados['nome_responsavel'] = _toUpperCase(
@@ -1493,9 +2104,26 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
         dados['contato_responsavel'] = _controllers['contato_responsavel']!.text
             .replaceAll(RegExp(r'[^0-9]'), '');
       } else {
+        dados['nome_contato_emergencia'] = _toUpperCase(
+          _controllers['nome_responsavel']!.text,
+        );
+        dados['contato_emergencia'] = _controllers['contato_responsavel']!.text
+            .replaceAll(RegExp(r'[^0-9]'), '');
+        dados['grau_emergencia'] =
+            (_ficha['familia'] as Map)['grau_responsavel'];
         dados['nome_responsavel'] = _toUpperCase(_controllers['nome']!.text);
         dados['contato_responsavel'] = _controllers['contato_aluno']!.text
             .replaceAll(RegExp(r'[^0-9]'), '');
+      }
+
+      if (_contatosEmergenciaAdicionais.isNotEmpty) {
+        dados['contatos_emergencia_adicionais'] = _contatosEmergenciaAdicionais
+            .map((contato) => {
+                  'nome': _toUpperCase(contato.nome.text),
+                  'telefone': contato.telefone.text.replaceAll(RegExp(r'[^0-9]'), ''),
+                  'grau': contato.grau ?? '',
+                })
+            .toList();
       }
 
       if (_controllers['cpf']!.text.trim().isNotEmpty) {
@@ -1513,18 +2141,114 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
         }
         enderecoParts.add(ruaNumero);
       }
-      if (_controllers['bairro']!.text.isNotEmpty)
+      if (_controllers['bairro']!.text.isNotEmpty) {
         enderecoParts.add(_toUpperCase(_controllers['bairro']!.text));
-      if (_controllers['cidade']!.text.isNotEmpty)
+      }
+      if (_controllers['cidade']!.text.isNotEmpty) {
         enderecoParts.add(_toUpperCase(_controllers['cidade']!.text));
-      dados['endereco'] = enderecoParts.join(', ');
+      }
+      dados['endereco'] = _campoVisivel('endereco', 'obrigatorio')
+          ? enderecoParts.join(', ')
+          : '';
+      dados['endereco_versao'] = 2;
+      dados['cidade'] = _campoVisivel('endereco', 'obrigatorio')
+          ? _controllers['cidade']!.text.trim().toUpperCase()
+          : '';
 
-      final inscricaoRef = await _firestore.collection('inscricoes').add(dados);
+      // Triagem inteligente antes de gravar. IMPORTANTE: alertas de
+      // duplicidade nunca bloqueiam a inscrição. CPF recebe peso alto por ser
+      // individual; dados do responsável não entram em duplicidade, pois a
+      // mesma pessoa pode ser responsável por irmãos/dependentes.
+      InscricaoSecurityAnalysis securityAnalysis;
+      try {
+        if (mounted) {
+          setState(() => _statusEnvio = 'Conferindo os dados da inscrição...');
+        }
+        securityAnalysis = await _securityService
+            .analisar(
+              nome: dados['nome']?.toString() ?? '',
+              apelido: dados['apelido']?.toString() ?? '',
+              nascimento: dados['data_nascimento']?.toString() ?? '',
+              contatoAluno: dados['contato_aluno']?.toString() ?? '',
+              cpf: dados['cpf']?.toString(),
+              tempoTotalSegundos: _tempoTotalInscricaoSegundos,
+              configuracao: config,
+            )
+            .timeout(const Duration(seconds: 12));
+      } catch (_) {
+        // A triagem é auxiliar. Uma indisponibilidade nunca impede uma
+        // inscrição legítima de ser concluída.
+        securityAnalysis = const InscricaoSecurityAnalysis(
+          score: 0,
+          nivel: 'normal',
+          flags: [],
+        );
+      }
 
-      final novoTotal = inscricoesSnapshot.docs.length + 1;
-      await _firestore.collection('configuracoes').doc('inscricoes').set({
-        'total_inscricoes': novoTotal,
-      }, SetOptions(merge: true));
+      final segurancaSerializavel = securityAnalysis.toFirestore();
+      // FieldValue é um sentinel do Firestore e não deve atravessar o canal
+      // de uma Callable Function. O timestamp de análise é responsabilidade
+      // do servidor ao persistir a inscrição.
+      segurancaSerializavel.remove('analisado_em');
+      dados['seguranca'] = segurancaSerializavel;
+      dados['etapa_atendimento'] = 'nova';
+      dados['timeline'] = [
+        {
+          'tipo': 'inscricao_recebida',
+          'titulo': 'Inscrição recebida',
+          'descricao': securityAnalysis.possuiAlertas
+              ? 'Recebida com ${securityAnalysis.flags.length} alerta(s) para conferência.'
+              : 'Formulário público concluído com sucesso.',
+          'data': Timestamp.now(),
+          'origem': 'formulario_publico',
+        },
+      ];
+
+      // Gravação definitiva passa pelo servidor. A Function usa transação
+      // e contador atômico de vagas, eliminando a condição de corrida da
+      // última vaga entre dois envios simultâneos.
+      dados.remove('data_inscricao');
+      dados.remove('timeline');
+      dados.remove('status');
+      dados.remove('etapa_atendimento');
+      if (mounted) setState(() => _statusEnvio = 'Salvando sua inscrição...');
+      final callable = FirebaseFunctions.instanceFor(region: 'us-central1')
+          .httpsCallable(
+            'criarInscricaoPublicaSegura',
+            options: HttpsCallableOptions(timeout: const Duration(seconds: 70)),
+          );
+      dados['contatos_versao'] = 2;
+      dados['ficha_complementar'] = _ficha;
+      final resultado = await callable.call({
+        'dados': dados,
+        'chave_envio': _chaveEnvio,
+      });
+      final resultadoData = Map<String, dynamic>.from(resultado.data as Map);
+      final inscricaoId = resultadoData['inscricao_id']?.toString() ?? '';
+      final vinculoToken = resultadoData['vinculo_token']?.toString() ?? '';
+      final vinculoAutomatico = resultadoData['vinculo_automatico'] == true;
+      if (inscricaoId.isEmpty) {
+        throw Exception('O servidor não retornou o ID da inscrição.');
+      }
+      _ultimaInscricaoId = inscricaoId;
+      _ultimoVinculoToken = vinculoToken;
+
+      // Backend novo já conclui o vínculo de forma idempotente. Mantemos
+      // este bloco apenas como fallback para uma Function antiga durante rollout.
+      if (!vinculoAutomatico &&
+          vinculoToken.isNotEmpty &&
+          FirebaseAuth.instance.currentUser != null) {
+        try {
+          await _contaUaiService.vincularInscricao(
+            inscricaoId: inscricaoId,
+            vinculoToken: vinculoToken,
+          );
+        } catch (e) {
+          debugPrint(
+            'Conta UAI: inscrição criada, mas vínculo automático falhou: $e',
+          );
+        }
+      }
 
       _inscricaoFinalizadaComSucesso = true;
 
@@ -1537,12 +2261,30 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
       );
 
       unawaited(
+        _rastreioService.registrarMarcoFunilInscricao(
+          marco: 'concluiu_inscricao',
+          acao: 'concluiu',
+          origem: 'formulario_aula_experimental',
+          etapaNumero: _currentStep + 1,
+          etapaNome: _etapaAtualRastreio(),
+          duracaoEtapaSegundos: _tempoEtapaAtualSegundos,
+          duracaoTotalSegundos: _tempoTotalInscricaoSegundos,
+          metadata: {
+            'inscricao_id': inscricaoId,
+            'idade_aluno': _calcularIdade(
+              _controllers['data_nascimento']!.text,
+            ),
+          },
+        ),
+      );
+
+      unawaited(
         _rastreioService.registrarConversao(
           nome: 'inscricao_publica_enviada',
           origem: 'formulario_aula_experimental',
           metadata: {
             ..._metadataResumoInscricao(),
-            'inscricao_id': inscricaoRef.id,
+            'inscricao_id': inscricaoId,
             'idade_aluno': _calcularIdade(
               _controllers['data_nascimento']!.text,
             ),
@@ -1574,7 +2316,20 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
         _mensagem = 'Erro ao enviar inscrição: $e';
         _enviando = false;
       });
-      _showErrorSnackbar('Erro ao enviar inscrição: $e');
+      final cidadeInvalida =
+          e is FirebaseFunctionsException &&
+          e.details is Map &&
+          (e.details as Map)['campo'] == 'cidade';
+      if (cidadeInvalida) {
+        _editarEtapa(6);
+        unawaited(_carregarCidadesAcademiasAtivas());
+      }
+      _showErrorSnackbar(
+        e is FirebaseFunctionsException
+            ? (e.message ??
+                  'Não foi possível enviar agora. Seus dados foram mantidos; tente novamente.')
+            : 'Não foi possível concluir o envio. Confira sua conexão e tente novamente. Seus dados foram mantidos.',
+      );
     }
   }
 
@@ -1622,10 +2377,10 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
                           width: 82,
                           height: 82,
                           decoration: BoxDecoration(
-                            color: _readableOn(success).withOpacity(0.18),
+                            color: _readableOn(success).withAlpha(46),
                             borderRadius: BorderRadius.circular(30),
                             border: Border.all(
-                              color: _readableOn(success).withOpacity(0.20),
+                              color: _readableOn(success).withAlpha(51),
                             ),
                           ),
                           child: Icon(
@@ -1652,7 +2407,7 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
                               : 'Recebemos a inscrição de $nomeAluno com sucesso.',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: _readableOn(success).withOpacity(0.86),
+                            color: _readableOn(success).withAlpha(219),
                             fontSize: 13,
                             height: 1.35,
                             fontWeight: FontWeight.w600,
@@ -1663,6 +2418,8 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
                   ),
                   Flexible(
                     child: SingleChildScrollView(
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
                       padding: const EdgeInsets.all(18),
                       child: Column(
                         children: [
@@ -1690,6 +2447,10 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
                                     'Responsável',
                                     dados['nome_responsavel'],
                                   ),
+                                _buildInfoDialog(
+                                  'E-mail confirmado',
+                                  dados['email_conta_uai'],
+                                ),
                               ],
                             ),
                           ),
@@ -1724,39 +2485,72 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
                         color: t.card,
                         border: Border(top: BorderSide(color: t.border)),
                       ),
-                      child: SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton.icon(
-                          onPressed: () {
-                            _rastrearAcaoInscricao(
-                              'finalizou_dialog_sucesso',
-                              origem: 'sucesso',
-                            );
-                            Navigator.of(context).pop();
-                            Navigator.pushAndRemoveUntil(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const LandingPage(),
-                              ),
-                              (route) => false,
-                            );
-                          },
-                          icon: const Icon(Icons.check_rounded),
-                          label: const Text('FINALIZAR'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: success,
-                            foregroundColor: _readableOn(success),
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            textStyle: const TextStyle(
-                              fontWeight: FontWeight.w900,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if ((_ultimaInscricaoId?.isNotEmpty ?? false) &&
+                              (_ultimoVinculoToken?.isNotEmpty ?? false)) ...[
+                            _buildMinhaUaiSuccessCta(),
+                            const SizedBox(height: 10),
+                          ],
+                          OutlinedButton.icon(
+                            icon: const Icon(Icons.person_add_alt_1_rounded),
+                            label: const Text('INSCREVER OUTRO FILHO / ALUNO'),
+                            onPressed: () {
+                              final navigator = Navigator.of(context);
+                              navigator.pop();
+                              navigator.pushReplacement(
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      const InscricaoPublicaScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                          if (_ultimaInscricaoId?.isNotEmpty ?? false) ...[
+                            const SizedBox(height: 8),
+                            AvaliacaoInscricaoButton(
+                              inscricaoId: _ultimaInscricaoId!,
                             ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(
-                                t.buttonRadius,
+                          ],
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: () {
+                                _rastrearAcaoInscricao(
+                                  'finalizou_dialog_sucesso',
+                                  origem: 'sucesso',
+                                );
+                                Navigator.of(context).pop();
+                                Navigator.pushAndRemoveUntil(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const LandingPage(),
+                                  ),
+                                  (route) => false,
+                                );
+                              },
+                              icon: const Icon(Icons.check_rounded),
+                              label: const Text('FINALIZAR'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: success,
+                                foregroundColor: _readableOn(success),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 14,
+                                ),
+                                textStyle: const TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(
+                                    t.buttonRadius,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
-                        ),
+                        ],
                       ),
                     ),
                   ),
@@ -1766,6 +2560,78 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
           ),
         );
       },
+    );
+  }
+
+  Widget _buildMinhaUaiSuccessCta() {
+    final t = context.uai;
+    final accent = _ensureVisible(t.info, t.card);
+
+    return Material(
+      color: Color.alphaBlend(accent.withAlpha(23), t.card),
+      borderRadius: BorderRadius.circular(t.buttonRadius + 6),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () {
+          _rastrearAcaoInscricao('abriu_vinculo_minha_uai', origem: 'sucesso');
+          Navigator.of(context).pop();
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const MinhaUaiHomeScreen()),
+          );
+        },
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(t.buttonRadius + 6),
+            border: Border.all(color: accent.withAlpha(77)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: accent.withAlpha(36),
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: Icon(Icons.family_restroom_rounded, color: accent),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'ACOMPANHAR MINHA INSCRIÇÃO',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: accent,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      'Vincule Google ou e-mail para ver a aula, receber avisos e acompanhar o processo na Minha UAI.',
+                      style: TextStyle(
+                        color: t.textSecondary,
+                        fontSize: 11.5,
+                        height: 1.3,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(Icons.arrow_forward_rounded, color: accent, size: 21),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -1780,9 +2646,9 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), t.cardAlt),
+        color: Color.alphaBlend(accent.withAlpha(20), t.cardAlt),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: accent.withOpacity(0.14)),
+        border: Border.all(color: accent.withAlpha(36)),
       ),
       child: Row(
         children: [
@@ -1833,26 +2699,383 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
     );
   }
 
+  bool _inicioCapoeiraAntesNascimento() {
+    final c = Map<String, dynamic>.from(_ficha['capoeira'] as Map? ?? {});
+    final inicio = int.tryParse('${c['ano_inicio'] ?? ''}');
+    try {
+      return c['ja_treinou'] == 'Sim' &&
+          inicio != null &&
+          inicio <
+              DateFormat(
+                'dd/MM/yyyy',
+              ).parseStrict(_controllers['data_nascimento']!.text).year;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  void _validarDocumento() {
+    final cpf = _controllers['cpf']!.text.replaceAll(RegExp(r'\D'), '');
+    final visivel = _campoVisivel('cpf', 'opcional');
+    final valido =
+        !visivel ||
+        (cpf.isEmpty
+            ? !_campoObrigatorio('cpf', 'opcional')
+            : cpf.length == 11);
+    _etapaValida[5] = valido;
+    _errosPorEtapa[5] = valido ? [] : ['Informe o CPF completo do aluno.'];
+  }
+
+  bool _grauResponsavelValido() {
+    final f = Map<String, dynamic>.from(_ficha['familia'] as Map? ?? {});
+    return grausResponsavelUai.contains(f['grau_responsavel']) &&
+        (f['grau_responsavel'] != 'Outro' ||
+            '${f['grau_outro'] ?? ''}'.trim().isNotEmpty);
+  }
+
+  void _invalidarAssinatura() {
+    if (!mounted || _enviando) return;
+    if (_assinaturaUrl == null && _assinaturaBytes == null && !_autorizacao) {
+      return;
+    }
+    setState(() {
+      _assinaturaUrl = null;
+      _assinaturaBytes = null;
+      _autorizacao = false;
+    });
+  }
+
+  void _alterarFicha(Map<String, dynamic> nova) {
+    _invalidarAssinatura();
+    setState(() => _ficha = nova);
+    _validarEtapaContatos();
+  }
+
+  Widget _buildComplementar(String secao, String titulo) =>
+      SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _sectionTitle(
+              icon: secao == 'saude'
+                  ? Icons.favorite_outline_rounded
+                  : Icons.sports_martial_arts_rounded,
+              title: titulo,
+              subtitle: secao == 'saude'
+                  ? 'Acolhimento e cuidado durante as aulas.'
+                  : 'Cada aluno tem sua própria trajetória.',
+              color: context.uai.primary,
+            ),
+            const SizedBox(height: 18),
+            FichaComplementarFields(
+              ficha: _ficha,
+              secao: secao,
+              onChanged: _alterarFicha,
+            ),
+          ],
+        ),
+      );
+
+  void _editarEtapa(int etapa) {
+    setState(() {
+      _currentStep = etapa;
+      _editandoRevisao = true;
+    });
+    _pageController.animateToPage(
+      etapa,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeInOut,
+    );
+  }
+
+  void _agendarParentesco(String campo) {
+    _parentescoTimers[campo]?.cancel();
+    final consulta = (_consultasPorCampo[campo] ?? 0) + 1;
+    _consultasPorCampo[campo] = consulta;
+    final sessao = _consultaParentesco;
+    final numero = _controllers[campo]!.text.replaceAll(RegExp(r'\D'), '');
+    setState(() {
+      _perfisFamilia.removeWhere((p) => p['campo_consultado'] == campo);
+      _avisoParentesco = '';
+    });
+    if (numero.length != 10 && numero.length != 11) return;
+    _parentescoTimers[campo] = Timer(
+      const Duration(milliseconds: 850),
+      () async {
+        try {
+          final result = await FirebaseFunctions.instance
+              .httpsCallable('consultarParentescoInscricao')
+              .call({
+                'telefones': [numero],
+              });
+          if (!mounted ||
+              _consultasPorCampo[campo] != consulta ||
+              _consultaParentesco != sessao) {
+            return;
+          }
+          final data = Map<String, dynamic>.from(result.data as Map);
+          setState(() {
+            _perfisFamilia.removeWhere((p) => p['campo_consultado'] == campo);
+            _perfisFamilia.addAll(
+              (data['perfis'] as List? ?? []).map(
+                (v) => {
+                  ...Map<String, dynamic>.from(v as Map),
+                  'campo_consultado': campo,
+                  'numero_consultado': numero,
+                },
+              ),
+            );
+          });
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted ||
+                _currentStep != 4 ||
+                _consultasPorCampo[campo] != consulta ||
+                _consultaParentesco != sessao ||
+                !_perfisFamilia.any((p) => p['campo_consultado'] == campo)) {
+              return;
+            }
+            final alvo = _resultadosTelefoneKeys[campo]?.currentContext;
+            if (alvo != null) {
+              Scrollable.ensureVisible(
+                alvo,
+                duration: const Duration(milliseconds: 450),
+                alignment: .15,
+                curve: Curves.easeOut,
+              );
+            }
+          });
+        } catch (_) {
+          if (mounted &&
+              _consultasPorCampo[campo] == consulta &&
+              _consultaParentesco == sessao) {
+            // A busca auxiliar não interrompe a inscrição.
+            debugPrint(
+              'Consulta de parentesco indisponível; conferência no envio.',
+            );
+          }
+        }
+      },
+    );
+  }
+
+  Widget _buildGrauContato(bool emergencia) {
+    final f = Map<String, dynamic>.from(_ficha['familia'] as Map? ?? {});
+    return DropdownButtonFormField<String>(
+      initialValue: grausResponsavelUai.contains(f['grau_responsavel'])
+          ? f['grau_responsavel'] as String
+          : null,
+      isExpanded: true,
+      decoration: _modernInputDecoration(
+        label: emergencia
+            ? 'Essa pessoa é o quê do aluno? *'
+            : 'Parentesco do responsável *',
+        icon: Icons.family_restroom_rounded,
+      ),
+      items: grausResponsavelUai
+          .map((v) => DropdownMenuItem(value: v, child: Text(v)))
+          .toList(),
+      onChanged: (v) => _alterarFicha({
+        ..._ficha,
+        'familia': {
+          ...f,
+          'grau_responsavel': v,
+          'grau_outro': v == 'Outro' ? 'Outro vínculo' : '',
+        },
+      }),
+    );
+  }
+
+  Widget _buildFamiliaCompartilhada(String campo) {
+    final f = Map<String, dynamic>.from(_ficha['familia'] as Map? ?? {});
+    final vinculos = (f['vinculos_declarados'] as List? ?? [])
+        .map((x) => Map<String, dynamic>.from(x as Map))
+        .toList();
+    return Column(
+      key: _resultadosTelefoneKeys.putIfAbsent(campo, () => GlobalKey()),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_avisoParentesco.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Text(_avisoParentesco),
+          ),
+        for (final perfil in _perfisFamilia.where(
+          (p) => p['campo_consultado'] == campo,
+        ))
+          Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: context.uai.card,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: context.uai.primary.withAlpha(51)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Encontrado no cadastro de ${perfil['nome']}',
+                  style: TextStyle(
+                    color: context.uai.textPrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Número consultado: ${_controllers[campo]!.text}',
+                  style: TextStyle(color: context.uai.textSecondary),
+                ),
+                for (final contato
+                    in (perfil['contatos_encontrados'] as List? ?? []))
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      contato['tipo'] == 'aluno'
+                          ? 'Este é o telefone do próprio aluno: ${contato['nome_contato']}.'
+                          : contato['tipo'] == 'responsavel'
+                          ? 'Este é o telefone do responsável: ${contato['nome_contato']}.'
+                          : 'Este é o telefone do contato de emergência: ${contato['nome_contato']}.',
+                    ),
+                  ),
+                const SizedBox(height: 12),
+                for (final contato
+                    in (perfil['contatos_encontrados'] as List? ?? []))
+                  _buildParentescoEncontrado(
+                    perfil,
+                    Map<String, dynamic>.from(contato as Map),
+                    campo,
+                    f,
+                    vinculos,
+                  ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildParentescoEncontrado(
+    Map<String, dynamic> perfil,
+    Map<String, dynamic> contato,
+    String campo,
+    Map<String, dynamic> familia,
+    List<Map<String, dynamic>> vinculos,
+  ) {
+    final doResponsavel = campo == 'contato_responsavel';
+    final direcao = doResponsavel
+        ? 'existente_para_responsavel'
+        : 'inscrito_para_contato';
+    final nomeResponsavel = _controllers['nome_responsavel']!.text.trim();
+    final tipo = '${contato['tipo']}';
+    final numero = '${contato['numero']}';
+    final nome = '${contato['nome_contato'] ?? ''}'.trim();
+    final alvo = nome.isNotEmpty
+        ? nome
+        : (tipo == 'aluno' ? '${perfil['nome']}' : 'esse contato');
+    bool corresponde(Map<String, dynamic> v) =>
+        v['perfil_id'] == perfil['id'] &&
+        (v['tipo_contato'] ?? 'aluno') == tipo &&
+        (v['numero'] ?? '') == numero &&
+        v['direcao'] == direcao;
+    final selecionados = vinculos.where(corresponde).toList();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            doResponsavel
+                ? 'O aluno cadastrado ${perfil['nome']} é o quê de ${nomeResponsavel.isEmpty ? 'este contato responsável' : nomeResponsavel}?'
+                : 'O aluno desta inscrição é o quê de $alvo?',
+          ),
+          const SizedBox(height: 10),
+          DropdownButtonFormField<String>(
+            key: ValueKey(
+              'parentesco_${campo}_${perfil['id']}_${tipo}_${numero}_${selecionados.map((v) => v['parentesco']).join()}',
+            ),
+            isExpanded: true,
+            initialValue: selecionados.isEmpty
+                ? null
+                : selecionados.first['parentesco'] as String?,
+            decoration:
+                _modernInputDecoration(
+                  label: 'Selecione o parentesco',
+                  icon: Icons.family_restroom_rounded,
+                ).copyWith(
+                  helperText: doResponsavel
+                      ? 'Selecione o parentesco do aluno encontrado com o contato que você está cadastrando.'
+                      : 'Exemplo: se $alvo é a mãe, selecione Filho ou Filha.',
+                  helperMaxLines: 3,
+                ),
+            items: parentescosAlunoUai
+                .map((v) => DropdownMenuItem(value: v, child: Text(v)))
+                .toList(),
+            onChanged: (valor) {
+              final novos = vinculos.where((v) => !corresponde(v)).toList();
+              novos.add({
+                'perfil_id': perfil['id'],
+                'nome': alvo,
+                'tipo_contato': tipo,
+                'numero': numero,
+                'parentesco': valor,
+                'direcao': direcao,
+                'nome_responsavel_declarado': doResponsavel
+                    ? nomeResponsavel
+                    : '',
+              });
+              _alterarFicha({
+                ..._ficha,
+                'familia': {...familia, 'vinculos_declarados': novos},
+              });
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   void _proximaEtapa() {
-    if (_currentStep >= 6) return;
+    if (_processandoFotoLocal || _confirmandoEmailContaUai || _enviando) return;
+    FocusScope.of(context).unfocus();
+    setState(() => _etapasTentadas.add(_currentStep));
+    if (_currentStep >= 9) return;
+    if (_currentStep == 0 && (!_inscricoesAbertas || !_temVagas)) {
+      _showErrorSnackbar(
+        !_inscricoesAbertas
+            ? 'As inscrições estão fechadas no momento.'
+            : 'No momento não há vagas disponíveis para continuar.',
+      );
+      return;
+    }
 
     _rastrearAcaoInscricao(
       'clicou_avancar_etapa',
       origem: _nomeEtapaRastreio(_currentStep),
     );
 
-    if (_currentStep == 1) _validarEtapaFoto();
-    if (_currentStep == 2) _validarEtapa1();
-    if (_currentStep == 3) _validarEtapa2();
-    if (_currentStep == 4) _validarEtapa3();
+    if (_currentStep == 2) _validarEtapaFoto();
+    if (_currentStep == 3) _validarEtapa1();
+    if (_currentStep == 1) _validarEtapaAcesso();
+    if (_currentStep == 4) _validarEtapaContatos();
+    if (_currentStep == 6) _validarEtapaEndereco();
     if (_currentStep == 5) {
-      _etapaValida[5] = true;
-      _errosPorEtapa[5] = [];
+      _validarDocumento();
     }
 
-    final isValido = _currentStep == 5
-        ? true
-        : (_etapaValida[_currentStep] ?? false);
+    if (_currentStep == 7 || _currentStep == 8) {
+      final erros = validarFichaUai(
+        _ficha,
+        secao: _currentStep == 7 ? 'saude' : 'capoeira',
+      );
+      if (_currentStep == 8 && _inicioCapoeiraAntesNascimento()) {
+        erros.add('O início na capoeira não pode ser anterior ao nascimento.');
+      }
+      _etapaValida[_currentStep] = erros.isEmpty;
+      _errosPorEtapa[_currentStep] = erros;
+    }
+    final isValido = _etapaValida[_currentStep] ?? false;
 
     if (!isValido) {
       _mostrarFeedbackErros();
@@ -1860,7 +3083,7 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
     }
 
     final etapaAnterior = _currentStep;
-    final proxima = _currentStep + 1;
+    final proxima = _editandoRevisao ? 9 : _currentStep + 1;
 
     unawaited(
       _registrarSaidaEtapa(
@@ -1870,18 +3093,30 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
       ),
     );
 
-    setState(() => _currentStep++);
+    setState(() {
+      _currentStep = proxima;
+      _editandoRevisao = false;
+    });
 
     unawaited(_registrarEntradaEtapa(proxima, origem: 'avancar'));
 
-    _pageController.nextPage(
+    _pageController.animateToPage(
+      proxima,
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
     );
   }
 
   void _etapaAnterior() {
-    if (_currentStep <= 0) return;
+    FocusScope.of(context).unfocus();
+    if (_currentStep <= 0) {
+      FocusScope.of(context).unfocus();
+      setState(() {
+        _entradaEscolhida = false;
+        _editandoRevisao = false;
+      });
+      return;
+    }
 
     _rastrearAcaoInscricao(
       'clicou_voltar_etapa',
@@ -1915,19 +3150,13 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
       origem: _nomeEtapaRastreio(_currentStep),
     );
 
+    if (!_entradaEscolhida) {
+      if (_controllers['nome']!.text.trim().isEmpty) return true;
+      return await _confirmarSaida() == true;
+    }
+    if (_enviando) return false;
     if (_currentStep == 0) {
-      final shouldExit = await _confirmarSaida();
-      if (shouldExit == true) {
-        _registrarSaidaInscricaoSeNecessario(
-          motivo: 'voltar_sistema_confirmado',
-        );
-        if (mounted) Navigator.pop(context);
-      } else {
-        _rastrearAcaoInscricao(
-          'cancelou_saida_inscricao',
-          origem: 'dialog_saida',
-        );
-      }
+      _etapaAnterior();
       return false;
     }
 
@@ -2001,6 +3230,21 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
   Widget _buildBodyState() {
     if (_carregando) return _buildLoadingScreen();
 
+    if (!_entradaEscolhida) {
+      return InscricaoPublicaEntrada(
+        inscricoesAbertas: _inscricoesAbertas,
+        temVagas: _temVagas,
+        vagasRestantes: _vagasRestantes,
+        onNovaInscricao: () {
+          if (!_inscricoesAbertas || !_temVagas) return;
+          setState(() => _entradaEscolhida = true);
+          if (!_rastreioInscricaoIniciado) {
+            _iniciarRastreioInscricao();
+          }
+        },
+      );
+    }
+
     if (!_inscricoesAbertas) {
       _rastreioService.registrarPaginaVista(
         'inscricao_fechada',
@@ -2044,6 +3288,7 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
 
     return Center(
       child: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: const EdgeInsets.all(18),
         child: Container(
           constraints: const BoxConstraints(maxWidth: 480),
@@ -2103,27 +3348,38 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
   Widget _buildFormulario() {
     return Center(
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 760),
-        child: Column(
-          children: [
-            _buildStepHeader(),
-            Expanded(
-              child: PageView(
-                controller: _pageController,
-                physics: const NeverScrollableScrollPhysics(),
-                children: [
-                  _buildStepWelcome(),
-                  _buildStepFoto(),
-                  _buildStepAluno(),
-                  _buildStepContato(),
-                  _buildStepEndereco(),
-                  _buildStepCpf(),
-                  _buildStepRevisao(),
-                ],
+        constraints: const BoxConstraints(maxWidth: 840),
+        child: LayoutBuilder(
+          builder: (context, constraints) => Column(
+            children: [
+              if (constraints.maxHeight >= 360)
+                _buildStepHeader()
+              else
+                LinearProgressIndicator(
+                  value: (_currentStep + 1) / 10,
+                  minHeight: 3,
+                ),
+              Expanded(
+                child: PageView(
+                  controller: _pageController,
+                  physics: const NeverScrollableScrollPhysics(),
+                  children: [
+                    _buildStepWelcome(),
+                    _buildStepAcesso(),
+                    _buildStepFoto(),
+                    _buildStepAluno(),
+                    _buildStepContato(),
+                    _buildStepCpf(),
+                    _buildStepEndereco(),
+                    _buildComplementar('saude', 'Cuidados do aluno'),
+                    _buildComplementar('capoeira', 'Sua história na capoeira'),
+                    _buildStepRevisao(),
+                  ],
+                ),
               ),
-            ),
-            _buildNavigationButtons(),
-          ],
+              _buildNavigationButtons(),
+            ],
+          ),
         ),
       ),
     );
@@ -2132,37 +3388,39 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
   Widget _buildSendingState() {
     final t = context.uai;
 
-    return Center(
-      child: Container(
-        margin: const EdgeInsets.all(18),
-        padding: const EdgeInsets.all(24),
-        constraints: const BoxConstraints(maxWidth: 420),
-        decoration: _cardDecoration(),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(color: t.primary),
-            const SizedBox(height: 18),
-            Text(
-              _uploadingAssinatura
-                  ? 'Enviando assinatura...'
-                  : _uploadingFoto
-                  ? 'Enviando foto...'
-                  : 'Enviando sua inscrição...',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: t.textPrimary,
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
+    return SingleChildScrollView(
+      child: Center(
+        child: Container(
+          margin: const EdgeInsets.all(18),
+          padding: const EdgeInsets.all(24),
+          constraints: const BoxConstraints(maxWidth: 420),
+          decoration: _cardDecoration(),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(color: t.primary),
+              const SizedBox(height: 18),
+              Text(
+                _uploadingAssinatura
+                    ? 'Enviando assinatura...'
+                    : _uploadingFoto
+                    ? 'Enviando foto...'
+                    : _statusEnvio,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: t.textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                ),
               ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Aguarde só um instante. Estamos enviando foto, assinatura e dados com segurança.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: t.textSecondary, height: 1.3),
-            ),
-          ],
+              const SizedBox(height: 6),
+              Text(
+                'Aguarde só um instante. Estamos enviando foto, assinatura e dados com segurança.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: t.textSecondary, height: 1.3),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -2170,103 +3428,84 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
 
   Widget _buildStepHeader() {
     final t = context.uai;
-    final onPrimary = _readableOn(t.primary);
-
-    final etapas = [
-      ('Boas-vindas', Icons.waving_hand_rounded),
-      ('Foto do aluno', Icons.camera_alt_rounded),
-      ('Dados do aluno', Icons.person_rounded),
-      ('Contato', Icons.phone_rounded),
-      ('Endereço', Icons.home_rounded),
-      ('Documento', Icons.badge_rounded),
-      ('Revisão', Icons.check_circle_rounded),
-    ];
-
-    final atual = etapas[_currentStep];
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final compact = constraints.maxWidth < 380;
-
-        return Container(
-          margin: EdgeInsets.fromLTRB(
-            compact ? 10 : 14,
-            compact ? 8 : 12,
-            compact ? 10 : 14,
-            0,
-          ),
-          padding: EdgeInsets.all(compact ? 10 : 12),
-          decoration: BoxDecoration(
-            gradient: t.primaryGradient,
-            borderRadius: BorderRadius.circular(compact ? 18 : 22),
-            boxShadow: t.softShadow,
-          ),
-          child: Row(
+    return Container(
+      margin: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+      decoration: BoxDecoration(
+        color: t.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: t.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Container(
-                width: compact ? 38 : 44,
-                height: compact ? 38 : 44,
-                decoration: BoxDecoration(
-                  color: onPrimary.withOpacity(0.14),
-                  borderRadius: BorderRadius.circular(compact ? 14 : 16),
-                  border: Border.all(color: onPrimary.withOpacity(0.16)),
-                ),
-                child: Icon(
-                  atual.$2,
-                  color: onPrimary,
-                  size: compact ? 21 : 24,
+              Icon(Icons.assignment_outlined, size: 19, color: t.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Inscrição UAI',
+                  style: TextStyle(
+                    color: t.textPrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
-              SizedBox(width: compact ? 9 : 11),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      atual.$1,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: onPrimary,
-                        fontWeight: FontWeight.w900,
-                        fontSize: compact ? 14 : 15.5,
-                        height: 1.05,
-                      ),
-                    ),
-                    SizedBox(height: compact ? 1 : 2),
-                    Row(
-                      children: [
-                        Text(
-                          'Etapa ${_currentStep + 1}/7',
-                          style: TextStyle(
-                            color: onPrimary.withOpacity(0.78),
-                            fontSize: compact ? 10.5 : 11.5,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(99),
-                            child: LinearProgressIndicator(
-                              minHeight: compact ? 5 : 6,
-                              value: (_currentStep + 1) / 7,
-                              backgroundColor: onPrimary.withOpacity(0.18),
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                onPrimary,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+              Text(
+                '${_currentStep + 1} de 10',
+                style: TextStyle(
+                  color: t.textSecondary,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ],
           ),
-        );
+          const SizedBox(height: 9),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: LinearProgressIndicator(
+              value: (_currentStep + 1) / 10,
+              minHeight: 4,
+              semanticsLabel: 'Progresso da inscrição',
+              semanticsValue: 'Etapa ${_currentStep + 1} de 10',
+              color: t.primary,
+              backgroundColor: t.primary.withAlpha(31),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCidadeField() {
+    final value = _controllers['cidade']!.text.trim().toUpperCase();
+    return InscricaoCidadeField(
+      cidades: _cidadesAcademiasAtivas,
+      selecionada: value,
+      carregando: _carregandoCidadesAcademias,
+      aviso: _avisoCidades,
+      emCache: _cidadesEmCache,
+      decoration: _modernInputDecoration(
+        label: _rotuloCampo('Cidade', 'endereco', 'obrigatorio'),
+        icon: Icons.location_city_outlined,
+        errorText:
+            value.isEmpty &&
+                (_campoObrigatorio('endereco', 'obrigatorio') ||
+                    [
+                      'rua',
+                      'numero',
+                      'bairro',
+                    ].any((k) => _controllers[k]!.text.trim().isNotEmpty))
+            ? 'Selecione uma cidade'
+            : null,
+      ),
+      onChanged: (cidade) {
+        setState(() => _controllers['cidade']!.text = cidade);
+        _validarEtapaEndereco();
+        _rastrearAcaoInscricao('selecionou_cidade', origem: 'endereco');
       },
+      onAtualizar: _carregarCidadesAcademiasAtivas,
     );
   }
 
@@ -2275,6 +3514,7 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
     final info = _ensureVisible(_temVagas ? t.info : t.error, t.background);
 
     return SingleChildScrollView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
       child: Column(
         children: [
@@ -2294,10 +3534,10 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
               icon: _temVagas ? Icons.info_rounded : Icons.error_rounded,
               color: _temVagas ? t.info : t.error,
               title: _temVagas
-                  ? 'Aceitamos alunos de $_idadeMinima a $_idadeMaxima anos'
+                  ? 'Uma inscrição para cuidar melhor de você'
                   : 'Vagas esgotadas',
               subtitle: _temVagas
-                  ? '$_vagasRestantes vagas disponíveis'
+                  ? 'O cadastro ajuda a conhecer o aluno e saber quem procurar em caso de necessidade. Como toda prática esportiva e de luta, a capoeira exige cuidado. Informe telefones atualizados e o endereço correto para que possamos contatar a família e localizar o aluno quando necessário.'
                   : 'No momento não temos vagas disponíveis.',
             ),
         ],
@@ -2310,7 +3550,7 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
     final accent = _ensureVisible(t.warning, t.card);
 
     return Material(
-      color: Color.alphaBlend(accent.withOpacity(0.07), t.card),
+      color: Color.alphaBlend(accent.withAlpha(18), t.card),
       borderRadius: BorderRadius.circular(18),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -2330,7 +3570,7 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
           padding: const EdgeInsets.all(13),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: accent.withOpacity(0.16)),
+            border: Border.all(color: accent.withAlpha(41)),
           ),
           child: Column(
             children: [
@@ -2384,19 +3624,29 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
     final t = context.uai;
 
     return SingleChildScrollView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _heroMini(
+          _sectionTitle(
             icon: Icons.camera_alt_rounded,
             title: 'Foto do aluno',
             subtitle:
-                'Essa foto ajuda o professor a identificar o aluno na chamada. Tire uma foto de frente, bem iluminada e com o rosto visível.',
+                'Escolha uma foto nítida, de frente e com boa iluminação.',
             color: t.primary,
           ),
           const SizedBox(height: 14),
-          _buildFotoAlunoCard(tamanhoGrande: true),
+          if (_campoVisivel('foto', 'obrigatorio'))
+            _buildFotoAlunoCard(tamanhoGrande: true)
+          else
+            _statusBox(
+              icon: Icons.visibility_off_rounded,
+              color: t.info,
+              title: 'Foto desativada',
+              subtitle:
+                  'A administração desativou este campo para o formulário atual.',
+            ),
           const SizedBox(height: 14),
           if (_processandoFotoLocal) ...[
             _statusBox(
@@ -2410,12 +3660,23 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
             ),
             const SizedBox(height: 14),
           ],
-          _statusBox(
-            icon: Icons.center_focus_strong_rounded,
-            color: t.success,
-            title: 'Dica para a foto',
-            subtitle:
-                'Tire uma foto de frente, com rosto visível e boa iluminação.',
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 10,
+            runSpacing: 8,
+            children: [
+              FilledButton.icon(
+                onPressed: _processandoFotoLocal ? null : _selecionarFoto,
+                icon: const Icon(Icons.add_a_photo_outlined),
+                label: Text(_temFoto() ? 'Trocar foto' : 'Adicionar foto'),
+              ),
+              if (_temFoto())
+                TextButton.icon(
+                  onPressed: _processandoFotoLocal ? null : _removerFoto,
+                  icon: const Icon(Icons.delete_outline),
+                  label: const Text('Remover'),
+                ),
+            ],
           ),
         ],
       ),
@@ -2430,6 +3691,7 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
     final idadeValida = idade >= _idadeMinima && idade <= _idadeMaxima;
 
     return SingleChildScrollView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2453,21 +3715,29 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
             personNameOnly: true,
           ),
           const SizedBox(height: 12),
-          _buildTextField(
-            _controllers['apelido']!,
-            'Apelido *',
-            validator: (value) {
-              final v = value?.trim() ?? '';
-              if (v.isEmpty) return 'Campo obrigatório';
-              if (!_validarNomePessoa(v)) return 'Use apenas letras';
-              return null;
-            },
-            personNameOnly: true,
-          ),
-          const SizedBox(height: 12),
+          if (_campoVisivel('apelido', 'obrigatorio')) ...[
+            _buildTextField(
+              _controllers['apelido']!,
+              _rotuloCampo('Apelido', 'apelido', 'obrigatorio'),
+              validator: (value) {
+                final v = value?.trim() ?? '';
+                if (_campoObrigatorio('apelido', 'obrigatorio') && v.isEmpty) {
+                  return 'Campo obrigatório';
+                }
+                if (v.isNotEmpty && !_validarNomePessoa(v)) {
+                  return 'Use apenas letras';
+                }
+                return null;
+              },
+              personNameOnly: true,
+            ),
+            const SizedBox(height: 12),
+          ],
           LayoutBuilder(
             builder: (context, constraints) {
-              final narrow = constraints.maxWidth < 520;
+              final narrow =
+                  constraints.maxWidth < 560 ||
+                  MediaQuery.textScalerOf(context).scale(14) > 18;
               final dateField = _buildDateField(
                 _controllers['data_nascimento']!,
                 'Data de nascimento *',
@@ -2489,7 +3759,7 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
               );
             },
           ),
-          if (_controllers['data_nascimento']!.text.isNotEmpty &&
+          if (_controllers['data_nascimento']!.text.length == 10 &&
               !idadeValida) ...[
             const SizedBox(height: 10),
             _statusBox(
@@ -2505,33 +3775,177 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
     );
   }
 
-  Widget _buildStepContato() {
+  Widget _buildStepAcesso() {
     final t = context.uai;
-    final isMaior = _isMaiorIdade();
-
     return SingleChildScrollView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _sectionTitle(
-            icon: Icons.phone_rounded,
-            title: 'Contato',
-            subtitle: isMaior
-                ? 'Como vamos falar com você?'
-                : 'Como vamos falar com vocês?',
+            icon: Icons.mark_email_read_rounded,
+            title: 'Conta e acesso',
+            subtitle:
+                'Use o e-mail do responsável. A mesma conta pode acompanhar a inscrição de todos os filhos.',
             color: t.info,
           ),
           const SizedBox(height: 14),
-          _buildPhoneField(
-            _controllers['contato_aluno']!,
-            'Telefone do aluno *',
+          TextFormField(
+            controller: _controllers['email_conta_uai']!,
+            readOnly: _emailContaUaiConfirmado || _confirmandoEmailContaUai,
+            onFieldSubmitted: (_) {
+              if (_emailContaUaiConfirmado) {
+                _proximaEtapa();
+              } else {
+                _confirmarEmailContaUaiPorCodigo();
+              }
+            },
+            keyboardType: TextInputType.emailAddress,
+            textInputAction: TextInputAction.done,
+            autocorrect: false,
+            enableSuggestions: false,
+            style: TextStyle(color: t.textPrimary),
+            decoration: _modernInputDecoration(
+              label: 'E-mail de acesso *',
+              icon: Icons.alternate_email_rounded,
+              errorText: () {
+                final email = _controllers['email_conta_uai']!.text
+                    .trim()
+                    .toLowerCase();
+                if (email.isEmpty) return 'Campo obrigatório';
+                if (!_emailFormatoValido(email)) {
+                  return 'Digite um e-mail válido';
+                }
+                if (!_emailContaUaiConfirmado ||
+                    _emailConfirmadoValor != email) {
+                  return 'Confirme este e-mail antes de continuar';
+                }
+                return null;
+              }(),
+            ),
+            onChanged: (_) => _validarEtapaAcesso(),
           ),
-          const SizedBox(height: 12),
-          if (!isMaior) ...[
+          const SizedBox(height: 10),
+          if (_emailContaUaiConfirmado &&
+              _emailConfirmadoValor ==
+                  _controllers['email_conta_uai']!.text.trim().toLowerCase())
+            _statusBox(
+              icon: Icons.verified_rounded,
+              color: t.success,
+              title: 'E-mail confirmado',
+              subtitle: _metodoConfirmacaoEmail == 'google'
+                  ? 'Identidade confirmada com Google. Esta conta poderá acompanhar vários filhos/perfis.'
+                  : _metodoConfirmacaoEmail == 'sessao_existente'
+                  ? 'Este e-mail já estava confirmado na sua Conta UAI. Você pode usá-lo em vários filhos/perfis.'
+                  : 'E-mail confirmado por código. Esta conta poderá acompanhar vários filhos/perfis.',
+            )
+          else
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final narrow =
+                    constraints.maxWidth < 560 ||
+                    MediaQuery.textScalerOf(context).scale(14) > 18;
+                final codigo = FilledButton.icon(
+                  onPressed: _confirmandoEmailContaUai
+                      ? null
+                      : _confirmarEmailContaUaiPorCodigo,
+                  icon: _confirmandoEmailContaUai
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.mark_email_read_rounded),
+                  label: const Text('CONFIRMAR POR E-MAIL'),
+                );
+                final google = OutlinedButton.icon(
+                  onPressed: _confirmandoEmailContaUai
+                      ? null
+                      : _confirmarEmailContaUaiPorGoogle,
+                  icon: const Icon(Icons.g_mobiledata_rounded, size: 24),
+                  label: const Text('CONTINUAR COM GOOGLE'),
+                );
+                if (narrow) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [codigo, const SizedBox(height: 8), google],
+                  );
+                }
+                return Row(
+                  children: [
+                    Expanded(child: codigo),
+                    const SizedBox(width: 8),
+                    Expanded(child: google),
+                  ],
+                );
+              },
+            ),
+          if (_emailContaUaiConfirmado)
+            TextButton.icon(
+              icon: const Icon(Icons.manage_accounts_outlined),
+              label: const Text('Usar outro e-mail'),
+              onPressed: _confirmandoEmailContaUai
+                  ? null
+                  : () {
+                      _controllers['email_conta_uai']!.clear();
+                      _validarEtapaAcesso();
+                    },
+            ),
+          const SizedBox(height: 14),
+          _statusBox(
+            icon: Icons.family_restroom_rounded,
+            color: t.info,
+            title: 'Uma conta, vários perfis',
+            subtitle:
+                'O mesmo e-mail pode acompanhar inscrições de irmãos ou dependentes. Depois, cada aluno também poderá vincular o próprio e-mail.',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStepContato() {
+    final t = context.uai;
+    final isMaior = _isMaiorIdade();
+
+    return SingleChildScrollView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _sectionTitle(
+            icon: Icons.phone_in_talk_rounded,
+            title: 'Contatos',
+            subtitle: isMaior
+                ? 'Informe seu telefone e uma pessoa para contatar em caso de emergência.'
+                : 'Informe os contatos do aluno e do responsável.',
+            color: t.primary,
+          ),
+          const SizedBox(height: 14),
+          _statusBox(
+            icon: Icons.info_outline_rounded,
+            color: t.info,
+            title: 'Como falar com você quando precisar',
+            subtitle:
+                'Confira o DDD e os números. Eles serão usados para avisos e para contatar a família em caso de necessidade. Se a criança não tem celular, pode informar o telefone do responsável.',
+          ),
+          const SizedBox(height: 16),
+          if (_campoVisivel('contato_aluno', 'obrigatorio')) ...[
+            _buildPhoneField(
+              _controllers['contato_aluno']!,
+              _rotuloCampo('Telefone do aluno', 'contato_aluno', 'obrigatorio'),
+            ),
+            const SizedBox(height: 12),
+            _buildFamiliaCompartilhada('contato_aluno'),
+          ],
+          ...[
             _buildTextField(
               _controllers['nome_responsavel']!,
-              'Nome do responsável *',
+              isMaior
+                  ? 'Nome do contato de emergência *'
+                  : 'Nome do responsável *',
               validator: (value) {
                 final v = value?.trim() ?? '';
                 if (v.isEmpty) return 'Campo obrigatório';
@@ -2541,13 +3955,121 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
               personNameOnly: true,
             ),
             const SizedBox(height: 12),
+            _buildGrauContato(isMaior),
+            const SizedBox(height: 14),
             _buildPhoneField(
               _controllers['contato_responsavel']!,
-              'Telefone do responsável *',
+              isMaior
+                  ? 'Telefone do contato de emergência *'
+                  : 'Telefone do responsável *',
             ),
           ],
+          const SizedBox(height: 16),
+          _buildFamiliaCompartilhada('contato_responsavel'),
+          const SizedBox(height: 8),
+          _buildContatosEmergenciaAdicionais(),
         ],
       ),
+    );
+  }
+
+  Widget _buildContatosEmergenciaAdicionais() {
+    final t = context.uai;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var i = 0; i < _contatosEmergenciaAdicionais.length; i++) ...[
+          Container(
+            margin: const EdgeInsets.only(top: 10, bottom: 4),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: t.cardAlt,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: t.border),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.emergency_share_rounded, color: t.warning),
+                    const SizedBox(width: 9),
+                    Expanded(
+                      child: Text(
+                        'Contato de emergência ${i + 2}',
+                        style: TextStyle(
+                          color: t.textPrimary,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Remover contato',
+                      onPressed: () {
+                        final removido = _contatosEmergenciaAdicionais.removeAt(i);
+                        removido.dispose();
+                        setState(() {});
+                        _validarEtapaContatos();
+                      },
+                      icon: Icon(Icons.delete_outline_rounded, color: t.error),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                _buildTextField(
+                  _contatosEmergenciaAdicionais[i].nome,
+                  'Nome do contato de emergência *',
+                  validator: (value) {
+                    final v = value?.trim() ?? '';
+                    if (v.isEmpty) return 'Campo obrigatório';
+                    if (!_validarNomePessoa(v)) return 'Use apenas letras';
+                    return null;
+                  },
+                  personNameOnly: true,
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: _contatosEmergenciaAdicionais[i].grau,
+                  isExpanded: true,
+                  decoration: _modernInputDecoration(
+                    label: 'Essa pessoa é o quê do aluno? *',
+                    icon: Icons.family_restroom_rounded,
+                  ),
+                  items: grausResponsavelUai
+                      .map((v) => DropdownMenuItem(value: v, child: Text(v)))
+                      .toList(),
+                  onChanged: (value) {
+                    setState(() => _contatosEmergenciaAdicionais[i].grau = value);
+                    _validarEtapaContatos();
+                  },
+                ),
+                const SizedBox(height: 12),
+                _buildPhoneField(
+                  _contatosEmergenciaAdicionais[i].telefone,
+                  'Telefone do contato de emergência *',
+                ),
+              ],
+            ),
+          ),
+        ],
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: () {
+              final novo = _ContatoEmergenciaAdicional();
+              novo.nome.addListener(_validarEtapaContatos);
+              novo.telefone.addListener(_validarEtapaContatos);
+              setState(() => _contatosEmergenciaAdicionais.add(novo));
+              _validarEtapaContatos();
+            },
+            icon: const Icon(Icons.add_circle_outline_rounded, size: 20),
+            label: const Text('+ Adicionar contato de emergência'),
+            style: TextButton.styleFrom(
+              foregroundColor: t.textSecondary,
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -2555,6 +4077,7 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
     final t = context.uai;
 
     return SingleChildScrollView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2566,74 +4089,96 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
             color: t.success,
           ),
           const SizedBox(height: 14),
-          _buildTextField(
-            _controllers['rua']!,
-            'Rua *',
-            validator: (value) {
-              final v = value?.trim() ?? '';
-              if (v.isEmpty) return 'Campo obrigatório';
-              if (!_validarEnderecoTexto(v)) return 'Texto inválido';
-              return null;
-            },
-            addressText: true,
-          ),
-          const SizedBox(height: 12),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final narrow = constraints.maxWidth < 520;
+          if (!_campoVisivel('endereco', 'obrigatorio'))
+            _statusBox(
+              icon: Icons.visibility_off_rounded,
+              color: t.info,
+              title: 'Endereço desativado',
+              subtitle:
+                  'A administração desativou este campo para o formulário atual.',
+            )
+          else ...[
+            _buildTextField(
+              _controllers['rua']!,
+              _rotuloCampo('Rua', 'endereco', 'obrigatorio'),
+              validator: (value) {
+                final v = value?.trim() ?? '';
+                if (_campoObrigatorio('endereco', 'obrigatorio') && v.isEmpty) {
+                  return 'Campo obrigatório';
+                }
+                if (v.isNotEmpty && !_validarEnderecoTexto(v)) {
+                  return 'Texto inválido';
+                }
+                return null;
+              },
+              addressText: true,
+            ),
+            const SizedBox(height: 12),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final narrow =
+                    constraints.maxWidth < 560 ||
+                    MediaQuery.textScalerOf(context).scale(14) > 18;
 
-              final numero = _buildTextField(
-                _controllers['numero']!,
-                'Número *',
-                isNumberOnly: true,
-                maxLength: 5,
-                validator: (value) {
-                  final v = value?.trim() ?? '';
-                  if (v.isEmpty) return 'Campo obrigatório';
-                  if (v.length > 5) return 'Máximo 5 dígitos';
-                  return null;
-                },
-              );
-
-              final bairro = _buildTextField(
-                _controllers['bairro']!,
-                'Bairro *',
-                validator: (value) {
-                  final v = value?.trim() ?? '';
-                  if (v.isEmpty) return 'Campo obrigatório';
-                  if (!_validarEnderecoTexto(v)) return 'Texto inválido';
-                  return null;
-                },
-                addressText: true,
-              );
-
-              if (narrow) {
-                return Column(
-                  children: [numero, const SizedBox(height: 12), bairro],
+                final numero = _buildTextField(
+                  _controllers['numero']!,
+                  _rotuloCampo('Número', 'endereco', 'obrigatorio'),
+                  isNumberOnly: true,
+                  maxLength: 5,
+                  validator: (value) {
+                    final v = value?.trim() ?? '';
+                    if (_campoObrigatorio('endereco', 'obrigatorio') &&
+                        v.isEmpty) {
+                      return 'Campo obrigatório';
+                    }
+                    if (v.isNotEmpty && v.length > 5) return 'Máximo 5 dígitos';
+                    return null;
+                  },
                 );
-              }
 
-              return Row(
-                children: [
-                  Expanded(flex: 2, child: numero),
-                  const SizedBox(width: 12),
-                  Expanded(flex: 3, child: bairro),
-                ],
-              );
-            },
-          ),
-          const SizedBox(height: 12),
-          _buildTextField(
-            _controllers['cidade']!,
-            'Cidade *',
-            validator: (value) {
-              final v = value?.trim() ?? '';
-              if (v.isEmpty) return 'Campo obrigatório';
-              if (!_validarEnderecoTexto(v)) return 'Texto inválido';
-              return null;
-            },
-            addressText: true,
-          ),
+                final bairro = _buildTextField(
+                  _controllers['bairro']!,
+                  _rotuloCampo('Bairro', 'endereco', 'obrigatorio'),
+                  validator: (value) {
+                    final v = value?.trim() ?? '';
+                    if (_campoObrigatorio('endereco', 'obrigatorio') &&
+                        v.isEmpty) {
+                      return 'Campo obrigatório';
+                    }
+                    if (v.isNotEmpty && !_validarEnderecoTexto(v)) {
+                      return 'Texto inválido';
+                    }
+                    return null;
+                  },
+                  addressText: true,
+                );
+
+                if (narrow) {
+                  return Column(
+                    children: [numero, const SizedBox(height: 12), bairro],
+                  );
+                }
+
+                return Row(
+                  children: [
+                    Expanded(flex: 2, child: numero),
+                    const SizedBox(width: 12),
+                    Expanded(flex: 3, child: bairro),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+            _buildCidadeField(),
+            const SizedBox(height: 12),
+            _statusBox(
+              icon: Icons.home_outlined,
+              color: t.info,
+              title: 'Informe onde o aluno realmente mora',
+              subtitle:
+                  'Confira rua, número, bairro e cidade. Um endereço completo ajuda a localizar o aluno e organizar o contato com a família quando necessário. Selecione uma das cidades com academia ativa.',
+            ),
+          ],
         ],
       ),
     );
@@ -2643,6 +4188,7 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
     final t = context.uai;
 
     return SingleChildScrollView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2650,7 +4196,11 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
           _sectionTitle(
             icon: Icons.badge_rounded,
             title: 'Documento',
-            subtitle: 'CPF opcional',
+            subtitle: _campoModo('cpf', 'opcional') == 'oculto'
+                ? 'Campo desativado'
+                : (_campoObrigatorio('cpf', 'opcional')
+                      ? 'CPF obrigatório'
+                      : 'CPF opcional'),
             color: t.associacao,
           ),
           const SizedBox(height: 14),
@@ -2659,10 +4209,19 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
             color: t.info,
             title: 'Documento opcional',
             subtitle:
-                'O CPF ajuda no cadastro futuro, mas não bloqueia o avanço.',
+                'Informe o CPF do aluno, se disponível. A obrigatoriedade segue a configuração da inscrição.',
           ),
           const SizedBox(height: 14),
-          _buildCpfField(),
+          if (_campoVisivel('cpf', 'opcional'))
+            _buildCpfField()
+          else
+            _statusBox(
+              icon: Icons.visibility_off_rounded,
+              color: t.info,
+              title: 'CPF desativado',
+              subtitle:
+                  'A administração desativou este campo para o formulário atual.',
+            ),
         ],
       ),
     );
@@ -2683,7 +4242,7 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
         _assinaturaBytes == null;
     final temFoto = _temFoto();
 
-    return SingleChildScrollView(
+    return RevisaoRolavelUai(
       padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2693,6 +4252,85 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
             title: 'Revisão e autorização',
             subtitle: 'Confira os dados antes de enviar.',
             color: t.success,
+          ),
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: t.card,
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: t.primary.withAlpha(51)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.edit_note_rounded, color: t.primary),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Precisa corrigir alguma etapa?',
+                        style: TextStyle(
+                          color: t.textPrimary,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Escolha uma etapa. Depois de corrigir, você volta direto para esta revisão.',
+                  style: TextStyle(color: t.textSecondary, height: 1.4),
+                ),
+                const SizedBox(height: 16),
+                LayoutBuilder(
+                  builder: (context, constraints) => Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      for (final item in <int, String>{
+                        1: 'E-mail',
+                        2: 'Foto',
+                        3: 'Dados do aluno',
+                        4: 'Contatos',
+                        5: 'Documento',
+                        6: 'Endereço',
+                        7: 'Cuidados',
+                        8: 'Capoeira',
+                      }.entries)
+                        SizedBox(
+                          width:
+                              constraints.maxWidth < 380 ||
+                                  MediaQuery.textScalerOf(context).scale(14) >
+                                      18
+                              ? constraints.maxWidth
+                              : (constraints.maxWidth - 10) / 2,
+                          child: OutlinedButton.icon(
+                            onPressed: () => _editarEtapa(item.key),
+                            icon: const Icon(Icons.edit_outlined, size: 17),
+                            label: Text(
+                              item.value,
+                              textAlign: TextAlign.center,
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 14,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 14),
           Container(
@@ -2726,10 +4364,38 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
                   'Foto',
                   temFoto
                       ? '✅ Foto do aluno cadastrada'
-                      : '❌ Foto não cadastrada',
-                  temFoto ? t.associacao : t.error,
+                      : (_campoObrigatorio('foto', 'obrigatorio') &&
+                                _campoVisivel('foto', 'obrigatorio')
+                            ? 'Foto pendente'
+                            : 'Não informada (opcional)'),
+                  temFoto ? t.associacao : t.textSecondary,
                 ),
-                if (!isMaior) ...[
+                _divider(),
+                _buildResumoLinhaIcon(
+                  Icons.alternate_email_rounded,
+                  'E-mail confirmado',
+                  _controllers['email_conta_uai']!.text,
+                  t.info,
+                ),
+                if (_campoVisivel('endereco', 'obrigatorio')) ...[
+                  _divider(),
+                  _buildResumoLinhaIcon(
+                    Icons.home_outlined,
+                    'Endereço',
+                    ['rua', 'numero', 'bairro', 'cidade']
+                            .map((k) => _controllers[k]!.text.trim())
+                            .where((v) => v.isNotEmpty)
+                            .join(', ')
+                            .isEmpty
+                        ? 'Não informado (opcional)'
+                        : ['rua', 'numero', 'bairro', 'cidade']
+                              .map((k) => _controllers[k]!.text.trim())
+                              .where((v) => v.isNotEmpty)
+                              .join(', '),
+                    t.info,
+                  ),
+                ],
+                ...[
                   _divider(),
                   _buildResumoLinhaIcon(
                     Icons.person_outline_rounded,
@@ -2744,10 +4410,16 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
           const SizedBox(height: 14),
           _buildTermoElaborado(),
           const SizedBox(height: 14),
-          _buildAutorizacaoCard(),
+          PendenciaPulsanteUai(
+            ativa: !_autorizacao,
+            child: _buildAutorizacaoCard(),
+          ),
           if (_recolherAssinatura) ...[
             const SizedBox(height: 14),
-            _buildAssinaturaCard(precisaAssinar),
+            PendenciaPulsanteUai(
+              ativa: precisaAssinar,
+              child: _buildAssinaturaCard(precisaAssinar),
+            ),
           ],
         ],
       ),
@@ -2816,8 +4488,8 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
       padding: const EdgeInsets.all(14),
       decoration: _cardDecoration(
         borderColor: assinada
-            ? success.withOpacity(0.20)
-            : warning.withOpacity(0.20),
+            ? success.withAlpha(51)
+            : warning.withAlpha(51),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2888,6 +4560,7 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
               border: Border.all(color: t.border),
             ),
             child: SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               child: Text(
                 _gerarTermoTexto(),
                 style: TextStyle(
@@ -2948,14 +4621,14 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
                               ? Image.network(
                                   _fotoUrl!,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) =>
+                                  errorBuilder: (_, _, _) =>
                                       _buildFotoPlaceholder(),
                                 )
                               : _fotoBytes != null
                               ? Image.memory(
                                   _fotoBytes!,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (_, __, ___) =>
+                                  errorBuilder: (_, _, _) =>
                                       _buildFotoPlaceholder(),
                                 )
                               : _buildFotoPlaceholder(),
@@ -2964,7 +4637,7 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
                           child: Container(
                             width: double.infinity,
                             color: Color.alphaBlend(
-                              accent.withOpacity(0.08),
+                              accent.withAlpha(20),
                               t.card,
                             ),
                             alignment: Alignment.center,
@@ -2991,7 +4664,7 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
                     height: cardH,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(28),
-                      color: Colors.black.withOpacity(0.62),
+                      color: Colors.black.withAlpha(158),
                     ),
                     child: Padding(
                       padding: const EdgeInsets.all(14),
@@ -3054,8 +4727,10 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
                           ? _statusFotoLocal
                           : 'Processando foto...')
                     : temFoto
-                    ? '✅ Foto pronta! Toque para tirar outra • Segure para remover'
-                    : '⚠️ Foto obrigatória • Toque para abrir a câmera',
+                    ? 'Foto pronta para enviar'
+                    : (_campoObrigatorio('foto', 'obrigatorio')
+                          ? '⚠️ Foto obrigatória • Toque para abrir a câmera'
+                          : 'Foto opcional • Toque para abrir a câmera'),
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 12,
@@ -3105,19 +4780,21 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
 
   Widget _buildNavigationButtons() {
     final t = context.uai;
-    final isLast = _currentStep == 6;
+    final isLast = _currentStep == 9;
 
     return SafeArea(
       top: false,
       child: LayoutBuilder(
         builder: (context, constraints) {
           final compact = constraints.maxWidth < 380;
-          final continuarLabel = isLast
+          final continuarLabel = _editandoRevisao && !isLast
+              ? 'VOLTAR À REVISÃO'
+              : isLast
               ? (compact ? 'ENVIAR' : 'ENVIAR INSCRIÇÃO')
               : (compact ? 'PRÓXIMO' : 'CONTINUAR');
 
           final voltarButton = OutlinedButton.icon(
-            onPressed: _currentStep == 0 ? null : _etapaAnterior,
+            onPressed: _enviando ? null : _etapaAnterior,
             icon: Icon(Icons.arrow_back_rounded, size: compact ? 17 : 18),
             label: FittedBox(
               fit: BoxFit.scaleDown,
@@ -3140,7 +4817,12 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
           );
 
           final nextButton = ElevatedButton.icon(
-            onPressed: isLast ? _enviarInscricao : _proximaEtapa,
+            onPressed:
+                (_processandoFotoLocal ||
+                    _confirmandoEmailContaUai ||
+                    (_currentStep == 0 && (!_inscricoesAbertas || !_temVagas)))
+                ? null
+                : (isLast ? _enviarInscricao : _proximaEtapa),
             icon: Icon(
               isLast ? Icons.send_rounded : Icons.arrow_forward_rounded,
               size: compact ? 17 : 19,
@@ -3215,14 +4897,21 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
       );
     }
 
-    if (maxLength != null)
+    if (maxLength != null) {
       inputFormatters.add(LengthLimitingTextInputFormatter(maxLength));
+    }
 
     return TextFormField(
       controller: controller,
+      focusNode: _focusFor(controller),
+      textInputAction: TextInputAction.next,
+      onFieldSubmitted: (_) => _proximoCampo(controller),
       style: TextStyle(color: context.uai.textPrimary),
       inputFormatters: inputFormatters,
-      textCapitalization: TextCapitalization.characters,
+      keyboardType: isNumberOnly ? TextInputType.number : TextInputType.text,
+      textCapitalization: isNumberOnly
+          ? TextCapitalization.none
+          : TextCapitalization.characters,
       decoration: _modernInputDecoration(
         label: label,
         icon: Icons.edit_rounded,
@@ -3230,15 +4919,19 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
       ),
       onChanged: (_) {
         _validarEtapa1();
-        _validarEtapa2();
-        _validarEtapa3();
+        _validarEtapaAcesso();
+        _validarEtapaEndereco();
       },
     );
   }
 
   Widget _buildPhoneField(TextEditingController controller, String label) {
+    final obrigatorio = label.contains('*');
     return TextFormField(
       controller: controller,
+      focusNode: _focusFor(controller),
+      textInputAction: TextInputAction.next,
+      onFieldSubmitted: (_) => _proximoCampo(controller),
       keyboardType: TextInputType.phone,
       style: TextStyle(color: context.uai.textPrimary),
       inputFormatters: [
@@ -3250,12 +4943,20 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
         label: label,
         icon: Icons.phone_rounded,
         errorText: controller.text.isEmpty
-            ? 'Campo obrigatório'
+            ? (obrigatorio ? 'Campo obrigatório' : null)
             : !_telefoneCompleto(controller.text)
             ? 'Telefone incompleto'
             : null,
       ),
-      onChanged: (_) => _validarEtapa2(),
+      onChanged: (_) {
+        _invalidarAssinatura();
+        _validarEtapaContatos();
+        _agendarParentesco(
+          identical(controller, _controllers['contato_aluno'])
+              ? 'contato_aluno'
+              : 'contato_responsavel',
+        );
+      },
     );
   }
 
@@ -3264,6 +4965,9 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
 
     return TextFormField(
       controller: controller,
+      focusNode: _focusFor(controller),
+      textInputAction: TextInputAction.next,
+      onFieldSubmitted: (_) => _proximoCampo(controller),
       keyboardType: TextInputType.number,
       style: TextStyle(color: context.uai.textPrimary),
       inputFormatters: [
@@ -3272,7 +4976,7 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
         _CpfInputFormatter(),
       ],
       decoration: _modernInputDecoration(
-        label: 'CPF opcional',
+        label: _rotuloCampo('CPF', 'cpf', 'opcional'),
         icon: Icons.badge_rounded,
       ),
     );
@@ -3281,7 +4985,20 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
   Widget _buildDateField(TextEditingController controller, String label) {
     return TextFormField(
       controller: controller,
-      readOnly: true,
+      focusNode: _focusFor(controller),
+      textInputAction: TextInputAction.next,
+      onFieldSubmitted: (_) => _proximoCampo(controller),
+      keyboardType: TextInputType.number,
+      inputFormatters: [
+        FilteringTextInputFormatter.digitsOnly,
+        LengthLimitingTextInputFormatter(8),
+        _NascimentoInputFormatter(),
+      ],
+      onChanged: (_) {
+        _invalidarAssinatura();
+        _validarEtapa1();
+        _validarEtapaContatos();
+      },
       style: TextStyle(color: context.uai.textPrimary),
       decoration:
           _modernInputDecoration(
@@ -3289,51 +5006,110 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
             icon: Icons.cake_rounded,
             errorText: controller.text.isEmpty ? 'Campo obrigatório' : null,
           ).copyWith(
-            suffixIcon: Icon(
-              Icons.calendar_month_rounded,
-              color: _ensureVisible(context.uai.primary, context.uai.card),
+            helperText: 'Digite DD/MM/AAAA ou toque no calendário.',
+            suffixIcon: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_dataNascimentoValida(controller.text))
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4),
+                    child: Text(
+                      '${_calcularIdade(controller.text)} anos',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: context.uai.textSecondary,
+                      ),
+                    ),
+                  ),
+                IconButton(
+                  tooltip: 'Escolher data de nascimento',
+                  onPressed: () => _selectDate(controller),
+                  icon: Icon(
+                    Icons.calendar_month_rounded,
+                    color: context.uai.primary,
+                  ),
+                ),
+              ],
             ),
           ),
-      onTap: () => _selectDate(controller),
     );
   }
 
-  Widget _buildSexoField() {
-    final t = context.uai;
+  bool _dataNascimentoValida(String text) {
+    if (text.length != 10) return false;
+    try {
+      final date = DateFormat('dd/MM/yyyy').parseStrict(text);
+      return !date.isAfter(DateTime.now()) && date.year >= 1900;
+    } catch (_) {
+      return false;
+    }
+  }
 
-    return DropdownButtonFormField<String>(
-      value: _sexo,
-      isExpanded: true,
-      dropdownColor: t.surface,
-      style: TextStyle(color: t.textPrimary),
-      decoration: _modernInputDecoration(
-        label: 'Sexo *',
-        icon: Icons.wc_rounded,
-        errorText: _sexo == null ? 'Campo obrigatório' : null,
-      ),
-      items: const [
-        DropdownMenuItem(value: 'MASCULINO', child: Text('MASCULINO')),
-        DropdownMenuItem(value: 'FEMININO', child: Text('FEMININO')),
+  Widget _buildSexoField() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Semantics(
+          label: 'Sexo do aluno, escolha uma opção',
+          child: CupertinoSlidingSegmentedControl<String>(
+            groupValue: _sexo,
+            backgroundColor: context.uai.surface,
+            thumbColor: context.uai.primary,
+            children: {
+              for (final value in ['MASCULINO', 'FEMININO'])
+                value: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 12,
+                    horizontal: 2,
+                  ),
+                  child: Text(
+                    value == 'MASCULINO' ? 'Masculino' : 'Feminino',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: _sexo == value
+                          ? _readableOn(context.uai.primary)
+                          : context.uai.textPrimary,
+                    ),
+                  ),
+                ),
+            },
+            onValueChanged: (value) {
+              if (value == null) return;
+              setState(() => _sexo = value);
+              _invalidarAssinatura();
+              _validarEtapa1();
+            },
+          ),
+        ),
+        if (_sexo == null && _etapasTentadas.contains(3))
+          Text(
+            'Selecione uma opção.',
+            style: TextStyle(color: context.uai.error),
+          ),
       ],
-      onChanged: (v) {
-        setState(() => _sexo = v);
-        _rastrearAcaoInscricao(
-          'selecionou_sexo',
-          origem: 'dados_aluno',
-          metadata: {'sexo': v},
-        );
-        _validarEtapa1();
-      },
     );
   }
 
   Future<void> _selectDate(TextEditingController controller) async {
     final t = context.uai;
 
+    DateTime inicial = DateTime.now().subtract(const Duration(days: 3650));
+    try {
+      inicial = DateFormat('dd/MM/yyyy').parseStrict(controller.text);
+    } catch (_) {}
+    if (inicial.isAfter(DateTime.now()) || inicial.year < 1900) {
+      inicial = DateTime(2016);
+    }
     final picked = await showDatePicker(
       context: context,
-      initialDate: DateTime.now().subtract(const Duration(days: 3650)),
-      firstDate: DateTime(1920),
+      initialDate: inicial,
+      initialDatePickerMode: DatePickerMode.year,
+      helpText: 'Data de nascimento',
+      cancelText: 'Cancelar',
+      confirmText: 'Confirmar',
+      firstDate: DateTime(1900),
       lastDate: DateTime.now(),
       builder: (context, child) {
         return Theme(
@@ -3349,7 +5125,8 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
       },
     );
 
-    if (picked != null) {
+    if (picked != null && mounted) {
+      _invalidarAssinatura();
       setState(() => controller.text = DateFormat('dd/MM/yyyy').format(picked));
       _validarEtapa1();
     }
@@ -3369,8 +5146,9 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
       prefixIcon: Icon(icon, color: primary),
       filled: true,
       fillColor: t.card,
-      errorText: errorText,
-      errorMaxLines: 2,
+      errorText: _etapasTentadas.contains(_currentStep) ? errorText : null,
+      errorMaxLines: 3,
+      helperMaxLines: 3,
       counterText: '',
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       border: OutlineInputBorder(
@@ -3431,7 +5209,7 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
             subtitle,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: onPrimary.withOpacity(0.82),
+              color: onPrimary.withAlpha(209),
               fontSize: 13,
               height: 1.35,
             ),
@@ -3490,8 +5268,6 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
         const SizedBox(height: 3),
         Text(
           subtitle,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
           style: TextStyle(
             color: t.textSecondary,
             fontSize: 11.8,
@@ -3517,9 +5293,9 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), t.card),
+        color: Color.alphaBlend(accent.withAlpha(20), t.card),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: accent.withOpacity(0.15)),
+        border: Border.all(color: accent.withAlpha(38)),
       ),
       child: Row(
         children: [
@@ -3590,9 +5366,9 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
       width: compact ? 36 : 42,
       height: compact ? 36 : 42,
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.10), t.cardAlt),
+        color: Color.alphaBlend(accent.withAlpha(26), t.cardAlt),
         borderRadius: BorderRadius.circular(compact ? 13 : 15),
-        border: Border.all(color: accent.withOpacity(0.14)),
+        border: Border.all(color: accent.withAlpha(36)),
       ),
       child: Icon(icon, color: accent, size: compact ? 19 : 22),
     );
@@ -3611,9 +5387,9 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
       width: large ? 78 : 64,
       height: large ? 78 : 64,
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.10), t.cardAlt),
+        color: Color.alphaBlend(accent.withAlpha(26), t.cardAlt),
         borderRadius: BorderRadius.circular(large ? 26 : 22),
-        border: Border.all(color: accent.withOpacity(0.16)),
+        border: Border.all(color: accent.withAlpha(41)),
       ),
       child: Icon(icon, color: accent, size: size),
     );
@@ -3703,7 +5479,7 @@ class _GuiaRostoInscricaoPainter extends CustomPainter {
       ..style = PaintingStyle.stroke;
 
     final soft = Paint()
-      ..color = borderColor.withOpacity(0.55)
+      ..color = borderColor.withAlpha(140)
       ..strokeWidth = 1.0
       ..style = PaintingStyle.stroke;
 
@@ -3743,5 +5519,37 @@ class _GuiaRostoInscricaoPainter extends CustomPainter {
   bool shouldRepaint(covariant _GuiaRostoInscricaoPainter oldDelegate) {
     return oldDelegate.lineColor != lineColor ||
         oldDelegate.borderColor != borderColor;
+  }
+}
+
+class _NascimentoInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final digits = newValue.text.replaceAll(RegExp(r'\D'), '');
+    final buffer = StringBuffer();
+    for (int i = 0; i < digits.length && i < 8; i++) {
+      if (i == 2 || i == 4) buffer.write('/');
+      buffer.write(digits[i]);
+    }
+    final text = buffer.toString();
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+  }
+}
+
+
+class _ContatoEmergenciaAdicional {
+  final TextEditingController nome = TextEditingController();
+  final TextEditingController telefone = TextEditingController();
+  String? grau;
+
+  void dispose() {
+    nome.dispose();
+    telefone.dispose();
   }
 }

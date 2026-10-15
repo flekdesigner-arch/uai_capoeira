@@ -51,7 +51,7 @@ class _SelecionarParticipantesCsvScreenState
   }
 
   Color _onCard() => _readableOn(context.uai.card);
-  Color _onCardMuted() => _onCard().withOpacity(0.68);
+  Color _onCardMuted() => _onCard().withAlpha(173);
   Color _appBarBg() =>
       Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
   Color _appBarFg() =>
@@ -178,9 +178,11 @@ class _SelecionarParticipantesCsvScreenState
       }
       setState(() {});
     } catch (e) {
-      _mostrarMensagem('Erro ao carregar: $e', context.uai.error);
+      if (mounted) {
+        _mostrarMensagem('Erro ao carregar: $e', context.uai.error);
+      }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -236,17 +238,18 @@ class _SelecionarParticipantesCsvScreenState
 
     setState(() => _isEnviando = true);
     try {
-      for (var p in selecionados) p['cpf'] = await _buscarCpf(p['aluno_id']);
+      for (var p in selecionados) { p['cpf'] = await _buscarCpf(p['aluno_id']); }
       final resultado = await GoogleSheetsOAuthService().adicionarParticipantes(
         selecionados,
       );
+      if (!mounted) return;
       _mostrarMensagem(
         resultado['mensagem'],
         resultado['sucesso'] ? context.uai.success : context.uai.error,
       );
       if (resultado['sucesso']) _selecionarTodos(false);
     } finally {
-      setState(() => _isEnviando = false);
+      if (mounted) setState(() => _isEnviando = false);
     }
   }
 
@@ -264,7 +267,7 @@ class _SelecionarParticipantesCsvScreenState
 
     setState(() => _isGerandoCsv = true);
     try {
-      for (var p in selecionados) p['cpf'] = await _buscarCpf(p['aluno_id']);
+      for (var p in selecionados) { p['cpf'] = await _buscarCpf(p['aluno_id']); }
 
       List<List<String>> linhas = [
         ['NOME', 'CPF', 'GRADUAÇÃO'],
@@ -305,15 +308,17 @@ class _SelecionarParticipantesCsvScreenState
         XFile(file.path),
       ], text: 'Lista de participantes');
 
-      _mostrarMensagem(
-        '✅ CSV gerado com ${selecionados.length} participantes!',
-        context.uai.success,
-      );
-      _selecionarTodos(false);
+      if (mounted) {
+        _mostrarMensagem(
+          '✅ CSV gerado com ${selecionados.length} participantes!',
+          context.uai.success,
+        );
+        _selecionarTodos(false);
+      }
     } catch (e) {
-      _mostrarMensagem('Erro ao gerar CSV', context.uai.error);
+      if (mounted) _mostrarMensagem('Erro ao gerar CSV', context.uai.error);
     } finally {
-      setState(() => _isGerandoCsv = false);
+      if (mounted) setState(() => _isGerandoCsv = false);
     }
   }
 
@@ -371,7 +376,7 @@ class _SelecionarParticipantesCsvScreenState
               'Selecionar participantes',
               style: TextStyle(
                 fontSize: 12,
-                color: Colors.white.withOpacity(0.9),
+                color: Colors.white.withAlpha(230),
               ),
             ),
           ],
@@ -385,7 +390,7 @@ class _SelecionarParticipantesCsvScreenState
             Container(
               margin: const EdgeInsets.only(right: 8),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
+                color: Colors.white.withAlpha(51),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: IconButton(
@@ -400,7 +405,7 @@ class _SelecionarParticipantesCsvScreenState
             Container(
               margin: EdgeInsets.only(right: 8),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
+                color: Colors.white.withAlpha(51),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Row(
@@ -428,7 +433,7 @@ class _SelecionarParticipantesCsvScreenState
                     color: context.uai.card,
                     boxShadow: [
                       BoxShadow(
-                        color: context.uai.textMuted.withOpacity(0.1),
+                        color: context.uai.textMuted.withAlpha(26),
                         blurRadius: 10,
                         offset: const Offset(0, 2),
                       ),
@@ -527,7 +532,7 @@ class _SelecionarParticipantesCsvScreenState
                             onPressed: _abrirVincularCertificados,
                             icon: Icon(Icons.drive_folder_upload),
                             label: Text(
-                              'VINCULAR CERTIFICADOS DO DRIVE (${_selecionadosCount})',
+                              'VINCULAR CERTIFICADOS DO DRIVE ($_selecionadosCount)',
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.bold,
@@ -586,9 +591,9 @@ class _SelecionarParticipantesCsvScreenState
       margin: const EdgeInsets.symmetric(horizontal: 4),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withAlpha(26),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withAlpha(77)),
       ),
       child: Column(
         children: [
@@ -604,7 +609,7 @@ class _SelecionarParticipantesCsvScreenState
           ),
           Text(
             label,
-            style: TextStyle(fontSize: 11, color: color.withOpacity(0.8)),
+            style: TextStyle(fontSize: 11, color: color.withAlpha(204)),
           ),
         ],
       ),
@@ -690,7 +695,7 @@ class _SelecionarParticipantesCsvScreenState
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: context.uai.textMuted.withOpacity(0.2),
+                      color: context.uai.textMuted.withAlpha(51),
                       blurRadius: 4,
                       offset: const Offset(0, 2),
                     ),
@@ -714,19 +719,19 @@ class _SelecionarParticipantesCsvScreenState
                             ),
                           ),
                           errorWidget: (context, url, error) => Container(
-                            color: context.uai.error.withOpacity(0.08),
+                            color: context.uai.error.withAlpha(20),
                             child: Icon(
                               Icons.person,
-                              color: context.uai.error.withOpacity(0.24),
+                              color: context.uai.error.withAlpha(61),
                               size: 30,
                             ),
                           ),
                         )
                       : Container(
-                          color: context.uai.error.withOpacity(0.08),
+                          color: context.uai.error.withAlpha(20),
                           child: Icon(
                             Icons.person,
-                            color: context.uai.error.withOpacity(0.24),
+                            color: context.uai.error.withAlpha(61),
                             size: 30,
                           ),
                         ),
@@ -776,7 +781,7 @@ class _SelecionarParticipantesCsvScreenState
                           ),
                           decoration: BoxDecoration(
                             color: temGraduacao
-                                ? context.uai.success.withOpacity(0.08)
+                                ? context.uai.success.withAlpha(20)
                                 : context.uai.cardAlt,
                             borderRadius: BorderRadius.circular(12),
                           ),
@@ -846,13 +851,13 @@ class _SelecionarParticipantesCsvScreenState
           Container(
             padding: EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: context.uai.error.withOpacity(0.08),
+              color: context.uai.error.withAlpha(20),
               shape: BoxShape.circle,
             ),
             child: Icon(
               Icons.people_outline,
               size: 60,
-              color: context.uai.error.withOpacity(0.24),
+              color: context.uai.error.withAlpha(61),
             ),
           ),
           SizedBox(height: 16),

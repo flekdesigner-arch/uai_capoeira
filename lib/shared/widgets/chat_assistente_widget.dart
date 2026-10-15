@@ -14,7 +14,7 @@ class _ChatAssistenteWidgetState extends State<ChatAssistenteWidget> {
   bool _ativo = false;
   bool _aberto = false;
   Map<String, dynamic> _config = {};
-  List<Map<String, dynamic>> _mensagens = [];
+  final List<Map<String, dynamic>> _mensagens = [];
   final TextEditingController _inputController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   bool _carregando = false;
@@ -191,7 +191,7 @@ class _ChatAssistenteWidgetState extends State<ChatAssistenteWidget> {
                                 Text(
                                   _config['perfil']['status'],
                                   style: TextStyle(
-                                    color: Colors.white.withOpacity(0.8),
+                                    color: Colors.white.withAlpha(204),
                                     fontSize: 12,
                                   ),
                                 ),
@@ -234,9 +234,9 @@ class _ChatAssistenteWidgetState extends State<ChatAssistenteWidget> {
                                         onPressed: () =>
                                             _enviarPerguntaRapida(pergunta),
                                         backgroundColor: corPrimaria
-                                            .withOpacity(0.1),
+                                            .withAlpha(26),
                                         side: BorderSide(
-                                          color: corPrimaria.withOpacity(0.3),
+                                          color: corPrimaria.withAlpha(77),
                                         ),
                                       ),
                                     ),

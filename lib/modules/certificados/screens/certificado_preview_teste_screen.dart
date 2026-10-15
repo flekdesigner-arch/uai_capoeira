@@ -3,10 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/certificados/data/certificado_template_assets.dart';
+import 'package:uai_capoeira/modules/certificados/services/certificado_permission_keys.dart';
 import 'package:uai_capoeira/modules/certificados/models/certificado_preview_data.dart';
 import 'package:uai_capoeira/modules/certificados/models/certificado_template_tipo.dart';
 import 'package:uai_capoeira/modules/certificados/services/certificado_export_service.dart';
 import 'package:uai_capoeira/modules/certificados/widgets/certificado_preview_widget.dart';
+import 'package:uai_capoeira/modules/eventos/models/evento_model.dart';
+import 'package:uai_capoeira/modules/eventos/widgets/evento_certificado_config_dialog.dart';
 
 class CertificadoPreviewTesteScreen extends StatefulWidget {
   const CertificadoPreviewTesteScreen({super.key});
@@ -79,9 +82,14 @@ class _CertificadoPreviewTesteScreenState
   }
 
   Future<void> _verificarAcesso() async {
-    final permitido = await _accessGuard.canAccess(
-      permission: 'pode_configurar_certificados',
-    );
+    final permitido = await _accessGuard.canAny(const [
+      CertificadoPermissionKeys.visualizarTemplates,
+      CertificadoPermissionKeys.criarTemplates,
+      CertificadoPermissionKeys.editarTemplates,
+      CertificadoPermissionKeys.configurar,
+      CertificadoPermissionKeys.gerarPrevia,
+      CertificadoPermissionKeys.legadoConfigurarEvento,
+    ]);
     if (!mounted) return;
 
     setState(() {
@@ -91,9 +99,14 @@ class _CertificadoPreviewTesteScreenState
   }
 
   Future<bool> _revalidarAcesso() async {
-    final permitido = await _accessGuard.canAccess(
-      permission: 'pode_configurar_certificados',
-    );
+    final permitido = await _accessGuard.canAny(const [
+      CertificadoPermissionKeys.visualizarTemplates,
+      CertificadoPermissionKeys.criarTemplates,
+      CertificadoPermissionKeys.editarTemplates,
+      CertificadoPermissionKeys.configurar,
+      CertificadoPermissionKeys.gerarPrevia,
+      CertificadoPermissionKeys.legadoConfigurarEvento,
+    ]);
     if (!mounted) return false;
 
     if (!permitido) {
@@ -102,6 +115,18 @@ class _CertificadoPreviewTesteScreenState
     }
 
     return permitido;
+  }
+
+  Future<bool> _revalidarPrevia() async {
+    return _accessGuard.revalidateAny(
+      context,
+      permissions: const [
+        CertificadoPermissionKeys.gerarPrevia,
+        CertificadoPermissionKeys.configurar,
+        CertificadoPermissionKeys.legadoConfigurarEvento,
+      ],
+      message: 'Você não tem permissão para gerar prévias de certificados.',
+    );
   }
 
   Color _ensureVisible(Color color, Color background) {
@@ -185,7 +210,7 @@ class _CertificadoPreviewTesteScreenState
     Future<void> Function() action,
   ) async {
     if (_exportando) return;
-    if (!await _revalidarAcesso()) return;
+    if (!await _revalidarPrevia()) return;
 
     setState(() {
       _exportando = true;
@@ -249,6 +274,22 @@ class _CertificadoPreviewTesteScreenState
       bytes: pdf,
       nomeBase: _nomeArquivoBase(),
     );
+  }
+
+
+  Future<void> _abrirStudioTemplates() async {
+    if (!await _revalidarAcesso()) return;
+    if (!mounted) return;
+
+    await EventoCertificadoConfigDialog.show(
+      context: context,
+      configuracaoInicial: ConfiguracoesCertificadoEvento.padrao(),
+      modoBiblioteca: true,
+    );
+
+    // No modo biblioteca, o próprio Studio persiste templates diretamente.
+    // Voltar apenas fecha a ferramenta; não há configuração de evento para receber.
+    if (!mounted) return;
   }
 
   @override
@@ -361,9 +402,9 @@ class _CertificadoPreviewTesteScreenState
             width: 64,
             height: 64,
             decoration: BoxDecoration(
-              color: onPrimary.withOpacity(0.14),
+              color: onPrimary.withAlpha(36),
               borderRadius: BorderRadius.circular(t.cardRadius - 2),
-              border: Border.all(color: onPrimary.withOpacity(0.16)),
+              border: Border.all(color: onPrimary.withAlpha(41)),
             ),
             child: Icon(Icons.history_edu_rounded, color: onPrimary, size: 35),
           );
@@ -388,7 +429,7 @@ class _CertificadoPreviewTesteScreenState
                 'Agora o painel já gera PDF A4, PNG, impressão e compartilhamento a partir da prévia.',
                 textAlign: narrow ? TextAlign.center : TextAlign.left,
                 style: TextStyle(
-                  color: onPrimary.withOpacity(0.82),
+                  color: onPrimary.withAlpha(209),
                   fontSize: 13,
                   height: 1.35,
                   fontWeight: FontWeight.w600,
@@ -403,6 +444,15 @@ class _CertificadoPreviewTesteScreenState
                   _heroChip(Icons.picture_as_pdf_rounded, 'PDF A4'),
                   _heroChip(Icons.image_rounded, 'PNG'),
                   _heroChip(Icons.print_rounded, 'Imprimir'),
+                  OutlinedButton.icon(
+                    onPressed: _abrirStudioTemplates,
+                    icon: const Icon(Icons.design_services_rounded, size: 17),
+                    label: const Text('ABRIR STUDIO'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: onPrimary,
+                      side: BorderSide(color: onPrimary.withAlpha(89)),
+                    ),
+                  ),
                 ],
               ),
             ],
@@ -430,9 +480,9 @@ class _CertificadoPreviewTesteScreenState
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: onPrimary.withOpacity(0.14),
+        color: onPrimary.withAlpha(36),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: onPrimary.withOpacity(0.16)),
+        border: Border.all(color: onPrimary.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -471,7 +521,7 @@ class _CertificadoPreviewTesteScreenState
             padding: const EdgeInsets.only(bottom: 9),
             child: Material(
               color: selected
-                  ? Color.alphaBlend(t.primary.withOpacity(0.09), t.card)
+                  ? Color.alphaBlend(t.primary.withAlpha(23), t.card)
                   : t.cardAlt,
               borderRadius: BorderRadius.circular(t.buttonRadius + 2),
               clipBehavior: Clip.antiAlias,
@@ -483,7 +533,7 @@ class _CertificadoPreviewTesteScreenState
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(t.buttonRadius + 2),
                     border: Border.all(
-                      color: selected ? accent.withOpacity(0.28) : t.border,
+                      color: selected ? accent.withAlpha(71) : t.border,
                     ),
                   ),
                   child: Row(
@@ -557,11 +607,11 @@ class _CertificadoPreviewTesteScreenState
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
                 color: selected
-                    ? Color.alphaBlend(accent.withOpacity(0.11), t.card)
+                    ? Color.alphaBlend(accent.withAlpha(28), t.card)
                     : t.cardAlt,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: selected ? accent.withOpacity(0.35) : t.border,
+                  color: selected ? accent.withAlpha(89) : t.border,
                 ),
               ),
               child: Row(
@@ -626,7 +676,14 @@ class _CertificadoPreviewTesteScreenState
           ),
           value: _mostrarTextos,
           onChanged: (value) => setState(() => _mostrarTextos = value),
-          activeColor: t.primary,
+          activeThumbColor: switch (Theme.of(context).platform) {
+            TargetPlatform.iOS || TargetPlatform.macOS => null,
+            _ => t.primary,
+          },
+          activeTrackColor: switch (Theme.of(context).platform) {
+            TargetPlatform.iOS || TargetPlatform.macOS => t.primary,
+            _ => null,
+          },
           title: Text(
             'Mostrar textos de teste',
             style: TextStyle(
@@ -854,9 +911,9 @@ class _CertificadoPreviewTesteScreenState
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: Color.alphaBlend(accent.withOpacity(0.11), t.cardAlt),
+                  color: Color.alphaBlend(accent.withAlpha(28), t.cardAlt),
                   borderRadius: BorderRadius.circular(t.buttonRadius),
-                  border: Border.all(color: accent.withOpacity(0.13)),
+                  border: Border.all(color: accent.withAlpha(33)),
                 ),
                 child: Icon(icon, color: accent),
               ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:uai_capoeira/modules/certificados/models/certificado_studio_model.dart';
 
 class EventoModel {
   // ───────────────────── PADRÕES DE CAMISA ─────────────────────
@@ -92,6 +93,11 @@ class EventoModel {
   final String? previaVideo;
   final String? linkPlaylist;
 
+  // 🖼️ ENQUADRAMENTO DO BANNER NO PORTFÓLIO
+  final double portfolioCoverPositionX;
+  final double portfolioCoverPositionY;
+  final double portfolioCoverScale;
+
   // 🔥 CERTIFICADO
   final bool temCertificado;
   final String? modeloCertificadoId;
@@ -135,6 +141,9 @@ class EventoModel {
     this.linkFotosVideos,
     this.previaVideo,
     this.linkPlaylist,
+    this.portfolioCoverPositionX = 0,
+    this.portfolioCoverPositionY = 0,
+    this.portfolioCoverScale = 1,
     this.temCertificado = false,
     this.modeloCertificadoId,
     this.modeloCertificadoPath,
@@ -256,6 +265,16 @@ class EventoModel {
       linkFotosVideos: data['linkFotosVideos'] ?? data['link_fotos_videos'],
       previaVideo: data['previaVideo'] ?? data['previa_video'],
       linkPlaylist: data['linkPlaylist'] ?? data['link_playlist'],
+      portfolioCoverPositionX: _asDouble(
+        (data['portfolioCover'] is Map ? (data['portfolioCover'] as Map)['positionX'] : null) ?? data['portfolioCoverPositionX'],
+      ).clamp(-1.0, 1.0).toDouble(),
+      portfolioCoverPositionY: _asDouble(
+        (data['portfolioCover'] is Map ? (data['portfolioCover'] as Map)['positionY'] : null) ?? data['portfolioCoverPositionY'],
+      ).clamp(-1.0, 1.0).toDouble(),
+      portfolioCoverScale: _asDouble(
+        (data['portfolioCover'] is Map ? (data['portfolioCover'] as Map)['scale'] : null) ?? data['portfolioCoverScale'],
+        fallback: 1,
+      ).clamp(1.0, 2.5).toDouble(),
 
       temCertificado:
           data['tem_certificado'] ?? data['temCertificado'] ?? false,
@@ -324,6 +343,11 @@ class EventoModel {
       if (linkFotosVideos != null) 'linkFotosVideos': linkFotosVideos,
       if (previaVideo != null) 'previaVideo': previaVideo,
       if (linkPlaylist != null) 'linkPlaylist': linkPlaylist,
+      'portfolioCover': {
+        'positionX': portfolioCoverPositionX.clamp(-1.0, 1.0),
+        'positionY': portfolioCoverPositionY.clamp(-1.0, 1.0),
+        'scale': portfolioCoverScale.clamp(1.0, 2.5),
+      },
 
       'tem_certificado': temCertificado,
       'modelo_certificado_id':
@@ -376,6 +400,9 @@ class EventoModel {
     String? linkFotosVideos,
     String? previaVideo,
     String? linkPlaylist,
+    double? portfolioCoverPositionX,
+    double? portfolioCoverPositionY,
+    double? portfolioCoverScale,
     bool? temCertificado,
     String? modeloCertificadoId,
     String? modeloCertificadoPath,
@@ -424,6 +451,9 @@ class EventoModel {
       linkFotosVideos: linkFotosVideos ?? this.linkFotosVideos,
       previaVideo: previaVideo ?? this.previaVideo,
       linkPlaylist: linkPlaylist ?? this.linkPlaylist,
+      portfolioCoverPositionX: portfolioCoverPositionX ?? this.portfolioCoverPositionX,
+      portfolioCoverPositionY: portfolioCoverPositionY ?? this.portfolioCoverPositionY,
+      portfolioCoverScale: portfolioCoverScale ?? this.portfolioCoverScale,
       temCertificado: temCertificado ?? this.temCertificado,
       modeloCertificadoId: modeloCertificadoId ?? this.modeloCertificadoId,
       modeloCertificadoPath:
@@ -796,6 +826,53 @@ class EventoModel {
 }
 
 @immutable
+
+@immutable
+class CertificadoVisualConfig {
+  final String corFundo;
+  final String corEstrutura;
+  final String corDestaque;
+  final String corDetalhe;
+
+  const CertificadoVisualConfig({
+    this.corFundo = '#EBECEC',
+    this.corEstrutura = '#373435',
+    this.corDestaque = '#B83336',
+    this.corDetalhe = '#BDBFC1',
+  });
+
+  factory CertificadoVisualConfig.fromMap(Map<String, dynamic>? map) {
+    if (map == null || map.isEmpty) return const CertificadoVisualConfig();
+    return CertificadoVisualConfig(
+      corFundo: map['cor_fundo']?.toString() ?? '#EBECEC',
+      corEstrutura: map['cor_estrutura']?.toString() ?? '#373435',
+      corDestaque: map['cor_destaque']?.toString() ?? '#B83336',
+      corDetalhe: map['cor_detalhe']?.toString() ?? '#BDBFC1',
+    );
+  }
+
+  CertificadoVisualConfig copyWith({
+    String? corFundo,
+    String? corEstrutura,
+    String? corDestaque,
+    String? corDetalhe,
+  }) {
+    return CertificadoVisualConfig(
+      corFundo: corFundo ?? this.corFundo,
+      corEstrutura: corEstrutura ?? this.corEstrutura,
+      corDestaque: corDestaque ?? this.corDestaque,
+      corDetalhe: corDetalhe ?? this.corDetalhe,
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+    'cor_fundo': corFundo,
+    'cor_estrutura': corEstrutura,
+    'cor_destaque': corDestaque,
+    'cor_detalhe': corDetalhe,
+  };
+}
+
 class ConfiguracoesCertificadoEvento {
   static const String modeloAutomatico = 'AUTO_POR_GRADUACAO';
 
@@ -804,6 +881,8 @@ class ConfiguracoesCertificadoEvento {
   final List<AssinaturaCertificadoEvento> assinaturas;
   final bool usarCidadeDoEvento;
   final bool usarDataDoEvento;
+  final CertificadoVisualConfig visual;
+  final CertificadoStudioConfig studio;
 
   /// Configuração visual dinâmica dos textos do certificado.
   ///
@@ -826,6 +905,8 @@ class ConfiguracoesCertificadoEvento {
     required this.assinaturas,
     required this.usarCidadeDoEvento,
     required this.usarDataDoEvento,
+    this.visual = const CertificadoVisualConfig(),
+    this.studio = const CertificadoStudioConfig(),
     this.textos = CertificadoTextoCampoConfig.defaults,
   });
 
@@ -838,22 +919,27 @@ class ConfiguracoesCertificadoEvento {
       textos: CertificadoTextoCampoConfig.defaults,
       assinaturas: [
         AssinaturaCertificadoEvento(
+          slot: 1,
           nome: 'ALTAIR ALVES BARROSO',
           apelido: 'MESTRE GRILO',
         ),
         AssinaturaCertificadoEvento(
+          slot: 2,
           nome: 'LAURO FELIPE ALMEIDA DIAS',
           apelido: 'CM. BARRÃOZINHO',
         ),
         AssinaturaCertificadoEvento(
+          slot: 3,
           nome: 'WARLEY VINICIUS LIMA CRUZ',
           apelido: 'PROFESSOR SCORPION',
         ),
         AssinaturaCertificadoEvento(
+          slot: 4,
           nome: 'JOÃO LUCAS SILVA RABELO',
           apelido: 'PROFESSOR TICO-TICO',
         ),
         AssinaturaCertificadoEvento(
+          slot: 5,
           nome: 'JOÃO PAULO SILVA OLIVEIRA',
           apelido: 'INSTRUTOR BODE',
         ),
@@ -869,15 +955,19 @@ class ConfiguracoesCertificadoEvento {
     final rawAssinaturas = map['assinaturas'];
 
     List<AssinaturaCertificadoEvento> assinaturas = [];
+    final possuiCampoAssinaturas = map.containsKey('assinaturas');
     if (rawAssinaturas is List) {
-      assinaturas = rawAssinaturas
-          .whereType<Map>()
-          .map(
-            (item) => AssinaturaCertificadoEvento.fromMap(
-              Map<String, dynamic>.from(item),
-            ),
-          )
-          .toList();
+      for (var i = 0; i < rawAssinaturas.length; i++) {
+        final item = rawAssinaturas[i];
+        if (item is! Map) continue;
+
+        assinaturas.add(
+          AssinaturaCertificadoEvento.fromMap(
+            Map<String, dynamic>.from(item),
+            slotFallback: i + 1,
+          ),
+        );
+      }
     }
 
     final rawTextos =
@@ -891,7 +981,16 @@ class ConfiguracoesCertificadoEvento {
       modeloPadrao: map['modelo_padrao']?.toString() ?? modeloAutomatico,
       usarCidadeDoEvento: map['usar_cidade_do_evento'] ?? true,
       usarDataDoEvento: map['usar_data_do_evento'] ?? true,
-      assinaturas: assinaturas.isEmpty
+      visual: CertificadoVisualConfig.fromMap(
+        map['visual'] is Map ? Map<String, dynamic>.from(map['visual']) : null,
+      ),
+      studio: CertificadoStudioConfig.fromMap(
+        map['studio'] is Map ? Map<String, dynamic>.from(map['studio']) : null,
+      ),
+      // Compatibilidade: configurações antigas que nem possuíam o campo
+      // `assinaturas` continuam recebendo o padrão. Já uma lista explicitamente
+      // vazia é respeitada e não volta a preencher assinaturas sozinha.
+      assinaturas: !possuiCampoAssinaturas
           ? ConfiguracoesCertificadoEvento.padrao().assinaturas
           : assinaturas,
       textos: CertificadoTextoCampoConfig.mergeWithDefaults(rawTextos),
@@ -904,6 +1003,8 @@ class ConfiguracoesCertificadoEvento {
     List<AssinaturaCertificadoEvento>? assinaturas,
     bool? usarCidadeDoEvento,
     bool? usarDataDoEvento,
+    CertificadoVisualConfig? visual,
+    CertificadoStudioConfig? studio,
     Map<String, CertificadoTextoCampoConfig>? textos,
   }) {
     return ConfiguracoesCertificadoEvento(
@@ -912,15 +1013,34 @@ class ConfiguracoesCertificadoEvento {
       assinaturas: assinaturas ?? this.assinaturas,
       usarCidadeDoEvento: usarCidadeDoEvento ?? this.usarCidadeDoEvento,
       usarDataDoEvento: usarDataDoEvento ?? this.usarDataDoEvento,
+      visual: visual ?? this.visual,
+      studio: studio ?? this.studio,
       textos: textos ?? this.textos,
     );
   }
 
+  /// Sempre devolve os 5 slots físicos do certificado, preservando lacunas.
+  ///
+  /// Dados antigos não tinham `slot`; nesses casos a posição histórica da lista
+  /// é usada como fallback (1, 2, 3...). Dados novos salvam o slot explicitamente.
+  List<AssinaturaCertificadoEvento> get assinaturasPorSlot {
+    final porSlot = <int, AssinaturaCertificadoEvento>{};
+
+    for (var i = 0; i < assinaturas.length; i++) {
+      final item = assinaturas[i];
+      final slot = item.slotValido ? item.slot : i + 1;
+      if (slot < 1 || slot > 5 || porSlot.containsKey(slot)) continue;
+      porSlot[slot] = item.copyWith(slot: slot);
+    }
+
+    return List.generate(5, (index) {
+      final slot = index + 1;
+      return porSlot[slot] ?? AssinaturaCertificadoEvento.vazia(slot);
+    });
+  }
+
   List<AssinaturaCertificadoEvento> get assinaturasValidas {
-    return assinaturas
-        .where((item) => item.nome.trim().isNotEmpty)
-        .take(5)
-        .toList();
+    return assinaturasPorSlot.where((item) => item.preenchida).toList();
   }
 
   CertificadoTextoCampoConfig textoConfig(String campo) {
@@ -935,7 +1055,10 @@ class ConfiguracoesCertificadoEvento {
       'modelo_padrao': modeloPadrao,
       'usar_cidade_do_evento': usarCidadeDoEvento,
       'usar_data_do_evento': usarDataDoEvento,
-      'assinaturas': assinaturasValidas.map((e) => e.toMap()).toList(),
+      'visual': visual.toMap(),
+      'studio': studio.toMap(),
+      // Salva os 5 slots (inclusive vazios) para nunca compactar posições.
+      'assinaturas': assinaturasPorSlot.map((e) => e.toMap()).toList(),
       'textos': textos.map((key, value) => MapEntry(key, value.toMap())),
     };
   }
@@ -1330,16 +1453,40 @@ class CertificadoTextoCampoConfig {
 
 @immutable
 class AssinaturaCertificadoEvento {
+  /// Slot físico no SVG/PDF: 1 até 5.
+  ///
+  /// O valor 0 existe apenas para manter compatibilidade com construções antigas
+  /// feitas em memória; antes de salvar/renderizar ele é normalizado pela config.
+  final int slot;
   final String nome;
   final String apelido;
 
   const AssinaturaCertificadoEvento({
+    this.slot = 0,
     required this.nome,
     required this.apelido,
   });
 
-  factory AssinaturaCertificadoEvento.fromMap(Map<String, dynamic> map) {
+  const AssinaturaCertificadoEvento.vazia(this.slot)
+    : nome = '',
+      apelido = '';
+
+  bool get slotValido => slot >= 1 && slot <= 5;
+
+  /// Uma assinatura pode usar apenas nome, apenas cargo/apelido ou ambos.
+  bool get preenchida => nome.trim().isNotEmpty || apelido.trim().isNotEmpty;
+
+  factory AssinaturaCertificadoEvento.fromMap(
+    Map<String, dynamic> map, {
+    int slotFallback = 0,
+  }) {
+    final rawSlot = map['slot'] ?? map['posicao'] ?? map['ordem'];
+    final parsedSlot = rawSlot is num
+        ? rawSlot.toInt()
+        : int.tryParse(rawSlot?.toString() ?? '');
+
     return AssinaturaCertificadoEvento(
+      slot: parsedSlot ?? slotFallback,
       nome: map['nome']?.toString() ?? '',
       apelido:
           map['apelido']?.toString() ??
@@ -1349,8 +1496,21 @@ class AssinaturaCertificadoEvento {
     );
   }
 
+  AssinaturaCertificadoEvento copyWith({
+    int? slot,
+    String? nome,
+    String? apelido,
+  }) {
+    return AssinaturaCertificadoEvento(
+      slot: slot ?? this.slot,
+      nome: nome ?? this.nome,
+      apelido: apelido ?? this.apelido,
+    );
+  }
+
   Map<String, dynamic> toMap() {
     return {
+      'slot': slot,
       'nome': nome.trim().toUpperCase(),
       'apelido': apelido.trim().toUpperCase(),
     };

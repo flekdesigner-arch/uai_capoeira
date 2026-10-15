@@ -19,7 +19,7 @@ class CertificadoExportService {
     await Future<void>.delayed(const Duration(milliseconds: 120));
 
     final context = repaintKey.currentContext;
-    if (context == null) {
+    if (context == null || !context.mounted) {
       throw Exception('A prévia ainda não está pronta para exportação.');
     }
 

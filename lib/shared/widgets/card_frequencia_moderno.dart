@@ -99,8 +99,8 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
 
       final results = await Future.wait([alunoFuture, contadorFuture]);
 
-      final alunoDoc = results[0] as DocumentSnapshot<Map<String, dynamic>>;
-      final contadorDoc = results[1] as DocumentSnapshot<Map<String, dynamic>>;
+      final alunoDoc = results[0];
+      final contadorDoc = results[1];
 
       if (!alunoDoc.exists) {
         if (!mounted) return;
@@ -154,14 +154,6 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
     }
 
     return result;
-  }
-
-  DateTime? _toDateTime(dynamic value) {
-    if (value == null) return null;
-    if (value is Timestamp) return value.toDate();
-    if (value is DateTime) return value;
-    if (value is String) return DateTime.tryParse(value);
-    return null;
   }
 
   Timestamp? _toTimestamp(dynamic value) {
@@ -440,9 +432,9 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.08),
+          color: color.withAlpha(20),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withOpacity(0.18)),
+          border: Border.all(color: color.withAlpha(46)),
         ),
         child: Column(
           children: [
@@ -655,7 +647,7 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [corStatus.withOpacity(0.18), Colors.white],
+              colors: [corStatus.withAlpha(46), Colors.white],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
@@ -692,10 +684,10 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: corStatus.withOpacity(0.12),
+                            color: corStatus.withAlpha(31),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
-                              color: corStatus.withOpacity(0.25),
+                              color: corStatus.withAlpha(64),
                             ),
                           ),
                           child: Text(
@@ -783,7 +775,7 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
                     Container(
                       padding: const EdgeInsets.all(9),
                       decoration: BoxDecoration(
-                        color: corStatus.withOpacity(0.1),
+                        color: corStatus.withAlpha(26),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Icon(
@@ -826,7 +818,7 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
                         vertical: 6,
                       ),
                       decoration: BoxDecoration(
-                        color: corStatus.withOpacity(0.1),
+                        color: corStatus.withAlpha(26),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
@@ -948,7 +940,7 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
           borderRadius: BorderRadius.circular(22),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.10),
+              color: Colors.black.withAlpha(26),
               blurRadius: 13,
               offset: const Offset(0, 5),
             ),

@@ -1,3 +1,4 @@
+import 'dart:developer' as developer;
 // lib/shared/services/notification_service.dart
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -9,6 +10,34 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 class NotificationService {
+  NotificationService._internal();
+  static final NotificationService _instance = NotificationService._internal();
+  factory NotificationService() => _instance;
+
+  static void Function(Map<String, dynamic> data)? _navigationHandler;
+  static Map<String, dynamic>? _pendingNavigationData;
+
+  static void registerNavigationHandler(
+    void Function(Map<String, dynamic> data) handler,
+  ) {
+    _navigationHandler = handler;
+    final pending = _pendingNavigationData;
+    if (pending != null) {
+      _pendingNavigationData = null;
+      Future.microtask(() => handler(pending));
+    }
+  }
+
+  static void _dispatchNavigation(Map<String, dynamic> data) {
+    if (data.isEmpty) return;
+    final handler = _navigationHandler;
+    if (handler != null) {
+      handler(data);
+    } else {
+      _pendingNavigationData = Map<String, dynamic>.from(data);
+    }
+  }
+
   // =====================================================
   // 🔐 CHAVE PÚBLICA VAPID - WEB/PWA
   // =====================================================
@@ -47,37 +76,37 @@ class NotificationService {
   // ═══════════════════════════════════════════════════════════
   Future<void> initNotifications() async {
     if (!_supportsFirebaseMessaging) {
-      print(
+      developer.log(
         'Firebase Messaging ignorado nesta plataforma: $defaultTargetPlatform',
       );
       return;
     }
 
     if (Firebase.apps.isEmpty) {
-      print('⚠️ Firebase não inicializado. Aguardando...');
+      developer.log('⚠️ Firebase não inicializado. Aguardando...');
       try {
         await Firebase.initializeApp();
-        print('✅ Firebase inicializado pelo NotificationService');
+        developer.log('✅ Firebase inicializado pelo NotificationService');
       } catch (e) {
-        print('❌ Erro ao inicializar Firebase no NotificationService: $e');
+        developer.log('❌ Erro ao inicializar Firebase no NotificationService: $e');
         return;
       }
     }
 
     if (_isInitialized) {
-      print('🔔 Notificações já inicializadas');
+      developer.log('🔔 Notificações já inicializadas');
       await syncTokenForCurrentUser();
       return;
     }
 
     if (_isRequestingPermission) {
-      print('🔔 Solicitação de permissão já em andamento');
+      developer.log('🔔 Solicitação de permissão já em andamento');
       return;
     }
 
     try {
       _isRequestingPermission = true;
-      print('🔔 Inicializando notificações...');
+      developer.log('🔔 Inicializando notificações...');
 
       await _initializeLocalNotifications();
 
@@ -88,16 +117,16 @@ class NotificationService {
         provisional: false,
       );
 
-      print('🔔 Status da permissão: ${perm.authorizationStatus}');
+      developer.log('🔔 Status da permissão: ${perm.authorizationStatus}');
 
       if (_isPermissionAllowed(perm.authorizationStatus)) {
         final String? token = await _getTokenForCurrentPlatform();
-        print('🔔 Token FCM gerado (${kIsWeb ? 'PWA/Web' : 'App'}): $token');
+        developer.log('🔔 Token FCM gerado (${kIsWeb ? 'PWA/Web' : 'App'}): $token');
 
         if (token != null && token.trim().isNotEmpty) {
           await _saveTokenCleaningOld(token);
         } else {
-          print('⚠️ Token FCM retornou nulo/vazio.');
+          developer.log('⚠️ Token FCM retornou nulo/vazio.');
         }
 
         // No Web/PWA, o foco agora é envio por token salvo no Firestore.
@@ -105,46 +134,48 @@ class NotificationService {
         // para a função de aniversário nem para o futuro módulo manual.
         if (!kIsWeb) {
           await _fcm.subscribeToTopic('all_users');
-          print('🔔 Inscrito no tópico all_users');
+          developer.log('🔔 Inscrito no tópico all_users');
         } else {
-          print('🌐 PWA/Web: envio será por token, sem inscrição em tópico.');
+          developer.log('🌐 PWA/Web: envio será por token, sem inscrição em tópico.');
         }
       } else {
-        print('⚠️ Permissão de notificação negada pelo usuário.');
+        developer.log('⚠️ Permissão de notificação negada pelo usuário.');
       }
 
       FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-        print(
+        developer.log(
           '📨 Notificação recebida em primeiro plano: ${message.messageId}',
         );
-        print('📨 Título: ${message.notification?.title}');
-        print('📨 Corpo: ${message.notification?.body}');
-        print('📨 Data: ${message.data}');
+        developer.log('📨 Título: ${message.notification?.title}');
+        developer.log('📨 Corpo: ${message.notification?.body}');
+        developer.log('📨 Data: ${message.data}');
 
         _showLocalNotification(message);
       });
 
       FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-        print('🖱️ Notificação clicada: ${message.messageId}');
-        print('🖱️ Data: ${message.data}');
+        developer.log('🖱️ Notificação clicada: ${message.messageId}');
+        developer.log('🖱️ Data: ${message.data}');
+        _dispatchNavigation(message.data);
       });
 
       final RemoteMessage? initialMessage = await _fcm.getInitialMessage();
       if (initialMessage != null) {
-        print('🚀 App aberto por notificação: ${initialMessage.messageId}');
-        print('🚀 Data: ${initialMessage.data}');
+        developer.log('🚀 App aberto por notificação: ${initialMessage.messageId}');
+        developer.log('🚀 Data: ${initialMessage.data}');
+        _dispatchNavigation(initialMessage.data);
       }
 
       _tokenRefreshStream ??= _fcm.onTokenRefresh;
       _tokenRefreshStream!.listen((String newToken) async {
-        print('🔄 Token FCM atualizado: $newToken');
+        developer.log('🔄 Token FCM atualizado: $newToken');
         await _saveTokenCleaningOld(newToken);
       });
 
       _isInitialized = true;
-      print('✅ Notificações inicializadas com sucesso!');
+      developer.log('✅ Notificações inicializadas com sucesso!');
     } catch (e) {
-      print('❌ Erro ao inicializar notificações: $e');
+      developer.log('❌ Erro ao inicializar notificações: $e');
     } finally {
       _isRequestingPermission = false;
     }
@@ -155,7 +186,7 @@ class NotificationService {
   // ═══════════════════════════════════════════════════════════
   Future<void> _initializeLocalNotifications() async {
     if (!_supportsLocalNotifications) {
-      print(
+      developer.log(
         'flutter_local_notifications ignorado nesta plataforma: $defaultTargetPlatform',
       );
       return;
@@ -175,7 +206,10 @@ class NotificationService {
     await _localNotifications.initialize(
       settings,
       onDidReceiveNotificationResponse: (NotificationResponse response) {
-        print('🖱️ Notificação local clicada: ${response.payload}');
+        developer.log('🖱️ Notificação local clicada: ${response.payload}');
+        if (response.payload == 'gerenciar_inscricoes') {
+          _dispatchNavigation(const {'rota': 'gerenciar_inscricoes'});
+        }
       },
     );
 
@@ -197,7 +231,7 @@ class NotificationService {
   // ═══════════════════════════════════════════════════════════
   Future<String?> _getTokenForCurrentPlatform() async {
     if (!_supportsFirebaseMessaging) {
-      print('Token FCM nao suportado nesta plataforma: $defaultTargetPlatform');
+      developer.log('Token FCM nao suportado nesta plataforma: $defaultTargetPlatform');
       return null;
     }
 
@@ -214,14 +248,14 @@ class NotificationService {
   Future<void> syncTokenForCurrentUser() async {
     try {
       if (!_supportsFirebaseMessaging) {
-        print(
+        developer.log(
           'Sincronizacao de token FCM ignorada nesta plataforma: $defaultTargetPlatform',
         );
         return;
       }
 
       if (Firebase.apps.isEmpty) {
-        print(
+        developer.log(
           '⚠️ Firebase ainda não inicializado. Não dá para sincronizar token.',
         );
         return;
@@ -230,18 +264,18 @@ class NotificationService {
       final User? user = _auth.currentUser;
 
       if (user == null) {
-        print('⚠️ Não dá para sincronizar token: usuário não logado.');
+        developer.log('⚠️ Não dá para sincronizar token: usuário não logado.');
         return;
       }
 
       final NotificationSettings settings = await _fcm
           .getNotificationSettings();
-      print(
+      developer.log(
         '🔔 Permissão atual para sincronizar: ${settings.authorizationStatus}',
       );
 
       if (settings.authorizationStatus == AuthorizationStatus.denied) {
-        print('⚠️ Permissão negada. Token não será sincronizado.');
+        developer.log('⚠️ Permissão negada. Token não será sincronizado.');
         return;
       }
 
@@ -253,12 +287,12 @@ class NotificationService {
           provisional: false,
         );
 
-        print(
+        developer.log(
           '🔔 Permissão solicitada ao sincronizar: ${perm.authorizationStatus}',
         );
 
         if (!_isPermissionAllowed(perm.authorizationStatus)) {
-          print('⚠️ Usuário não autorizou notificações.');
+          developer.log('⚠️ Usuário não autorizou notificações.');
           return;
         }
       }
@@ -266,14 +300,14 @@ class NotificationService {
       final String? token = await _getTokenForCurrentPlatform();
 
       if (token == null || token.trim().isEmpty) {
-        print('⚠️ FCM token veio nulo/vazio ao sincronizar.');
+        developer.log('⚠️ FCM token veio nulo/vazio ao sincronizar.');
         return;
       }
 
       await _saveTokenCleaningOld(token);
-      print('✅ Token sincronizado manualmente para ${user.email}');
+      developer.log('✅ Token sincronizado manualmente para ${user.email}');
     } catch (e) {
-      print('❌ Erro ao sincronizar token: $e');
+      developer.log('❌ Erro ao sincronizar token: $e');
     }
   }
 
@@ -285,7 +319,7 @@ class NotificationService {
       final User? user = _auth.currentUser;
 
       if (user == null) {
-        print('⚠️ Usuário ainda não está logado. Token não foi salvo agora.');
+        developer.log('⚠️ Usuário ainda não está logado. Token não foi salvo agora.');
         return;
       }
 
@@ -304,11 +338,11 @@ class NotificationService {
         'token_versao_service': 2,
       }, SetOptions(merge: true));
 
-      print(
+      developer.log(
         '✅ Token atual salvo e tokens antigos substituídos para: ${user.email}',
       );
     } catch (e) {
-      print('❌ Erro ao salvar token no Firestore: $e');
+      developer.log('❌ Erro ao salvar token no Firestore: $e');
     }
   }
 
@@ -318,7 +352,7 @@ class NotificationService {
   Future<void> removeToken() async {
     try {
       if (!_supportsFirebaseMessaging) {
-        print(
+        developer.log(
           'Remocao de token FCM ignorada nesta plataforma: $defaultTargetPlatform',
         );
         return;
@@ -326,13 +360,13 @@ class NotificationService {
 
       final User? user = _auth.currentUser;
       if (user == null) {
-        print('⚠️ Nenhum usuário logado para remover token.');
+        developer.log('⚠️ Nenhum usuário logado para remover token.');
         return;
       }
 
       final String? token = await _getTokenForCurrentPlatform();
       if (token == null || token.trim().isEmpty) {
-        print('⚠️ Token atual veio nulo/vazio no logout.');
+        developer.log('⚠️ Token atual veio nulo/vazio no logout.');
         return;
       }
 
@@ -349,10 +383,10 @@ class NotificationService {
           'ultimo_token_removido': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
 
-        print('✅ Token removido do Firestore para: ${user.email}');
+        developer.log('✅ Token removido do Firestore para: ${user.email}');
       }
     } catch (e) {
-      print('❌ Erro ao remover token: $e');
+      developer.log('❌ Erro ao remover token: $e');
     }
   }
 
@@ -364,7 +398,7 @@ class NotificationService {
     try {
       final User? user = _auth.currentUser;
       if (user == null) {
-        print('⚠️ Nenhum usuário logado para remover todos os tokens.');
+        developer.log('⚠️ Nenhum usuário logado para remover todos os tokens.');
         return;
       }
 
@@ -381,10 +415,10 @@ class NotificationService {
           'ultimo_token_removido': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
 
-        print('✅ Todos os campos de token removidos para: ${user.email}');
+        developer.log('✅ Todos os campos de token removidos para: ${user.email}');
       }
     } catch (e) {
-      print('❌ Erro ao remover todos os tokens: $e');
+      developer.log('❌ Erro ao remover todos os tokens: $e');
     }
   }
 
@@ -393,7 +427,7 @@ class NotificationService {
   // ═══════════════════════════════════════════════════════════
   Future<void> testLocalNotification() async {
     if (!_supportsLocalNotifications) {
-      print('Teste local ignorado nesta plataforma: $defaultTargetPlatform');
+      developer.log('Teste local ignorado nesta plataforma: $defaultTargetPlatform');
       return;
     }
 
@@ -426,34 +460,84 @@ class NotificationService {
         payload: 'teste_local',
       );
 
-      print('✅ Notificação local de teste enviada!');
+      developer.log('✅ Notificação local de teste enviada!');
     } catch (e) {
-      print('❌ Erro ao enviar notificação de teste: $e');
+      developer.log('❌ Erro ao enviar notificação de teste: $e');
     }
   }
 
   // ═══════════════════════════════════════════════════════════
   // MOSTRAR NOTIFICAÇÃO LOCAL QUANDO APP ESTÁ ABERTO
   // ═══════════════════════════════════════════════════════════
+  String _resolvedTitle(RemoteMessage message) {
+    final data = message.data;
+    final direct = message.notification?.title?.trim();
+    if (direct != null && direct.isNotEmpty) return direct;
+    for (final key in const ['title', 'titulo']) {
+      final value = data[key]?.toString().trim() ?? '';
+      if (value.isNotEmpty) return value;
+    }
+    switch (data['tipo']?.toString()) {
+      case 'nova_inscricao':
+        return 'Nova inscrição pendente';
+      case 'lembrete_aula_experimental':
+        return 'Sua aula experimental é hoje';
+      case 'nova_versao':
+      case 'atualizacao_app':
+        return 'Nova versão disponível';
+      case 'aniversario':
+        return 'Aniversariante do dia';
+      default:
+        return 'UAI Capoeira';
+    }
+  }
+
+  String _resolvedBody(RemoteMessage message) {
+    final data = message.data;
+    final direct = message.notification?.body?.trim();
+    if (direct != null && direct.isNotEmpty) return direct;
+    for (final key in const ['body', 'mensagem', 'message']) {
+      final value = data[key]?.toString().trim() ?? '';
+      if (value.isNotEmpty) return value;
+    }
+    switch (data['tipo']?.toString()) {
+      case 'nova_inscricao':
+        return 'Uma nova inscrição foi recebida. Toque para analisar.';
+      case 'lembrete_aula_experimental':
+        return 'Você tem uma aula experimental agendada para hoje.';
+      case 'nova_versao':
+      case 'atualizacao_app':
+        return 'Há uma nova versão do UAI Capoeira disponível.';
+      case 'aniversario':
+        return 'Hoje temos aniversariante no UAI Capoeira.';
+      default:
+        return 'Você recebeu um novo aviso do UAI Capoeira.';
+    }
+  }
+
   Future<void> _showLocalNotification(RemoteMessage message) async {
     if (!_supportsLocalNotifications) {
-      print('🌐 PWA/Web recebeu foreground message.');
-      print(
+      developer.log('🌐 PWA/Web recebeu foreground message.');
+      developer.log(
         '🌐 Título: ${message.notification?.title ?? message.data['title']}',
       );
-      print('🌐 Corpo: ${message.notification?.body ?? message.data['body']}');
+      developer.log('🌐 Corpo: ${message.notification?.body ?? message.data['body']}');
       return;
     }
 
     try {
-      const AndroidNotificationDetails androidDetails =
+      final isNovaInscricao =
+          message.data['tipo']?.toString() == 'nova_inscricao';
+      final AndroidNotificationDetails androidDetails =
           AndroidNotificationDetails(
             'default_channel',
             'Notificações UAI',
             channelDescription: 'Canal para notificações do app UAI Capoeira',
             importance: Importance.high,
             priority: Priority.high,
-            icon: '@mipmap/ic_launcher',
+            icon: isNovaInscricao
+                ? '@drawable/ic_notification_inscricao'
+                : '@drawable/ic_notification',
             enableLights: true,
             enableVibration: true,
             playSound: true,
@@ -461,22 +545,22 @@ class NotificationService {
 
       const DarwinNotificationDetails iosDetails = DarwinNotificationDetails();
 
-      const NotificationDetails details = NotificationDetails(
+      final NotificationDetails details = NotificationDetails(
         android: androidDetails,
         iOS: iosDetails,
       );
 
       await _localNotifications.show(
         DateTime.now().millisecondsSinceEpoch ~/ 1000,
-        message.notification?.title ?? 'UAI CAPOEIRA',
-        message.notification?.body ?? 'Você tem uma nova notificação',
+        _resolvedTitle(message),
+        _resolvedBody(message),
         details,
-        payload: message.data.toString(),
+        payload: message.data['rota']?.toString(),
       );
 
-      print('✅ Notificação local exibida com sucesso');
+      developer.log('✅ Notificação local exibida com sucesso');
     } catch (e) {
-      print('❌ Erro ao mostrar notificação local: $e');
+      developer.log('❌ Erro ao mostrar notificação local: $e');
     }
   }
 
@@ -486,41 +570,41 @@ class NotificationService {
   Future<String?> getToken() async {
     try {
       final String? token = await _getTokenForCurrentPlatform();
-      print(
+      developer.log(
         '🔔 Token atual consultado (${kIsWeb ? 'PWA/Web' : 'App'}): $token',
       );
       return token;
     } catch (e) {
-      print('❌ Erro ao obter token: $e');
+      developer.log('❌ Erro ao obter token: $e');
       return null;
     }
   }
 
   Future<void> subscribeToTopic(String topic) async {
     if (!_supportsFirebaseMessaging || kIsWeb) {
-      print('Inscricao em topico ignorada para $topic nesta plataforma.');
+      developer.log('Inscricao em topico ignorada para $topic nesta plataforma.');
       return;
     }
 
     try {
       await _fcm.subscribeToTopic(topic);
-      print('✅ Inscrito no tópico: $topic');
+      developer.log('✅ Inscrito no tópico: $topic');
     } catch (e) {
-      print('❌ Erro ao inscrever no tópico $topic: $e');
+      developer.log('❌ Erro ao inscrever no tópico $topic: $e');
     }
   }
 
   Future<void> unsubscribeFromTopic(String topic) async {
     if (!_supportsFirebaseMessaging || kIsWeb) {
-      print('Remocao de topico ignorada para $topic nesta plataforma.');
+      developer.log('Remocao de topico ignorada para $topic nesta plataforma.');
       return;
     }
 
     try {
       await _fcm.unsubscribeFromTopic(topic);
-      print('✅ Cancelada inscrição no tópico: $topic');
+      developer.log('✅ Cancelada inscrição no tópico: $topic');
     } catch (e) {
-      print('❌ Erro ao cancelar inscrição no tópico $topic: $e');
+      developer.log('❌ Erro ao cancelar inscrição no tópico $topic: $e');
     }
   }
 }

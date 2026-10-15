@@ -15,7 +15,7 @@ class UaiThemeIconButton extends StatelessWidget {
     return Tooltip(
       message: 'Escolher tema',
       child: Material(
-        color: Colors.white.withOpacity(0.12),
+        color: Colors.white.withAlpha(31),
         borderRadius: BorderRadius.circular(13),
         child: InkWell(
           onTap: () => showUaiThemeSelector(context),
@@ -25,7 +25,7 @@ class UaiThemeIconButton extends StatelessWidget {
             height: 42,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(13),
-              border: Border.all(color: Colors.white.withOpacity(0.14)),
+              border: Border.all(color: Colors.white.withAlpha(36)),
             ),
             child: const Icon(
               Icons.palette_rounded,
@@ -115,6 +115,15 @@ Future<void> showUaiThemeSelector(BuildContext context) async {
     backgroundColor: Colors.transparent,
     builder: (_) => const _UaiThemeSelectorSheet(),
   );
+}
+
+/// Completa a alteracao do tema antes de fechar o contexto do dialogo.
+Future<void> fecharDialogoAposSalvarTema(
+  BuildContext dialogContext,
+  Future<void> Function() salvar,
+) async {
+  await salvar();
+  if (dialogContext.mounted) Navigator.of(dialogContext).pop();
 }
 
 class _UaiThemeSelectorSheet extends StatefulWidget {
@@ -525,7 +534,7 @@ class _SectionTitle extends StatelessWidget {
             ),
           ),
         ),
-        if (trailing != null) trailing!,
+        ?trailing,
       ],
     );
   }
@@ -604,7 +613,7 @@ class _PresetTile extends StatelessWidget {
         : 'A escolha de tema está controlada pela administração no momento.';
 
     return Material(
-      color: selected ? tokens.primary.withOpacity(0.12) : tokens.card,
+      color: selected ? tokens.primary.withAlpha(31) : tokens.card,
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
         onTap: onTap,
@@ -615,7 +624,7 @@ class _PresetTile extends StatelessWidget {
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
               color: selected
-                  ? tokens.primary.withOpacity(0.55)
+                  ? tokens.primary.withAlpha(140)
                   : tokens.border,
             ),
           ),
@@ -629,7 +638,7 @@ class _PresetTile extends StatelessWidget {
                   borderRadius: BorderRadius.circular(15),
                   boxShadow: [
                     BoxShadow(
-                      color: preset.previewColor.withOpacity(0.22),
+                      color: preset.previewColor.withAlpha(56),
                       blurRadius: 12,
                       offset: const Offset(0, 4),
                     ),
@@ -865,7 +874,7 @@ class _SavedThemeTile extends StatelessWidget {
     final preview = theme.settings.toTokens();
 
     return Material(
-      color: selected ? tokens.primary.withOpacity(0.12) : tokens.card,
+      color: selected ? tokens.primary.withAlpha(31) : tokens.card,
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
         onTap: onApply,
@@ -876,7 +885,7 @@ class _SavedThemeTile extends StatelessWidget {
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
               color: selected
-                  ? tokens.primary.withOpacity(0.55)
+                  ? tokens.primary.withAlpha(140)
                   : tokens.border,
             ),
           ),
@@ -961,7 +970,7 @@ class _ThemePreviewDots extends StatelessWidget {
       decoration: BoxDecoration(
         color: color,
         shape: BoxShape.circle,
-        border: Border.all(color: Colors.white.withOpacity(0.22)),
+        border: Border.all(color: Colors.white.withAlpha(56)),
       ),
     );
   }
@@ -1139,7 +1148,7 @@ class _UserThemeEditorDialogState extends State<_UserThemeEditorDialog> {
                         ),
                         const SizedBox(height: 8),
                         DropdownButtonFormField<String>(
-                          value: _fontFamily,
+                          initialValue: _fontFamily,
                           dropdownColor: tokens.surface,
                           decoration: const InputDecoration(
                             labelText: 'Fonte',
@@ -1187,11 +1196,10 @@ class _UserThemeEditorDialogState extends State<_UserThemeEditorDialog> {
                       final reset = OutlinedButton.icon(
                         onPressed: _savingCloud
                             ? null
-                            : () async {
-                                await AppThemeController.instance
-                                    .resetUserTheme();
-                                if (mounted) Navigator.pop(context);
-                              },
+                            : () => fecharDialogoAposSalvarTema(
+                                context,
+                                AppThemeController.instance.resetUserTheme,
+                              ),
                         icon: const Icon(Icons.restart_alt_rounded),
                         label: const Text('Resetar'),
                       );
@@ -1199,11 +1207,11 @@ class _UserThemeEditorDialogState extends State<_UserThemeEditorDialog> {
                       final local = OutlinedButton.icon(
                         onPressed: _savingCloud
                             ? null
-                            : () async {
-                                await AppThemeController.instance
-                                    .applyUserTheme(_settingsFromFields());
-                                if (mounted) Navigator.pop(context);
-                              },
+                            : () => fecharDialogoAposSalvarTema(
+                                context,
+                                () => AppThemeController.instance
+                                    .applyUserTheme(_settingsFromFields()),
+                              ),
                         icon: const Icon(Icons.phone_android_rounded),
                         label: const Text('Só neste aparelho'),
                       );
@@ -1410,7 +1418,7 @@ class _UserThemeEditorDialogState extends State<_UserThemeEditorDialog> {
                     border: Border.all(color: tokens.border),
                     boxShadow: [
                       BoxShadow(
-                        color: color.withOpacity(0.26),
+                        color: color.withAlpha(66),
                         blurRadius: 12,
                         offset: const Offset(0, 4),
                       ),
@@ -1494,13 +1502,13 @@ class _UserThemeEditorDialogState extends State<_UserThemeEditorDialog> {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: ok
-            ? preview.success.withOpacity(0.12)
-            : preview.error.withOpacity(0.12),
+            ? preview.success.withAlpha(31)
+            : preview.error.withAlpha(31),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: ok
-              ? preview.success.withOpacity(0.28)
-              : preview.error.withOpacity(0.28),
+              ? preview.success.withAlpha(71)
+              : preview.error.withAlpha(71),
         ),
       ),
       child: Row(
@@ -1555,7 +1563,7 @@ class _UserThemeEditorDialogState extends State<_UserThemeEditorDialog> {
   }
 
   String _hex(Color color) {
-    return '#${color.value.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
+    return '#${color.toARGB32().toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
   }
 
   Color? _parseColor(String raw) {
@@ -1608,9 +1616,9 @@ class _UaiColorPickerDialogState extends State<_UaiColorPickerDialog> {
   @override
   void initState() {
     super.initState();
-    _red = widget.initialColor.red.toDouble();
-    _green = widget.initialColor.green.toDouble();
-    _blue = widget.initialColor.blue.toDouble();
+    _red = ((widget.initialColor.toARGB32() >> 16) & 0xff).toDouble();
+    _green = ((widget.initialColor.toARGB32() >> 8) & 0xff).toDouble();
+    _blue = (widget.initialColor.toARGB32() & 0xff).toDouble();
   }
 
   Color get _color =>
@@ -1644,7 +1652,7 @@ class _UaiColorPickerDialogState extends State<_UaiColorPickerDialog> {
                   padding: const EdgeInsets.all(18),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [color.withOpacity(0.68), color],
+                      colors: [color.withAlpha(173), color],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
@@ -1684,7 +1692,7 @@ class _UaiColorPickerDialogState extends State<_UaiColorPickerDialog> {
                             border: Border.all(color: tokens.border),
                             boxShadow: [
                               BoxShadow(
-                                color: color.withOpacity(0.28),
+                                color: color.withAlpha(71),
                                 blurRadius: 18,
                                 offset: const Offset(0, 8),
                               ),
@@ -1778,15 +1786,15 @@ class _UaiColorPickerDialogState extends State<_UaiColorPickerDialog> {
   }
 
   Widget _quickColorButton(Color color) {
-    final selected = color.value == _color.value;
+    final selected = color.toARGB32() == _color.toARGB32();
     final tokens = context.uai;
 
     return InkWell(
       onTap: () {
         setState(() {
-          _red = color.red.toDouble();
-          _green = color.green.toDouble();
-          _blue = color.blue.toDouble();
+          _red = ((color.toARGB32() >> 16) & 0xff).toDouble();
+          _green = ((color.toARGB32() >> 8) & 0xff).toDouble();
+          _blue = (color.toARGB32() & 0xff).toDouble();
         });
       },
       borderRadius: BorderRadius.circular(14),
@@ -1804,7 +1812,7 @@ class _UaiColorPickerDialogState extends State<_UaiColorPickerDialog> {
           boxShadow: selected
               ? [
                   BoxShadow(
-                    color: color.withOpacity(0.35),
+                    color: color.withAlpha(89),
                     blurRadius: 14,
                     offset: const Offset(0, 5),
                   ),
@@ -1870,59 +1878,7 @@ class _UaiColorPickerDialogState extends State<_UaiColorPickerDialog> {
   }
 
   String _hex(Color color) {
-    return '#${color.value.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
-  }
-}
-
-class _ThemeNoticeCard extends StatelessWidget {
-  final String title;
-  final IconData icon;
-  final Color color;
-
-  const _ThemeNoticeCard({
-    required this.title,
-    required this.icon,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = context.uai;
-    final onColor = _readableOn(color);
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Color.alphaBlend(color.withOpacity(0.10), tokens.cardAlt),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: color.withOpacity(0.22)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(icon, color: onColor, size: 20),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              title,
-              style: TextStyle(
-                color: tokens.textPrimary,
-                fontWeight: FontWeight.w800,
-                height: 1.2,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+    return '#${color.toARGB32().toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
   }
 }
 

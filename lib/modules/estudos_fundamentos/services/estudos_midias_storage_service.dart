@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:uai_capoeira/core/session_log/session_log_service.dart';
 import 'dart:math';
 import 'dart:typed_data';
 
@@ -172,6 +174,10 @@ class EstudosMidiasStorageService {
     if (!storagePathSeguro(storagePath)) return;
     try {
       await _storage.ref(storagePath).delete();
+      unawaited(SessionLogService.instance.recordAction(
+        action: 'excluiu_arquivo', module: 'estudos_midias',
+        status: 'sucesso',
+      ));
     } on FirebaseException catch (e) {
       if (e.code == 'object-not-found') return;
       rethrow;
@@ -249,6 +255,11 @@ class EstudosMidiasStorageService {
         },
       ),
     );
+
+    unawaited(SessionLogService.instance.recordAction(
+      action: 'enviou_arquivo', module: 'estudos_midias',
+      status: 'sucesso',
+    ));
 
     final original = bytes.length;
     final finalBytes = encoded.length;

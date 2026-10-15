@@ -73,12 +73,13 @@ class ProgressoEstudosRepository {
     if (alunoId.trim().isEmpty || estudoId.trim().isEmpty) {
       throw ArgumentError('Aluno e estudo sao obrigatorios para progresso.');
     }
-    final googleUid = _auth.currentUser?.uid ?? '';
+    final identidadeUid = _auth.currentUser?.uid ?? '';
     final ref = _progressoRef(alunoId: alunoId, estudoId: estudoId);
     final snapshot = await ref.get();
     final data = <String, dynamic>{
       'alunoId': alunoId,
-      'googleUid': googleUid,
+      // Campo legado mantido por compatibilidade com regras e documentos antigos.
+      'googleUid': identidadeUid,
       'estudoId': estudoId,
       'cicloId': cicloId,
       'origem': origem,
@@ -117,7 +118,7 @@ class ProgressoEstudosRepository {
     if (alunoId.trim().isEmpty || estudoId.trim().isEmpty) {
       throw ArgumentError('Aluno e estudo sao obrigatorios para progresso.');
     }
-    final googleUid = _auth.currentUser?.uid ?? '';
+    final identidadeUid = _auth.currentUser?.uid ?? '';
     final ref = _progressoRef(alunoId: alunoId, estudoId: estudoId);
     final snapshot = await ref.get();
     final atual = snapshot.exists
@@ -125,7 +126,8 @@ class ProgressoEstudosRepository {
         : null;
     final data = <String, dynamic>{
       'alunoId': alunoId,
-      'googleUid': googleUid,
+      // Campo legado mantido por compatibilidade com regras e documentos antigos.
+      'googleUid': identidadeUid,
       'estudoId': estudoId,
       'cicloId': cicloId,
       'status': ProgressoEstudoStatus.concluido,
@@ -150,10 +152,11 @@ class ProgressoEstudosRepository {
     if (alunoId.trim().isEmpty || estudoId.trim().isEmpty) {
       throw ArgumentError('Aluno e estudo sao obrigatorios para progresso.');
     }
-    final googleUid = _auth.currentUser?.uid ?? '';
+    final identidadeUid = _auth.currentUser?.uid ?? '';
     await _progressoRef(alunoId: alunoId, estudoId: estudoId).set({
       'alunoId': alunoId,
-      'googleUid': googleUid,
+      // Campo legado mantido por compatibilidade com regras e documentos antigos.
+      'googleUid': identidadeUid,
       'estudoId': estudoId,
       'cicloId': cicloId,
       'status': ProgressoEstudoStatus.iniciado,

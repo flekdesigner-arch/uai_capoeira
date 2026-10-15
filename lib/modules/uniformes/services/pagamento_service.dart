@@ -1,9 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import '../models/pagamento_model.dart';
+import 'package:uai_capoeira/modules/associacao/services/associacao_financeiro_service.dart';
 
 class PagamentoService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final AssociacaoFinanceiroService _financeiroAssociacao = AssociacaoFinanceiroService();
 
   // Registrar um novo pagamento
   Future<void> registrarPagamento({
@@ -43,6 +45,38 @@ class PagamentoService {
       // Salva no Firestore
       await pagamentoRef.set(novoPagamento.toMap());
       debugPrint('✅ Pagamento registrado com ID: ${pagamentoRef.id}');
+
+      // Central Financeira da Associação: cada pagamento de evento gera
+      // uma única entrada idempotente vinculada ao pagamento de origem.
+      try {
+        final participacaoDoc = await _firestore
+            .collection('eventos')
+            .doc(eventoId)
+            .collection('participacoes')
+            .doc(participacaoId)
+            .get();
+        final pData = participacaoDoc.data() ?? const <String, dynamic>{};
+        final alunoNome = (pData['aluno_nome'] ?? pData['nome_aluno'] ?? pData['nome'] ?? 'Participante').toString();
+        final eventoNome = (pData['evento_nome'] ?? 'Evento').toString();
+        final alunoId = (pData['aluno_id'] ?? '').toString();
+        await _financeiroAssociacao.registrarMovimentacaoAutomatica(
+          tipo: 'entrada',
+          valor: pagamento.valor,
+          descricao: 'Pagamento de evento • $alunoNome',
+          categoria: 'Eventos',
+          subcategoria: 'Participação / inscrição',
+          origemModulo: 'eventos',
+          origemId: '$eventoId::$participacaoId::${pagamentoRef.id}',
+          origemDescricao: eventoNome,
+          formaPagamento: pagamento.formaPagamento,
+          dataCompetencia: pagamento.dataPagamento,
+          alunoId: alunoId.isEmpty ? null : alunoId,
+          eventoId: eventoId,
+          observacoes: pagamento.observacoes ?? '',
+        );
+      } catch (e) {
+        debugPrint('⚠️ Pagamento salvo, mas falhou sincronização com Associação: $e');
+      }
 
       // 🔥 ATUALIZA O TOTAL PAGO NA PARTICIPAÇÃO (EM ANDAMENTO)
       await _atualizarTotalPago(eventoId, participacaoId);
@@ -87,7 +121,7 @@ class PagamentoService {
         participacaoId: participacaoId,
       );
 
-      final total = pagamentos.fold<double>(0, (sum, p) => sum + p.valor);
+      final total = pagamentos.fold<double>(0, (total, p) => total + p.valor);
       debugPrint('💰 Total pago: $total');
       return total;
     } catch (e) {
@@ -164,6 +198,16 @@ class PagamentoService {
           .collection('pagamentos')
           .doc(pagamentoId)
           .delete();
+
+      try {
+        await _financeiroAssociacao.estornarPorOrigem(
+          origemModulo: 'eventos',
+          origemId: '$eventoId::$participacaoId::$pagamentoId',
+          motivo: 'Pagamento removido no módulo de Eventos.',
+        );
+      } catch (e) {
+        debugPrint('⚠️ Falhou estorno automático na Associação: $e');
+      }
 
       await _atualizarTotalPago(eventoId, participacaoId);
       debugPrint('✅ Pagamento excluído: $pagamentoId');

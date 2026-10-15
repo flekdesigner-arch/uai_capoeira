@@ -53,11 +53,12 @@ class _BotaoAtualizarMelhoradoState extends State<BotaoAtualizarMelhorado>
       final versaoLocal = await _versaoService.getVersaoLocal();
       final info = await _atualizacaoService.verificarAtualizacao(versaoLocal);
 
-      if (mounted)
+      if (mounted) {
         setState(() {
           _infoAtualizacao = info;
           _verificando = false;
         });
+      }
     } catch (e) {
       if (mounted) setState(() => _verificando = false);
     }

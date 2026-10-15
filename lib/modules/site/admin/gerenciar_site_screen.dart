@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 
@@ -17,23 +16,66 @@ import 'package:uai_capoeira/modules/site/services/site_config_service.dart';
 import 'package:uai_capoeira/modules/sistema/admin/configurar_assistente_screen.dart';
 import 'package:uai_capoeira/modules/area_aluno/admin/area_aluno_admin_screen.dart';
 
+import 'package:uai_capoeira/modules/site/screens/regimento_screen.dart' as public_regimento;
+import 'package:uai_capoeira/modules/site/screens/biografia_screen.dart' as public_biografia;
+import 'package:uai_capoeira/modules/site/screens/graduacoes_screen.dart' as public_graduacoes;
+import 'package:uai_capoeira/modules/site/screens/portfolio_web_screen.dart' as public_portfolio;
+import 'package:uai_capoeira/modules/inscricoes/public/inscricao_publica_screen.dart' as public_inscricao;
+import 'package:uai_capoeira/modules/inscricoes/public/inscricao_campeonato_screen.dart' as public_campeonato;
+import 'package:uai_capoeira/modules/area_aluno/screens/area_aluno_login_screen.dart' as public_area_aluno;
+
+// Limite pequeno para simular somente as operações externas desta tela em testes.
+abstract class GerenciarSiteGateway {
+  Future<bool> podeGerenciar();
+  Future<Map<String, dynamic>> carregarSite();
+  Future<Map<String, dynamic>> carregarAreaAluno();
+  Future<void> alterarVisibilidade(String secaoId, bool visivel);
+  Future<void> alterarVisibilidadeAreaAluno(bool visivel);
+  Future<void> alterarSenhaApp(String novaSenha);
+}
+
+class _GerenciarSiteGatewayReal implements GerenciarSiteGateway {
+  final SiteConfigService _config = SiteConfigService();
+  final PermissionAccessGuard _access = PermissionAccessGuard();
+
+  @override
+  Future<bool> podeGerenciar() =>
+      _access.canAccess(permission: 'pode_gerenciar_site');
+  @override
+  Future<Map<String, dynamic>> carregarSite() =>
+      _config.carregarConfiguracoesSite();
+  @override
+  Future<Map<String, dynamic>> carregarAreaAluno() =>
+      _config.carregarConfiguracoesAreaAluno();
+  @override
+  Future<void> alterarVisibilidade(String secaoId, bool visivel) =>
+      _config.alterarVisibilidade(secaoId, visivel);
+  @override
+  Future<void> alterarVisibilidadeAreaAluno(bool visivel) =>
+      _config.alterarVisibilidadeAreaAluno(visivel);
+  @override
+  Future<void> alterarSenhaApp(String novaSenha) =>
+      _config.alterarSenhaApp(novaSenha);
+}
+
 class GerenciarSiteScreen extends StatefulWidget {
-  const GerenciarSiteScreen({super.key});
+  const GerenciarSiteScreen({super.key, @visibleForTesting this.gateway});
+
+  final GerenciarSiteGateway? gateway;
 
   @override
   State<GerenciarSiteScreen> createState() => _GerenciarSiteScreenState();
 }
 
 class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
-  final SiteConfigService _configService = SiteConfigService();
-  final PermissionAccessGuard _accessGuard = PermissionAccessGuard();
+  late final GerenciarSiteGateway _gateway =
+      widget.gateway ?? _GerenciarSiteGatewayReal();
 
   bool _verificandoAcesso = true;
   bool _acessoNegado = false;
   bool _carregando = true;
   String? _erro;
 
-  Map<String, dynamic> _configuracoes = {};
   Map<String, dynamic> _configAreaAluno = {};
 
   final List<Map<String, dynamic>> _secoesBase = [
@@ -119,9 +161,7 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
   }
 
   Future<void> _verificarAcesso() async {
-    final permitido = await _accessGuard.canAccess(
-      permission: 'pode_gerenciar_site',
-    );
+    final permitido = await _gateway.podeGerenciar();
     if (!mounted) return;
 
     setState(() {
@@ -135,9 +175,7 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
   }
 
   Future<bool> _revalidarAcesso() async {
-    final permitido = await _accessGuard.canAccess(
-      permission: 'pode_gerenciar_site',
-    );
+    final permitido = await _gateway.podeGerenciar();
     if (!mounted) return false;
 
     if (!permitido) {
@@ -184,7 +222,7 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
     final base = preferred ?? t.primary;
 
     if (_temaEscuroComPrimarioNeon(base)) {
-      return Color.alphaBlend(base.withOpacity(0.42), t.surface);
+      return Color.alphaBlend(base.withAlpha(107), t.surface);
     }
 
     return base;
@@ -219,11 +257,7 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
 
   Color _onPrimary() => _onHero();
   Color _onCard() => _readableOn(context.uai.card);
-  Color _onCardMuted() => _onCard().withOpacity(0.68);
-
-  Color _cardAccent(Color color) {
-    return _ensureVisible(_iconColor(color), context.uai.card);
-  }
+  Color _onCardMuted() => _onCard().withAlpha(173);
 
   Color _secaoColor(Map<String, dynamic> secao) {
     final t = context.uai;
@@ -253,7 +287,7 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
   }
 
   Color _softBg(Color color, Color base, [double opacity = 0.10]) {
-    return Color.alphaBlend(color.withOpacity(opacity), base);
+    return Color.alphaBlend(color.withAlpha((255.0 * (opacity)).round()), base);
   }
 
   bool get _isWideDashboard {
@@ -409,14 +443,12 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
     });
 
     try {
-      final configs = await _configService.carregarConfiguracoesSite();
-      final areaAlunoConfig = await _configService
-          .carregarConfiguracoesAreaAluno();
+      final configs = await _gateway.carregarSite();
+      final areaAlunoConfig = await _gateway.carregarAreaAluno();
 
       if (!mounted) return;
 
       setState(() {
-        _configuracoes = configs;
         _configAreaAluno = areaAlunoConfig;
 
         _secoes = _secoesBase.map((secao) {
@@ -726,7 +758,7 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
       decoration: BoxDecoration(
         gradient: _safeHeroGradient(),
         borderRadius: BorderRadius.circular(t.cardRadius + 6),
-        border: Border.all(color: onHero.withOpacity(0.12)),
+        border: Border.all(color: onHero.withAlpha(31)),
         boxShadow: t.cardShadow,
       ),
       child: LayoutBuilder(
@@ -737,9 +769,9 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
             width: narrow ? 58 : 68,
             height: narrow ? 58 : 68,
             decoration: BoxDecoration(
-              color: onHero.withOpacity(0.14),
+              color: onHero.withAlpha(36),
               borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: onHero.withOpacity(0.15)),
+              border: Border.all(color: onHero.withAlpha(38)),
             ),
             child: Icon(
               Icons.public_rounded,
@@ -768,7 +800,7 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
                 'Conteúdo público, menu, inscrições, área do aluno, assistente e estatísticas.',
                 textAlign: narrow ? TextAlign.center : TextAlign.left,
                 style: TextStyle(
-                  color: onHero.withOpacity(0.82),
+                  color: onHero.withAlpha(209),
                   fontSize: 13,
                   height: 1.34,
                   fontWeight: FontWeight.w600,
@@ -827,9 +859,9 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
         vertical: compact ? 9 : 11,
       ),
       decoration: BoxDecoration(
-        color: onPrimary.withOpacity(0.13),
+        color: onPrimary.withAlpha(33),
         borderRadius: BorderRadius.circular(compact ? 14 : 16),
-        border: Border.all(color: onPrimary.withOpacity(0.12)),
+        border: Border.all(color: onPrimary.withAlpha(31)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -853,7 +885,7 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: onPrimary.withOpacity(0.74),
+              color: onPrimary.withAlpha(189),
               fontSize: compact ? 9 : 10,
               height: 1,
               fontWeight: FontWeight.w700,
@@ -964,8 +996,8 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(t.cardRadius - 6),
-        splashColor: accent.withOpacity(0.12),
-        highlightColor: accent.withOpacity(0.06),
+        splashColor: accent.withAlpha(31),
+        highlightColor: accent.withAlpha(15),
         child: Container(
           constraints: BoxConstraints(minHeight: compact ? 86 : 112),
           padding: EdgeInsets.symmetric(
@@ -974,7 +1006,7 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
           ),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(t.cardRadius - 6),
-            border: Border.all(color: accent.withOpacity(0.12)),
+            border: Border.all(color: accent.withAlpha(31)),
             boxShadow: t.softShadow,
           ),
           child: Column(
@@ -983,7 +1015,7 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
                 width: compact ? 36 : 42,
                 height: compact ? 36 : 42,
                 decoration: BoxDecoration(
-                  color: accent.withOpacity(0.12),
+                  color: accent.withAlpha(31),
                   borderRadius: BorderRadius.circular(compact ? 13 : t.buttonRadius),
                 ),
                 child: Icon(icon, color: accent, size: compact ? 20 : 23),
@@ -1040,7 +1072,7 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
             width: 38,
             height: 38,
             decoration: BoxDecoration(
-              color: accent.withOpacity(0.10),
+              color: accent.withAlpha(26),
               borderRadius: BorderRadius.circular(13),
             ),
             child: Icon(icon, color: accent, size: 20),
@@ -1093,7 +1125,7 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(t.cardRadius - 2),
-        border: Border.all(color: accent.withOpacity(0.18)),
+        border: Border.all(color: accent.withAlpha(46)),
         boxShadow: t.softShadow,
       ),
       child: InkWell(
@@ -1109,7 +1141,7 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
                     width: compact ? 50 : 58,
                     height: compact ? 50 : 58,
                     decoration: BoxDecoration(
-                      color: accent.withOpacity(0.12),
+                      color: accent.withAlpha(31),
                       borderRadius: BorderRadius.circular(18),
                     ),
                     child: Icon(
@@ -1154,6 +1186,12 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
                         ),
                       ],
                     ),
+                  ),
+                  const SizedBox(width: 6),
+                  _buildPreviewButton(
+                    secao,
+                    color: accent,
+                    compact: compact,
                   ),
                   const SizedBox(width: 6),
                   Icon(Icons.chevron_right_rounded, color: accent),
@@ -1235,9 +1273,9 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), t.cardAlt),
+        color: Color.alphaBlend(accent.withAlpha(20), t.cardAlt),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: accent.withOpacity(0.14)),
+        border: Border.all(color: accent.withAlpha(36)),
       ),
       child: Column(
         children: [
@@ -1271,7 +1309,6 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
   Widget _buildSecaoCard(Map<String, dynamic> secao) {
     final t = context.uai;
     final compact = MediaQuery.sizeOf(context).width < 620;
-    final Color color = _secaoColor(secao);
     final accent = _secaoAccent(secao);
 
     return Container(
@@ -1279,14 +1316,14 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
       decoration: BoxDecoration(
         color: t.card,
         borderRadius: BorderRadius.circular(t.cardRadius - 4),
-        border: Border.all(color: accent.withOpacity(0.14)),
+        border: Border.all(color: accent.withAlpha(36)),
         boxShadow: t.softShadow,
       ),
       child: InkWell(
         onTap: () => _abrirSecao(secao),
         borderRadius: BorderRadius.circular(t.cardRadius - 4),
-        splashColor: accent.withOpacity(0.12),
-        highlightColor: accent.withOpacity(0.06),
+        splashColor: accent.withAlpha(31),
+        highlightColor: accent.withAlpha(15),
         child: Padding(
           padding: EdgeInsets.all(compact ? 11 : 13),
           child: Row(
@@ -1295,7 +1332,7 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
                 width: compact ? 46 : 54,
                 height: compact ? 46 : 54,
                 decoration: BoxDecoration(
-                  color: accent.withOpacity(0.12),
+                  color: accent.withAlpha(31),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Icon(secao['icone'], color: accent, size: compact ? 23 : 27),
@@ -1347,6 +1384,12 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
                   ],
                 ),
               ),
+              _buildPreviewButton(
+                secao,
+                color: accent,
+                compact: compact,
+              ),
+              const SizedBox(width: 6),
               Icon(Icons.chevron_right_rounded, color: accent),
             ],
           ),
@@ -1380,7 +1423,7 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
                 width: compact ? 46 : 54,
                 height: compact ? 46 : 54,
                 decoration: BoxDecoration(
-                  color: muted.withOpacity(0.14),
+                  color: muted.withAlpha(36),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Icon(secao['icone'], color: muted, size: compact ? 23 : 27),
@@ -1414,6 +1457,12 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
                   ],
                 ),
               ),
+              _buildPreviewButton(
+                secao,
+                color: accent,
+                compact: compact,
+              ),
+              const SizedBox(width: 6),
               Icon(Icons.visibility_off_rounded, color: accent),
             ],
           ),
@@ -1429,9 +1478,9 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.12),
+        color: accent.withAlpha(31),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: accent.withOpacity(0.12)),
+        border: Border.all(color: accent.withAlpha(31)),
       ),
       child: Text(
         texto,
@@ -1439,6 +1488,78 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
           color: accent,
           fontSize: 9.5,
           fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+
+
+  void _abrirPreviewPublico(Map<String, dynamic> secao) {
+    Widget? tela;
+    switch (secao['tela']) {
+      case 'regimento':
+        tela = const public_regimento.RegimentoScreen();
+        break;
+      case 'biografia':
+        tela = const public_biografia.BiografiaScreen();
+        break;
+      case 'graduacoes':
+        tela = const public_graduacoes.GraduacoesScreen();
+        break;
+      case 'inscricao':
+        tela = const public_inscricao.InscricaoPublicaScreen();
+        break;
+      case 'area_aluno':
+        tela = const public_area_aluno.AreaAlunoLoginScreen();
+        break;
+      case 'campeonato':
+        tela = const public_campeonato.InscricaoCampeonatoScreen();
+        break;
+      case 'timeline':
+        tela = const public_portfolio.PortfolioWebScreen();
+        break;
+    }
+
+    if (tela == null) {
+      _mostrarErro('Esta seção ainda não possui uma prévia pública.');
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => _PublicSitePreviewShell(
+          title: secao['titulo']?.toString() ?? 'Prévia do site',
+          child: tela!,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPreviewButton(
+    Map<String, dynamic> secao, {
+    Color? color,
+    bool compact = false,
+  }) {
+    final t = context.uai;
+    final accent = _ensureVisible(color ?? _secaoColor(secao), t.card);
+    return Tooltip(
+      message: 'Ver como aparece no site',
+      child: Material(
+        color: accent.withAlpha(26),
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: () => _abrirPreviewPublico(secao),
+          borderRadius: BorderRadius.circular(12),
+          child: SizedBox(
+            width: compact ? 36 : 40,
+            height: compact ? 36 : 40,
+            child: Icon(
+              Icons.visibility_rounded,
+              size: compact ? 19 : 21,
+              color: accent,
+            ),
+          ),
         ),
       ),
     );
@@ -1645,7 +1766,7 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
               width: 49,
               height: 49,
               decoration: BoxDecoration(
-                color: accent.withOpacity(0.12),
+                color: accent.withAlpha(31),
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Icon(icone, color: accent, size: 26),
@@ -1751,22 +1872,26 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
               Navigator.pop(context);
               if (!await _revalidarAcesso()) return;
 
-              if (isAreaAluno) {
-                await _configService.alterarVisibilidadeAreaAluno(true);
-              } else {
-                await _configService.alterarVisibilidade(secao['id'], true);
-              }
+              try {
+                if (isAreaAluno) {
+                  await _gateway.alterarVisibilidadeAreaAluno(true);
+                } else {
+                  await _gateway.alterarVisibilidade(secao['id'], true);
+                }
 
-              await _carregarConfiguracoes();
+                await _carregarConfiguracoes();
 
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('✅ ${secao['titulo']} agora está visível'),
-                    backgroundColor: t.success,
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
+                if (mounted) {
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                    SnackBar(
+                      content: Text('✅ ${secao['titulo']} agora está visível'),
+                      backgroundColor: t.success,
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (mounted) _mostrarErro('Erro ao alterar visibilidade: $e');
               }
             },
             style: ElevatedButton.styleFrom(
@@ -1862,16 +1987,20 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
 
               Navigator.pop(context);
               if (!await _revalidarAcesso()) return;
-              await _configService.alterarSenhaApp(novaSenha);
+              try {
+                await _gateway.alterarSenhaApp(novaSenha);
 
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: const Text('✅ Senha alterada com sucesso!'),
-                    backgroundColor: t.success,
-                    behavior: SnackBarBehavior.floating,
-                  ),
-                );
+                if (mounted) {
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                    SnackBar(
+                      content: const Text('✅ Senha alterada com sucesso!'),
+                      backgroundColor: t.success,
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              } catch (e) {
+                if (mounted) _mostrarErro('Erro ao alterar senha: $e');
               }
             },
             style: ElevatedButton.styleFrom(
@@ -1943,7 +2072,7 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: accent.withOpacity(0.12),
+                color: accent.withAlpha(31),
                 shape: BoxShape.circle,
               ),
               child: Icon(
@@ -1990,3 +2119,58 @@ class _GerenciarSiteScreenState extends State<GerenciarSiteScreen> {
 // Refatoração focada em tema dinâmico, responsividade e layout adaptativo.
 // Lógica original preservada.
 // ============================================================
+
+
+class _PublicSitePreviewShell extends StatelessWidget {
+  final String title;
+  final Widget child;
+
+  const _PublicSitePreviewShell({
+    required this.title,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.uai;
+    final foreground = t.primary.computeLuminance() > 0.48
+        ? const Color(0xFF111827)
+        : Colors.white;
+
+    return Scaffold(
+      backgroundColor: t.background,
+      appBar: AppBar(
+        automaticallyImplyLeading: true,
+        backgroundColor: t.primary,
+        foregroundColor: foreground,
+        elevation: 0,
+        titleSpacing: 0,
+        title: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'PRÉVIA DO SITE',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w900,
+                letterSpacing: .35,
+              ),
+            ),
+            Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w600,
+                color: foreground.withAlpha(209),
+              ),
+            ),
+          ],
+        ),
+      ),
+      body: child,
+    );
+  }
+}

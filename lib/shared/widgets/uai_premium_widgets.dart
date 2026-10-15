@@ -37,9 +37,9 @@ class UaiGradientHeader extends StatelessWidget {
             width: 64,
             height: 64,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.14),
+              color: Colors.white.withAlpha(36),
               borderRadius: BorderRadius.circular(t.cardRadius - 2),
-              border: Border.all(color: Colors.white.withOpacity(0.16)),
+              border: Border.all(color: Colors.white.withAlpha(41)),
             ),
             child: Icon(icon, color: Colors.white, size: 34),
           );
@@ -64,7 +64,7 @@ class UaiGradientHeader extends StatelessWidget {
                 subtitle,
                 textAlign: narrow ? TextAlign.center : TextAlign.left,
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.84),
+                  color: Colors.white.withAlpha(214),
                   fontSize: 13,
                   height: 1.32,
                   fontWeight: FontWeight.w500,
@@ -114,9 +114,9 @@ class UaiWhiteChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.14),
+        color: Colors.white.withAlpha(36),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: Colors.white.withOpacity(0.16)),
+        border: Border.all(color: Colors.white.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -186,7 +186,7 @@ class UaiSectionTitle extends StatelessWidget {
           width: 42,
           height: 42,
           decoration: BoxDecoration(
-            color: t.primary.withOpacity(0.10),
+            color: t.primary.withAlpha(26),
             borderRadius: BorderRadius.circular(t.buttonRadius),
           ),
           child: Icon(icon, color: t.primary),
@@ -252,14 +252,14 @@ class UaiPremiumActionCard extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(t.cardRadius - 6),
-          splashColor: color.withOpacity(0.12),
-          highlightColor: color.withOpacity(0.06),
+          splashColor: color.withAlpha(31),
+          highlightColor: color.withAlpha(15),
           child: Container(
             constraints: const BoxConstraints(minHeight: 82),
             padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(t.cardRadius - 6),
-              border: Border.all(color: color.withOpacity(0.14)),
+              border: Border.all(color: color.withAlpha(36)),
               boxShadow: t.softShadow,
             ),
             child: Row(
@@ -268,7 +268,7 @@ class UaiPremiumActionCard extends StatelessWidget {
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.12),
+                    color: color.withAlpha(31),
                     borderRadius: BorderRadius.circular(t.buttonRadius),
                   ),
                   child: Icon(icon, size: 25, color: color),

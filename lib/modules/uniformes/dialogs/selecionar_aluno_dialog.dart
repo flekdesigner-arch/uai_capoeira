@@ -29,16 +29,16 @@ class _SelecionarAlunoDialogState extends State<SelecionarAlunoDialog> {
         : const Color(0xFFFFFFFF);
   }
 
-  Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance())
-        .abs();
-    if (diff >= 0.26) return color;
-    final bgIsDark = background.computeLuminance() < 0.45;
-    final hsl = HSLColor.fromColor(color);
-    return hsl
-        .withLightness(bgIsDark ? 0.72 : 0.32)
-        .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
-        .toColor();
+
+
+  String _normalizarBusca(String value) {
+    var normalized = value.trim().toLowerCase();
+    const withAccents = 'áàâãäéèêëíìîïóòôõöúùûüçñ';
+    const withoutAccents = 'aaaaaeeeeiiiiooooouuuucn';
+    for (var i = 0; i < withAccents.length; i++) {
+      normalized = normalized.replaceAll(withAccents[i], withoutAccents[i]);
+    }
+    return normalized;
   }
 
   @override
@@ -73,10 +73,10 @@ class _SelecionarAlunoDialogState extends State<SelecionarAlunoDialog> {
             child: CachedNetworkImage(
               imageUrl: fotoUrl,
               fit: BoxFit.contain,
-              placeholder: (_, __) => const Center(
+              placeholder: (_, _) => const Center(
                 child: CircularProgressIndicator(color: Colors.white),
               ),
-              errorWidget: (_, __, ___) => const Center(
+              errorWidget: (_, _, _) => const Center(
                 child: Icon(Icons.broken_image, color: Colors.white, size: 80),
               ),
             ),
@@ -109,7 +109,7 @@ class _SelecionarAlunoDialogState extends State<SelecionarAlunoDialog> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(context.uai.cardRadius),
       ),
-      child: Container(
+      child: SizedBox(
         width: double.maxFinite,
         height: MediaQuery.of(context).size.height * 0.7,
         child: Column(
@@ -262,7 +262,7 @@ class _SelecionarAlunoDialogState extends State<SelecionarAlunoDialog> {
                           ),
                           const SizedBox(height: 16),
                           Text(
-                            'Erro: ${snapshot.error}',
+                            'Não foi possível carregar os alunos agora. Tente novamente.',
                             style: TextStyle(color: textPrimary),
                           ),
                           ElevatedButton(
@@ -319,9 +319,10 @@ class _SelecionarAlunoDialogState extends State<SelecionarAlunoDialog> {
                         data['turma_id'] != _selectedTurmaId) {
                       return false;
                     }
-                    if (_searchQuery.isNotEmpty) {
-                      final nome = data['nome']?.toString().toLowerCase() ?? '';
-                      return nome.contains(_searchQuery.toLowerCase());
+                    if (_searchQuery.trim().isNotEmpty) {
+                      final nome = _normalizarBusca(data['nome']?.toString() ?? '');
+                      final busca = _normalizarBusca(_searchQuery);
+                      return nome.contains(busca);
                     }
                     return true;
                   }).toList();
@@ -382,16 +383,16 @@ class _SelecionarAlunoDialogState extends State<SelecionarAlunoDialog> {
                                       backgroundImage: imageProvider,
                                       radius: 24,
                                     ),
-                                placeholder: (_, __) => CircleAvatar(
-                                  backgroundColor: corDestaque.withOpacity(0.2),
+                                placeholder: (_, _) => CircleAvatar(
+                                  backgroundColor: corDestaque.withAlpha(51),
                                   radius: 24,
                                   child: Text(
                                     nome[0].toUpperCase(),
                                     style: TextStyle(color: corDestaque),
                                   ),
                                 ),
-                                errorWidget: (_, __, ___) => CircleAvatar(
-                                  backgroundColor: corDestaque.withOpacity(0.2),
+                                errorWidget: (_, _, _) => CircleAvatar(
+                                  backgroundColor: corDestaque.withAlpha(51),
                                   radius: 24,
                                   child: Text(
                                     nome[0].toUpperCase(),
@@ -401,7 +402,7 @@ class _SelecionarAlunoDialogState extends State<SelecionarAlunoDialog> {
                               ),
                             )
                           : CircleAvatar(
-                              backgroundColor: corDestaque.withOpacity(0.2),
+                              backgroundColor: corDestaque.withAlpha(51),
                               radius: 24,
                               child: Text(
                                 nome[0].toUpperCase(),

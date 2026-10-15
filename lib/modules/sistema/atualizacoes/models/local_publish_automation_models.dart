@@ -102,57 +102,21 @@ class LocalPublishStep {
 
   static List<LocalPublishStep> defaultSteps() {
     return const [
-      LocalPublishStep(
-        id: 'save_draft',
-        title: 'Salvar rascunho',
-        description: 'Salva a versão, descrição e changelog no Firestore.',
-      ),
-      LocalPublishStep(
-        id: 'flutter_clean',
-        title: 'Limpar projeto',
-        description: 'Executa flutter clean para remover builds antigos.',
-      ),
-      LocalPublishStep(
-        id: 'flutter_pub_get',
-        title: 'Baixar dependências',
-        description: 'Executa flutter pub get antes dos builds.',
-      ),
-      LocalPublishStep(
-        id: 'build_web',
-        title: 'Gerar PWA',
-        description: 'Gera o build web release do app.',
-      ),
-      LocalPublishStep(
-        id: 'deploy_hosting',
-        title: 'Publicar PWA',
-        description: 'Faz deploy do PWA no Firebase Hosting.',
-      ),
-      LocalPublishStep(
-        id: 'build_apk',
-        title: 'Gerar APK',
-        description: 'Gera APK release ARM64 menor.',
-      ),
-      LocalPublishStep(
-        id: 'locate_apk',
-        title: 'Localizar APK final',
-        description: 'Localiza o APK gerado e renomeado no padrão UAI.',
-      ),
-      LocalPublishStep(
-        id: 'upload_apk',
-        title: 'Enviar APK',
-        description: 'Envia o APK para o Firebase Storage pelo laboratório.',
-      ),
-      LocalPublishStep(
-        id: 'publish_version',
-        title: 'Publicar versão',
-        description: 'Atualiza configuracoes/app e publica o histórico.',
-      ),
-      LocalPublishStep(
-        id: 'notify_users',
-        title: 'Notificar usuários',
-        description:
-            'Notificação manual. Após testar, use o botão manual para avisar os usuários.',
-      ),
+      LocalPublishStep(id: 'save_draft', title: 'Preparar release', description: 'Salva changelog e sincroniza versão/build.'),
+      LocalPublishStep(id: 'preflight', title: 'Verificar ambiente', description: 'Valida Flutter, Firebase, projeto e arquivos essenciais.'),
+      LocalPublishStep(id: 'sync_version', title: 'Sincronizar versão', description: 'Atualiza pubspec.yaml com a versão e build da Central.'),
+      LocalPublishStep(id: 'flutter_clean', title: 'Limpar projeto', description: 'Remove builds antigos.'),
+      LocalPublishStep(id: 'flutter_pub_get', title: 'Dependências', description: 'Atualiza as dependências Flutter.'),
+      LocalPublishStep(id: 'build_web', title: 'Gerar PWA', description: 'Gera o PWA release.'),
+      LocalPublishStep(id: 'deploy_hosting', title: 'Publicar PWA', description: 'Publica no Firebase Hosting.'),
+      LocalPublishStep(id: 'deploy_storage_rules', title: 'Sincronizar Storage', description: 'Publica as regras necessárias para a árvore releases/.'),
+      LocalPublishStep(id: 'build_android', title: 'Android multi-ABI', description: 'Gera ARM32, ARM64 e x86_64 separados.'),
+      LocalPublishStep(id: 'locate_apk', title: 'Validar APKs', description: 'Confere os três APKs e seus tamanhos.'),
+      LocalPublishStep(id: 'build_windows', title: 'Gerar Windows', description: 'Gera o build Windows release.'),
+      LocalPublishStep(id: 'install_windows', title: 'Instalar Windows', description: 'Atualiza C:\\UAI Capoeira e o atalho da Área de Trabalho.'),
+      LocalPublishStep(id: 'upload_apk', title: 'Enviar Android', description: 'Envia cada ABI para a árvore releases/ no Storage.'),
+      LocalPublishStep(id: 'publish_version', title: 'Publicar manifesto', description: 'Publica a release e os artefatos no Firestore.'),
+      LocalPublishStep(id: 'notify_users', title: 'Notificar usuários', description: 'Fica manual para você testar antes de avisar.'),
     ];
   }
 }
@@ -264,7 +228,9 @@ class LocalPublishAutomationState {
 
   bool get completed {
     return steps.isNotEmpty &&
-        steps.every((step) => step.status == LocalPublishStepStatus.success);
+        steps.every((step) =>
+            step.status == LocalPublishStepStatus.success ||
+            step.status == LocalPublishStepStatus.skipped);
   }
 }
 

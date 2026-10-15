@@ -471,7 +471,7 @@ class _EditarChavesScreenState extends State<EditarChavesScreen> {
       child: DragTarget<Map<String, dynamic>>(
         onWillAcceptWithDetails: (details) {
           final data = details.data;
-          return data != null && data['competidorId'] != competidorId;
+          return data['competidorId'] != competidorId;
         },
         onAcceptWithDetails: (details) {
           final data = details.data;

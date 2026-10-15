@@ -1,6 +1,5 @@
 // lib/services/phone_mask_service.dart
 import 'package:flutter/services.dart';
-import 'package:flutter/material.dart';
 
 class PhoneMaskService {
   // Aplica máscara de telefone

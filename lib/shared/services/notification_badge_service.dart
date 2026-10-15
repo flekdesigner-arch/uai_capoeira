@@ -1,3 +1,4 @@
+import 'dart:developer' as developer;
 // services/notification_badge_service.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -30,7 +31,7 @@ class NotificationBadgeService {
         }
       }
     } catch (e) {
-      print('❌ Erro ao converter data_nascimento: $e');
+      developer.log('❌ Erro ao converter data_nascimento: $e');
     }
 
     return null;
@@ -84,7 +85,7 @@ class NotificationBadgeService {
         'data_leitura': FieldValue.serverTimestamp(),
       });
     } catch (e) {
-      print('❌ Erro ao marcar notificação como lida: $e');
+      developer.log('❌ Erro ao marcar notificação como lida: $e');
     }
   }
 
@@ -111,7 +112,7 @@ class NotificationBadgeService {
 
       await batch.commit();
     } catch (e) {
-      print('❌ Erro ao marcar todas como lidas: $e');
+      developer.log('❌ Erro ao marcar todas como lidas: $e');
     }
   }
 }

@@ -6,7 +6,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'app_theme_controller.dart';
 import 'app_theme_preset.dart';
 import 'tema_global_config.dart';
 
@@ -37,6 +36,12 @@ class TemaGlobalService extends ChangeNotifier {
   String? get error => _error;
 
   bool get ativo => config.ativo;
+
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    super.dispose();
+  }
   bool get forcarTemaGlobal => config.forcarTemaGlobal;
   bool get permitirUsuarioEscolher => config.permitirUsuarioEscolher;
   bool get modoCampanha => config.modoCampanha;

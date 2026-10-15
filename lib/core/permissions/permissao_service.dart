@@ -33,6 +33,80 @@ class PermissaoService {
   static const String chaveAcessarRifas = 'podeAcessarRifas';
   static const String chaveMostrarAlunosDrawer = 'pode_mostrar_alunos_drawer';
 
+  // Associação - permissões granulares.
+  static const String chaveVerFinanceiroAssociacao = 'pode_ver_financeiro_associacao';
+  static const String chaveLancarFinanceiroAssociacao = 'pode_lancar_financeiro_associacao';
+  static const String chaveEstornarFinanceiroAssociacao = 'pode_estornar_financeiro_associacao';
+  static const String chaveSincronizarFinanceiroAssociacao = 'pode_sincronizar_financeiro_associacao';
+  static const String chaveConfigurarFinanceiroAssociacao = 'pode_configurar_financeiro_associacao';
+  static const String chaveExportarFinanceiroAssociacao = 'pode_exportar_financeiro_associacao';
+  static const String chaveVerAssociadosAssociacao = 'pode_ver_associados_associacao';
+  static const String chaveGerenciarAssociadosAssociacao = 'pode_gerenciar_associados_associacao';
+  static const String chaveGerenciarMensalidadesAssociacao = 'pode_gerenciar_mensalidades_associacao';
+  static const String chaveGerenciarGestoesAssociacao = 'pode_gerenciar_gestoes_associacao';
+  static const String chaveVerOficiosAssociacao = 'pode_ver_oficios_associacao';
+  static const String chaveCriarOficioAssociacao = 'pode_criar_oficio_associacao';
+  static const String chaveEditarOficioAssociacao = 'pode_editar_oficio_associacao';
+  static const String chaveUsarIaOficioAssociacao = 'pode_usar_ia_oficio_associacao';
+  static const String chaveAlterarStatusOficioAssociacao = 'pode_alterar_status_oficio_associacao';
+  static const String chaveRegistrarRespostaOficioAssociacao = 'pode_registrar_resposta_oficio_associacao';
+  static const String chaveVerConfigAssociacao = 'pode_ver_config_associacao';
+  static const String chaveEditarConfigAssociacao = 'pode_editar_config_associacao';
+  static const String chaveVerArquivosAssociacao = 'pode_ver_arquivos_associacao';
+  static const String chaveGerenciarArquivosAssociacao = 'pode_gerenciar_arquivos_associacao';
+  static const String chaveCompartilharArquivosAssociacao = 'pode_compartilhar_arquivos_associacao';
+  static const String chaveExcluirArquivosAssociacao = 'pode_excluir_arquivos_associacao';
+  static const String chaveLimparDriveArquivosAssociacao = 'pode_limpar_drive_arquivos_associacao';
+  static const String chaveVerPatrimonioAssociacao = 'pode_ver_patrimonio_associacao';
+  static const String chaveCriarPatrimonioAssociacao = 'pode_criar_patrimonio_associacao';
+  static const String chaveEditarPatrimonioAssociacao = 'pode_editar_patrimonio_associacao';
+  static const String chaveCautelasPatrimonioAssociacao = 'pode_cautelas_patrimonio_associacao';
+  static const String chaveTransferirPatrimonioAssociacao = 'pode_transferir_patrimonio_associacao';
+  static const String chaveManutencaoPatrimonioAssociacao = 'pode_manutencao_patrimonio_associacao';
+  static const String chaveDocumentosPatrimonioAssociacao = 'pode_documentos_patrimonio_associacao';
+  static const String chaveBaixarPatrimonioAssociacao = 'pode_baixar_patrimonio_associacao';
+  static const String chaveExcluirPatrimonioAssociacao = 'pode_excluir_patrimonio_associacao';
+
+  static const String chaveGerenciarPatrimonioAssociacao = 'pode_gerenciar_patrimonio_associacao';
+  static const String chaveMovimentarPatrimonioAssociacao = 'pode_movimentar_patrimonio_associacao';
+
+  static const List<String> chavesAssociacaoGranulares = [
+    chaveVerFinanceiroAssociacao,
+    chaveLancarFinanceiroAssociacao,
+    chaveEstornarFinanceiroAssociacao,
+    chaveSincronizarFinanceiroAssociacao,
+    chaveConfigurarFinanceiroAssociacao,
+    chaveExportarFinanceiroAssociacao,
+    chaveVerAssociadosAssociacao,
+    chaveGerenciarAssociadosAssociacao,
+    chaveGerenciarMensalidadesAssociacao,
+    chaveGerenciarGestoesAssociacao,
+    chaveVerOficiosAssociacao,
+    chaveCriarOficioAssociacao,
+    chaveEditarOficioAssociacao,
+    chaveUsarIaOficioAssociacao,
+    chaveAlterarStatusOficioAssociacao,
+    chaveRegistrarRespostaOficioAssociacao,
+    chaveVerConfigAssociacao,
+    chaveEditarConfigAssociacao,
+    chaveVerArquivosAssociacao,
+    chaveGerenciarArquivosAssociacao,
+    chaveCompartilharArquivosAssociacao,
+    chaveExcluirArquivosAssociacao,
+    chaveLimparDriveArquivosAssociacao,
+    chaveVerPatrimonioAssociacao,
+    chaveCriarPatrimonioAssociacao,
+    chaveEditarPatrimonioAssociacao,
+    chaveCautelasPatrimonioAssociacao,
+    chaveTransferirPatrimonioAssociacao,
+    chaveManutencaoPatrimonioAssociacao,
+    chaveDocumentosPatrimonioAssociacao,
+    chaveBaixarPatrimonioAssociacao,
+    chaveExcluirPatrimonioAssociacao,
+    chaveGerenciarPatrimonioAssociacao,
+    chaveMovimentarPatrimonioAssociacao,
+  ];
+
   // Eventos - geral.
   static const String chaveVerEventos = 'pode_ver_eventos';
   static const String chaveVerEventosAndamento = 'pode_ver_eventos_andamento';
@@ -101,6 +175,23 @@ class PermissaoService {
       'pode_gerar_certificados_evento';
   static const String chaveConfigurarCertificadosEvento =
       'pode_configurar_certificados_evento';
+
+  // Certificados - domínio centralizado.
+  static const String chaveAcessarCertificados = 'pode_acessar_certificados';
+  static const String chaveVisualizarTemplatesCertificados = 'pode_visualizar_templates_certificados';
+  static const String chaveCriarTemplatesCertificados = 'pode_criar_templates_certificados';
+  static const String chaveEditarTemplatesCertificados = 'pode_editar_templates_certificados';
+  static const String chaveExcluirTemplatesCertificados = 'pode_excluir_templates_certificados';
+  static const String chaveConfigurarCertificados = 'pode_configurar_certificados';
+  static const String chaveConfigurarQrCertificados = 'pode_configurar_qr_certificados';
+  static const String chaveGerarPreviaCertificados = 'pode_gerar_previa_certificados';
+  static const String chaveEmitirCertificados = 'pode_emitir_certificados';
+  static const String chaveReemitirCertificados = 'pode_reemitir_certificados';
+  static const String chaveVisualizarCertificadosEmitidos = 'pode_visualizar_certificados_emitidos';
+  static const String chaveRevogarCertificados = 'pode_revogar_certificados';
+  static const String chaveSubstituirCertificados = 'pode_substituir_certificados';
+  static const String chaveCancelarCertificados = 'pode_cancelar_certificados';
+  static const String chaveBaixarCompartilharCertificados = 'pode_baixar_compartilhar_certificados';
 
   // Dashboard / Resumo da Turma.
   static const String chaveVisualizarDashboardTurma =
@@ -256,6 +347,18 @@ class PermissaoService {
       'pode_configurar_certificados',
       'pode_configurar_certificado_evento',
     ],
+    chaveAcessarCertificados: [
+      chaveConfigurarCertificados, chaveConfigurarCertificadosEvento,
+      chaveGerarCertificadosEvento, 'pode_gerar_certificados',
+    ],
+    chaveVisualizarTemplatesCertificados: [chaveConfigurarCertificados, chaveConfigurarCertificadosEvento],
+    chaveCriarTemplatesCertificados: [chaveConfigurarCertificados, chaveConfigurarCertificadosEvento],
+    chaveEditarTemplatesCertificados: [chaveConfigurarCertificados, chaveConfigurarCertificadosEvento],
+    chaveGerarPreviaCertificados: [chaveConfigurarCertificados, chaveGerarCertificadosEvento],
+    chaveEmitirCertificados: [chaveGerarCertificadosEvento, 'pode_gerar_certificados'],
+    chaveReemitirCertificados: [chaveGerarCertificadosEvento],
+    chaveVisualizarCertificadosEmitidos: [chaveGerarCertificadosEvento],
+    chaveBaixarCompartilharCertificados: [chaveGerarCertificadosEvento, 'pode_gerar_certificados'],
     chaveEditarChamada: ['pode_editar_chamadas', 'podeEditarChamada'],
     chaveExcluirChamada: ['pode_excluir_chamadas', 'podeExcluirChamada'],
     chaveVisualizarDashboardTurma: [
@@ -511,8 +614,40 @@ class PermissaoService {
     }
   }
 
+  static const Map<String, String> _fallbackPatrimonioLegado = {
+    chaveCriarPatrimonioAssociacao: chaveGerenciarPatrimonioAssociacao,
+    chaveEditarPatrimonioAssociacao: chaveGerenciarPatrimonioAssociacao,
+    chaveDocumentosPatrimonioAssociacao: chaveGerenciarPatrimonioAssociacao,
+    chaveCautelasPatrimonioAssociacao: chaveMovimentarPatrimonioAssociacao,
+    chaveTransferirPatrimonioAssociacao: chaveMovimentarPatrimonioAssociacao,
+    chaveManutencaoPatrimonioAssociacao: chaveMovimentarPatrimonioAssociacao,
+    chaveBaixarPatrimonioAssociacao: chaveGerenciarPatrimonioAssociacao,
+    chaveExcluirPatrimonioAssociacao: chaveGerenciarPatrimonioAssociacao,
+  };
+
   bool _temPermissaoNoMapa(Map<String, bool> permissoes, String permissao) {
     if (permissoes[permissao] == true) return true;
+
+    final legadoPatrimonio = _fallbackPatrimonioLegado[permissao];
+    if (!permissoes.containsKey(permissao) &&
+        legadoPatrimonio != null &&
+        permissoes[legadoPatrimonio] == true) {
+      return true;
+    }
+
+    // Migração segura da Associação:
+    // usuários que já tinham acesso ao módulo antes das permissões granulares
+    // continuam com o comportamento antigo até que um administrador salve
+    // explicitamente as novas chaves na Central de Permissões.
+    if (chavesAssociacaoGranulares.contains(permissao)) {
+      final jaMigrado = chavesAssociacaoGranulares.any(permissoes.containsKey);
+      if (!jaMigrado) {
+        final acessoLegado =
+            permissoes[chaveAcessarAssociacao] == true ||
+            permissoes['pode_acessar_associacao'] == true;
+        if (acessoLegado) return true;
+      }
+    }
 
     final aliases = _aliasesPermissoes[permissao] ?? const <String>[];
     for (final alias in aliases) {
@@ -534,6 +669,17 @@ class PermissaoService {
     Map<String, bool> permissoes,
   ) {
     final resultado = Map<String, bool>.from(permissoes);
+
+    final associacaoJaMigrada =
+        chavesAssociacaoGranulares.any(permissoes.containsKey);
+    final acessoAssociacaoLegado =
+        permissoes[chaveAcessarAssociacao] == true ||
+        permissoes['pode_acessar_associacao'] == true;
+    if (!associacaoJaMigrada && acessoAssociacaoLegado) {
+      for (final chave in chavesAssociacaoGranulares) {
+        resultado[chave] = true;
+      }
+    }
 
     for (final entry in _aliasesPermissoes.entries) {
       final chavePrincipal = entry.key;
@@ -588,6 +734,10 @@ class PermissaoService {
       map[chave] = true;
     }
 
+    for (final chave in chavesCertificadosPadrao) {
+      map[chave] = true;
+    }
+
     for (final entry in _aliasesPermissoes.entries) {
       map[entry.key] = true;
       for (final alias in entry.value) {
@@ -606,6 +756,17 @@ class PermissaoService {
     chaveAcessarUniformes,
     chaveAcessarAssociacao,
     chaveAcessarRifas,
+  ];
+
+  static List<String> get chavesCertificadosPadrao => const [
+    chaveAcessarCertificados, chaveVisualizarTemplatesCertificados,
+    chaveCriarTemplatesCertificados, chaveEditarTemplatesCertificados,
+    chaveExcluirTemplatesCertificados, chaveConfigurarCertificados,
+    chaveConfigurarQrCertificados, chaveGerarPreviaCertificados,
+    chaveEmitirCertificados, chaveReemitirCertificados,
+    chaveVisualizarCertificadosEmitidos, chaveRevogarCertificados,
+    chaveSubstituirCertificados, chaveCancelarCertificados,
+    chaveBaixarCompartilharCertificados,
   ];
 
   static List<String> get chavesEventoPadrao => const [

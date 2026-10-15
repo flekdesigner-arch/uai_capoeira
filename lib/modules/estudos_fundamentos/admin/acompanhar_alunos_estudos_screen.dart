@@ -249,7 +249,7 @@ class _AcompanharAlunosEstudosScreenState
             controller: _buscaController,
             decoration: InputDecoration(
               prefixIcon: const Icon(Icons.search_rounded),
-              labelText: 'Buscar por nome, turma, graduação ou e-mail Google',
+              labelText: 'Buscar por nome, turma, graduação ou conta vinculada',
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -382,8 +382,10 @@ class _AcompanharAlunosEstudosScreenState
                             item.aluno.graduacao,
                           ].where((e) => e.isNotEmpty).join(' • '),
                         ),
-                        if (item.aluno.googleEmail.isNotEmpty)
-                          _smallText(item.aluno.googleEmail),
+                        if (item.aluno.contaEmail.isNotEmpty)
+                          _smallText(item.aluno.contaEmail),
+                        if (item.aluno.metodoVinculo.isNotEmpty)
+                          _smallText('Acesso: ${item.aluno.metodoVinculo}'),
                       ],
                     ),
                   ),

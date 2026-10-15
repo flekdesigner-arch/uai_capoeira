@@ -42,6 +42,7 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
   final _fornecedorController = TextEditingController();
   final _descricaoController = TextEditingController();
   final _codigoBarrasController = TextEditingController();
+  final _corController = TextEditingController();
 
   String? _categoriaSelecionada;
   final List<String> _categorias = [
@@ -89,19 +90,7 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
         : const Color(0xFFFFFFFF);
   }
 
-  Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance())
-        .abs();
-    if (diff >= 0.26) return color;
 
-    final bgIsDark = background.computeLuminance() < 0.45;
-    final hsl = HSLColor.fromColor(color);
-
-    return hsl
-        .withLightness(bgIsDark ? 0.72 : 0.32)
-        .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
-        .toColor();
-  }
 
   @override
   void initState() {
@@ -123,6 +112,7 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
     _fornecedorController.text = data['fornecedor'] ?? '';
     _descricaoController.text = data['descricao'] ?? '';
     _codigoBarrasController.text = data['codigo_barras'] ?? '';
+    _corController.text = data['cor']?.toString() ?? '';
     _controlaEstoque = data['controla_estoque'] ?? true;
     _fotoUrl = data['foto_url'];
     _possuiVariacoes = data['possui_variacoes'] ?? false;
@@ -159,6 +149,7 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
     _fornecedorController.dispose();
     _descricaoController.dispose();
     _codigoBarrasController.dispose();
+    _corController.dispose();
     super.dispose();
   }
 
@@ -194,10 +185,10 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
       imagem = CachedNetworkImage(
         imageUrl: _fotoUrl!,
         fit: BoxFit.contain,
-        placeholder: (_, __) => Center(
+        placeholder: (_, _) => Center(
           child: CircularProgressIndicator(color: context.uai.primary),
         ),
-        errorWidget: (_, __, ___) =>
+        errorWidget: (_, _, _) =>
             Icon(Icons.broken_image, size: 80, color: context.uai.textMuted),
       );
     } else {
@@ -231,9 +222,9 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
       return;
     }
 
-    String corHerdada = '';
+    String corHerdada = _corController.text.trim();
     if (_variacoes.isNotEmpty) {
-      corHerdada = _variacoes.last['cor'] ?? '';
+      corHerdada = (_variacoes.last['cor'] ?? corHerdada).toString();
     }
 
     setState(() {
@@ -285,7 +276,7 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
       String? fotoFinal = _fotoUrl;
       if (_fotoArquivo != null) {
         final ref = FirebaseStorage.instance.ref().child(
-          'estoque/${DateTime.now().millisecondsSinceEpoch}.jpg',
+          'uniformes/estoque/${DateTime.now().millisecondsSinceEpoch}.jpg',
         );
         if (kIsWeb) {
           final bytes = await _fotoArquivo!.readAsBytes();
@@ -314,6 +305,7 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
           'fornecedor_id': _fornecedorId,
           'descricao': _descricaoController.text.trim(),
           'codigo_barras': _codigoBarrasController.text.trim(),
+          'cor': _corController.text.trim(),
           'controla_estoque': _controlaEstoque,
           'possui_variacoes': true,
           'variacoes': _variacoes,
@@ -400,6 +392,7 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
           'fornecedor_id': _fornecedorId,
           'descricao': _descricaoController.text.trim(),
           'codigo_barras': _codigoBarrasController.text.trim(),
+          'cor': _corController.text.trim(),
           'controla_estoque': _controlaEstoque,
           'possui_variacoes': false,
           'foto_url': fotoFinal,
@@ -434,12 +427,17 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
           Navigator.pop(context, true);
         }
       }
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('[UNIFORMES_ESTOQUE] erro ao salvar item: $e');
+      debugPrintStack(stackTrace: st);
       if (mounted) {
+        final mensagem = e is FirebaseException && e.plugin == 'firebase_storage'
+            ? 'Não foi possível enviar a foto do item. Verifique sua conexão e tente novamente.'
+            : 'Não foi possível salvar o item agora. Tente novamente.';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '❌ Erro ao salvar: $e',
+              mensagem,
               style: TextStyle(color: _readableOn(context.uai.error)),
             ),
             backgroundColor: context.uai.error,
@@ -607,27 +605,61 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
                         ),
                         if (!_possuiVariacoes) ...[
                           const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _buildTextField(
-                                  controller: _tamanhoController,
-                                  label: 'Tamanho',
-                                  icon: Icons.straighten,
-                                  hint: 'P, M, G, GG, Único',
-                                  capital: true,
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: _buildTextField(
-                                  controller: _codigoBarrasController,
-                                  label: 'Código de Barras',
-                                  icon: Icons.qr_code,
-                                  hint: 'SKU ou código',
-                                ),
-                              ),
-                            ],
+                          LayoutBuilder(
+                            builder: (context, constraints) {
+                              final compacto = constraints.maxWidth < 560;
+                              final tamanho = _buildTextField(
+                                controller: _tamanhoController,
+                                label: 'Tamanho',
+                                icon: Icons.straighten,
+                                hint: 'P, M, G, GG, Único',
+                                capital: true,
+                              );
+                              final cor = _buildTextField(
+                                controller: _corController,
+                                label: 'Cor',
+                                icon: Icons.palette_outlined,
+                                hint: 'Branca, preta, camuflada...',
+                                capital: true,
+                              );
+                              final codigo = _buildTextField(
+                                controller: _codigoBarrasController,
+                                label: 'Código de Barras',
+                                icon: Icons.qr_code,
+                                hint: 'SKU ou código',
+                              );
+
+                              if (compacto) {
+                                return Column(
+                                  children: [
+                                    tamanho,
+                                    const SizedBox(height: 10),
+                                    cor,
+                                    const SizedBox(height: 10),
+                                    codigo,
+                                  ],
+                                );
+                              }
+
+                              return Row(
+                                children: [
+                                  Expanded(child: tamanho),
+                                  const SizedBox(width: 12),
+                                  Expanded(child: cor),
+                                  const SizedBox(width: 12),
+                                  Expanded(child: codigo),
+                                ],
+                              );
+                            },
+                          ),
+                        ] else ...[
+                          const SizedBox(height: 10),
+                          _buildTextField(
+                            controller: _corController,
+                            label: 'Cor padrão / base',
+                            icon: Icons.palette_outlined,
+                            hint: 'Usada como sugestão nas novas variações',
+                            capital: true,
                           ),
                         ],
                       ],
@@ -653,11 +685,10 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
                         label: Text(
                           'Adicionar',
                           style: TextStyle(
-                            color: primario.withOpacity(
+                            color: primario.withAlpha((255.0 * (
                               _variacoes.length < _tamanhosPadrao.length
                                   ? 1.0
-                                  : 0.5,
-                            ),
+                                  : 0.5)).round()),
                           ),
                         ),
                       ),
@@ -710,7 +741,7 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
                                           SizedBox(
                                             width: 90,
                                             child: DropdownButtonFormField<String>(
-                                              value: variacao['tamanho'],
+                                              initialValue: variacao['tamanho'],
                                               style: TextStyle(
                                                 fontSize: 13,
                                                 color: context.uai.textPrimary,
@@ -1016,7 +1047,7 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
                   color: context.uai.textPrimary,
                 ),
               ),
-              if (trailing != null) trailing,
+              ?trailing,
             ],
           ),
           Divider(color: context.uai.border),
@@ -1037,7 +1068,7 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
       onPressed: onPressed,
       style: OutlinedButton.styleFrom(
         foregroundColor: context.uai.primary,
-        side: BorderSide(color: context.uai.primary.withOpacity(0.5)),
+        side: BorderSide(color: context.uai.primary.withAlpha(128)),
         minimumSize: const Size(double.infinity, 44),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(context.uai.buttonRadius),
@@ -1098,7 +1129,7 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
 
   Widget _buildDropdownCategoria() {
     return DropdownButtonFormField<String>(
-      value: _categoriaSelecionada,
+      initialValue: _categoriaSelecionada,
       style: TextStyle(color: context.uai.textPrimary),
       decoration: InputDecoration(
         labelText: 'Categoria *',
@@ -1182,7 +1213,7 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
       ),
       value: value,
       onChanged: onChanged,
-      activeColor: context.uai.primary,
+      activeThumbColor: context.uai.primary,
       contentPadding: EdgeInsets.zero,
     );
   }
@@ -1231,7 +1262,7 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
             fit: BoxFit.cover,
             width: 120,
             height: 120,
-            errorBuilder: (_, __, ___) => Icon(
+            errorBuilder: (_, _, _) => Icon(
               Icons.photo_camera,
               size: 40,
               color: context.uai.textMuted,
@@ -1258,10 +1289,10 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
             image: DecorationImage(image: imageProvider, fit: BoxFit.cover),
           ),
         ),
-        placeholder: (_, __) => Center(
+        placeholder: (_, _) => Center(
           child: CircularProgressIndicator(color: context.uai.primary),
         ),
-        errorWidget: (_, __, ___) =>
+        errorWidget: (_, _, _) =>
             Icon(Icons.photo_camera, size: 40, color: context.uai.textMuted),
       );
     }

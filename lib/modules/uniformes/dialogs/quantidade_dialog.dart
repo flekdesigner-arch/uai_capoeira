@@ -55,7 +55,6 @@ class _QuantidadeDialogState extends State<QuantidadeDialog> {
     final bool isEntrada = widget.titulo.contains('Entrada');
     final Color corAcao = isEntrada ? tema.success : tema.warning;
     final Color corAcaoFg = _readableOn(corAcao);
-    final Color cardBg = tema.card;
     final Color cardAlt = tema.cardAlt;
     final Color border = tema.border;
     final Color textPrimary = tema.textPrimary;
@@ -201,7 +200,7 @@ class _QuantidadeDialogState extends State<QuantidadeDialog> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: tema.success.withOpacity(0.1),
+                color: tema.success.withAlpha(26),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
@@ -233,7 +232,7 @@ class _QuantidadeDialogState extends State<QuantidadeDialog> {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: errorColor.withOpacity(0.1),
+                color: errorColor.withAlpha(26),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(

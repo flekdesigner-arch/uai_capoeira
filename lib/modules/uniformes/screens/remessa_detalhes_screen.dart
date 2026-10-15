@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/uniformes/services/uniformes_service.dart';
 import 'package:uai_capoeira/modules/uniformes/services/remessa_service.dart';
@@ -9,14 +8,21 @@ import 'package:uai_capoeira/modules/uniformes/services/fornecedor_service.dart'
 import 'package:uai_capoeira/modules/uniformes/services/remessa_pdf_service.dart';
 import 'package:uai_capoeira/modules/uniformes/widgets/pedido_card.dart';
 import 'package:uai_capoeira/modules/uniformes/dialogs/pagamento_dialog.dart';
+import 'package:uai_capoeira/modules/uniformes/screens/editar_pedido_screen.dart';
+import 'package:uai_capoeira/modules/uniformes/screens/remessa_form_screen.dart';
 
 class RemessaDetalhesScreen extends StatefulWidget {
   final String remessaId;
   final Map<String, dynamic> remessaData;
+  final bool podeEditar;
+  final bool podeExcluir;
+
   const RemessaDetalhesScreen({
     super.key,
     required this.remessaId,
     required this.remessaData,
+    this.podeEditar = false,
+    this.podeExcluir = false,
   });
 
   @override
@@ -42,19 +48,7 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
         : const Color(0xFFFFFFFF);
   }
 
-  Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance())
-        .abs();
-    if (diff >= 0.26) return color;
 
-    final bgIsDark = background.computeLuminance() < 0.45;
-    final hsl = HSLColor.fromColor(color);
-
-    return hsl
-        .withLightness(bgIsDark ? 0.72 : 0.32)
-        .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
-        .toColor();
-  }
 
   @override
   void initState() {
@@ -92,7 +86,6 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
     final textMuted = context.uai.textMuted;
     final warning = context.uai.warning;
     final error = context.uai.error;
-    final success = context.uai.success;
     final info = context.uai.info;
     final cardBg = context.uai.card;
     final border = context.uai.border;
@@ -119,6 +112,8 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
                   widget.remessaId,
                   data,
                 );
+              } else if (value == 'editar') {
+                _editarRemessa();
               } else if (value == 'alterar_status') {
                 _mostrarAlterarStatus();
               } else if (value == 'finalizar') {
@@ -143,6 +138,14 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
                 ),
               ),
               const PopupMenuDivider(),
+              if (widget.podeEditar)
+                PopupMenuItem(
+                  value: 'editar',
+                  child: Text(
+                    '✏️ Editar remessa',
+                    style: TextStyle(color: textPrimary),
+                  ),
+                ),
               PopupMenuItem(
                 value: 'alterar_status',
                 child: Text(
@@ -157,13 +160,14 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
                   style: TextStyle(color: textPrimary),
                 ),
               ),
-              PopupMenuItem(
-                value: 'excluir',
-                child: Text(
-                  '🗑️ Excluir remessa',
-                  style: TextStyle(color: error),
+              if (widget.podeExcluir)
+                PopupMenuItem(
+                  value: 'excluir',
+                  child: Text(
+                    '🗑️ Excluir remessa',
+                    style: TextStyle(color: error),
+                  ),
                 ),
-              ),
             ],
           ),
         ],
@@ -188,9 +192,9 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
               stream: _remessaService.getPedidosDaRemessa(widget.remessaId),
               builder: (context, snapshot) {
                 if (!snapshot.hasData)
-                  return Center(
+                  { return Center(
                     child: CircularProgressIndicator(color: primary),
-                  );
+                  ); }
                 final pedidos = snapshot.data!.docs;
                 if (pedidos.isEmpty) {
                   return Center(
@@ -200,48 +204,124 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
                     ),
                   );
                 }
-                return ListView.builder(
-                  itemCount: pedidos.length,
-                  itemBuilder: (_, i) {
-                    final pedidoData =
-                        pedidos[i].data() as Map<String, dynamic>;
-                    final bool ehEstoque = pedidoData['tipo_estoque'] == true;
+                return LayoutBuilder(
+                  builder: (context, constraints) {
+                    final width = constraints.maxWidth;
+                    final colunas = width >= 1700
+                        ? 4
+                        : width >= 1250
+                            ? 3
+                            : width >= 900
+                                ? 2
+                                : 1;
 
-                    return Column(
-                      children: [
-                        if (ehEstoque)
+                    Widget buildPedido(QueryDocumentSnapshot pedido) {
+                      final pedidoData =
+                          pedido.data() as Map<String, dynamic>;
+                      final bool ehEstoque =
+                          pedidoData['tipo_estoque'] == true;
+
+                      final card = PedidoCard(
+                        docId: pedido.id,
+                        data: pedidoData,
+                        realFormat: _realFormat,
+                        onMarcarConfeccao: _marcarPedidoComoConfeccao,
+                        onFinalizar: _marcarPedidoComoFinalizado,
+                        onRegistrarPagamento: _registrarPagamentoPedido,
+                        onEditar: widget.podeEditar ? _editarPedido : null,
+                        onExcluir: widget.podeExcluir ? _excluirPedido : null,
+                        podeEditar: widget.podeEditar,
+                        podeExcluir: widget.podeExcluir,
+                        podeRegistrarPagamento: widget.podeEditar,
+                        podeAlterarStatus: widget.podeEditar,
+                        onTap: (id, d) {},
+                      );
+
+                      if (!ehEstoque) return card;
+
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
                           Container(
-                            color: warning.withOpacity(0.1),
-                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            width: double.infinity,
+                            margin: const EdgeInsets.only(bottom: 6),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: warning.withAlpha(26),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
                             child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(
-                                  Icons.inventory_2,
-                                  size: 16,
+                                  Icons.inventory_2_rounded,
+                                  size: 14,
                                   color: warning,
                                 ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  'Item para estoque – será adicionado ao finalizar',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: warning,
+                                const SizedBox(width: 5),
+                                Expanded(
+                                  child: Text(
+                                    'Item para estoque • entra ao finalizar',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: warning,
+                                    ),
                                   ),
                                 ),
                               ],
                             ),
                           ),
-                        PedidoCard(
-                          docId: pedidos[i].id,
-                          data: pedidoData,
-                          realFormat: _realFormat,
-                          onMarcarConfeccao: _marcarPedidoComoConfeccao,
-                          onFinalizar: _marcarPedidoComoFinalizado,
-                          onRegistrarPagamento: _registrarPagamentoPedido,
-                          onTap: (id, d) {},
+                          card,
+                        ],
+                      );
+                    }
+
+                    if (colunas == 1) {
+                      return ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+                        itemCount: pedidos.length,
+                        itemBuilder: (_, i) => buildPedido(pedidos[i]),
+                      );
+                    }
+
+                    const spacing = 12.0;
+                    final maxWidth = width >= 1700
+                        ? 1500.0
+                        : width >= 1250
+                            ? 1220.0
+                            : 920.0;
+                    final contentWidth =
+                        width < maxWidth ? width : maxWidth;
+                    final cardWidth =
+                        (contentWidth -
+                                24 -
+                                (spacing * (colunas - 1))) /
+                            colunas;
+
+                    return SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 20),
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(maxWidth: maxWidth),
+                          child: Wrap(
+                            spacing: spacing,
+                            runSpacing: spacing,
+                            alignment: WrapAlignment.start,
+                            children: pedidos.map((pedido) {
+                              return SizedBox(
+                                width: cardWidth,
+                                child: buildPedido(pedido),
+                              );
+                            }).toList(),
+                          ),
                         ),
-                      ],
+                      ),
                     );
                   },
                 );
@@ -266,59 +346,373 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
     Color error,
     Color info,
   ) {
-    return Container(
-      margin: const EdgeInsets.all(12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: cardBg,
-        borderRadius: BorderRadius.circular(context.uai.cardRadius),
-        border: Border.all(color: border),
-        boxShadow: context.uai.softShadow,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Status: ${data['status']}'.toUpperCase(),
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-              color: textPrimary,
+    final pedidosIds = (data['pedidos_ids'] as List?) ?? const [];
+    final status = (data['status'] ?? 'pendente').toString();
+    final statusColor = switch (status) {
+      'finalizada' => context.uai.success,
+      'em_producao' => info,
+      'cancelada' => error,
+      _ => warning,
+    };
+    final statusLabel = switch (status) {
+      'finalizada' => 'Finalizada',
+      'em_producao' => 'Em produção',
+      'cancelada' => 'Cancelada',
+      _ => 'Pendente',
+    };
+
+    Widget metric({
+      required IconData icon,
+      required String label,
+      required String value,
+      required Color color,
+    }) {
+      return Container(
+        constraints: const BoxConstraints(minWidth: 120),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+        decoration: BoxDecoration(
+          color: cardAlt,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: color.withAlpha(31),
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: Icon(icon, size: 15, color: color),
             ),
-          ),
-          const SizedBox(height: 4),
-          if (data['data_prevista'] != null)
-            Text(
-              'Previsão: ${DateFormat('dd/MM/yyyy').format((data['data_prevista'] as Timestamp).toDate())}',
-              style: TextStyle(color: textSecondary),
-            ),
-          if (_fornecedorNome != null)
-            Row(
-              children: [
-                Icon(Icons.business, size: 16, color: textMuted),
-                const SizedBox(width: 4),
-                Text(
-                  'Fornecedor: $_fornecedorNome',
-                  style: TextStyle(color: textPrimary),
-                ),
-              ],
-            ),
-          if (_carregandoFornecedor)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: LinearProgressIndicator(color: primary),
-            ),
-          if (data['observacoes'] != null &&
-              data['observacoes'].toString().isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                'Obs: ${data['observacoes']}',
-                style: TextStyle(color: textSecondary),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(fontSize: 11, color: textMuted),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    value,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: textPrimary,
+                    ),
+                  ),
+                ],
               ),
             ),
-        ],
-      ),
+          ],
+        ),
+      );
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compacto = constraints.maxWidth < 650;
+
+        Widget compactMetric({
+          required IconData icon,
+          required String label,
+          required String value,
+          required Color color,
+        }) {
+          return Expanded(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              decoration: BoxDecoration(
+                color: cardAlt,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: color.withAlpha(31),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(icon, size: 14, color: color),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 8.8,
+                            color: textMuted,
+                            height: 1.0,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          value,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 10.7,
+                            fontWeight: FontWeight.w900,
+                            color: textPrimary,
+                            height: 1.05,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        if (compacto) {
+          return Container(
+            margin: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: cardBg,
+              borderRadius: BorderRadius.circular(context.uai.cardRadius),
+              border: Border.all(color: border),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        data['nome'] ?? 'Remessa',
+                        maxLines: 1,
+                        softWrap: false,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 16,
+                          color: textPrimary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: statusColor.withAlpha(31),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        statusLabel,
+                        style: TextStyle(
+                          color: statusColor,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 10,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    compactMetric(
+                      icon: Icons.shopping_bag_rounded,
+                      label: 'Pedidos',
+                      value: '${pedidosIds.length}',
+                      color: primary,
+                    ),
+                    const SizedBox(width: 6),
+                    compactMetric(
+                      icon: Icons.event_available_rounded,
+                      label: 'Previsão',
+                      value: data['data_prevista'] != null
+                          ? DateFormat('dd/MM/yyyy').format(
+                              (data['data_prevista'] as Timestamp).toDate(),
+                            )
+                          : 'Não informada',
+                      color: info,
+                    ),
+                    const SizedBox(width: 6),
+                    compactMetric(
+                      icon: Icons.business_rounded,
+                      label: 'Fornecedor',
+                      value: _carregandoFornecedor
+                          ? '...'
+                          : (_fornecedorNome ?? 'Não informado'),
+                      color: warning,
+                    ),
+                  ],
+                ),
+                if (_carregandoFornecedor) ...[
+                  const SizedBox(height: 6),
+                  LinearProgressIndicator(
+                    minHeight: 2,
+                    color: primary,
+                  ),
+                ],
+                if (data['observacoes'] != null &&
+                    data['observacoes'].toString().isNotEmpty) ...[
+                  const SizedBox(height: 7),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.sticky_note_2_rounded,
+                        size: 14,
+                        color: textMuted,
+                      ),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Text(
+                          data['observacoes'].toString(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: textSecondary,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          );
+        }
+
+        return Container(
+          margin: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: BorderRadius.circular(context.uai.cardRadius),
+            border: Border.all(color: border),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                flex: 3,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      data['nome'] ?? 'Remessa',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 20,
+                        color: textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: statusColor.withAlpha(31),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.flag_circle_rounded,
+                                size: 14,
+                                color: statusColor,
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                statusLabel,
+                                style: TextStyle(
+                                  color: statusColor,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (data['observacoes'] != null &&
+                            data['observacoes'].toString().isNotEmpty) ...[
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              data['observacoes'].toString(),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: textSecondary,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                flex: 5,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: metric(
+                        icon: Icons.shopping_bag_rounded,
+                        label: 'Pedidos vinculados',
+                        value: '${pedidosIds.length}',
+                        color: primary,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: metric(
+                        icon: Icons.event_available_rounded,
+                        label: 'Previsão',
+                        value: data['data_prevista'] != null
+                            ? DateFormat('dd/MM/yyyy').format(
+                                (data['data_prevista'] as Timestamp).toDate(),
+                              )
+                            : 'Não informada',
+                        color: info,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: metric(
+                        icon: Icons.business_rounded,
+                        label: 'Fornecedor',
+                        value: _carregandoFornecedor
+                            ? 'Carregando...'
+                            : (_fornecedorNome ?? 'Não informado'),
+                        color: warning,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -332,7 +726,7 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
     final pedidosAluno = <QueryDocumentSnapshot>[];
     final pedidosEstoque = <QueryDocumentSnapshot>[];
     for (var doc in todosPedidos.docs) {
-      final data = doc.data() as Map<String, dynamic>;
+      final data = doc.data();
       if (data['tipo_estoque'] == true) {
         pedidosEstoque.add(doc);
       } else {
@@ -503,7 +897,7 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
                 style: TextStyle(color: context.uai.textPrimary),
               ),
               content: DropdownButtonFormField<String>(
-                value: novoStatus,
+                initialValue: novoStatus,
                 style: TextStyle(color: context.uai.textPrimary),
                 decoration: InputDecoration(
                   filled: true,
@@ -623,10 +1017,10 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
         .get();
     bool todosOk = pedidos.docs
         .where(
-          (doc) => (doc.data() as Map<String, dynamic>)['tipo_estoque'] != true,
+          (doc) => (doc.data())['tipo_estoque'] != true,
         )
         .every((doc) {
-          final d = doc.data() as Map<String, dynamic>;
+          final d = doc.data();
           return d['status'] == 'finalizado' && d['status_pagamento'] == 'pago';
         });
     if (!todosOk) {
@@ -760,7 +1154,132 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
     }
   }
 
-  Future<void> _registrarPagamentoPedido(
+    Future<void> _editarRemessa() async {
+    if (!widget.podeEditar) return;
+
+    final doc = await FirebaseFirestore.instance
+        .collection('remessas')
+        .doc(widget.remessaId)
+        .get();
+
+    final atual = doc.data() ?? widget.remessaData;
+
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RemessaFormScreen(
+          remessaId: widget.remessaId,
+          remessaData: atual,
+        ),
+      ),
+    );
+
+    if (result == true && mounted) {
+      Navigator.pop(context, true);
+    }
+  }
+
+  Future<void> _editarPedido(
+    String docId,
+    Map<String, dynamic> data,
+  ) async {
+    if (!widget.podeEditar) return;
+
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EditarPedidoScreen(
+          pedidoId: docId,
+          pedidoData: data,
+        ),
+      ),
+    );
+
+    if (result == true && mounted) {
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Pedido atualizado!',
+            style: TextStyle(color: _readableOn(context.uai.success)),
+          ),
+          backgroundColor: context.uai.success,
+        ),
+      );
+    }
+  }
+
+  Future<void> _excluirPedido(
+    String docId,
+    Map<String, dynamic> data,
+  ) async {
+    if (!widget.podeExcluir) return;
+
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          'Excluir pedido',
+          style: TextStyle(color: context.uai.textPrimary),
+        ),
+        content: Text(
+          'Excluir definitivamente o pedido de '
+          '${data['aluno_nome'] ?? 'aluno não identificado'}?',
+          style: TextStyle(color: context.uai.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: context.uai.error,
+              foregroundColor: _readableOn(context.uai.error),
+            ),
+            child: const Text('Excluir'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmar != true) return;
+
+    try {
+      await _remessaService.excluirPedidoDefinitivamente(
+        docId,
+        remessaId: widget.remessaId,
+      );
+
+      if (mounted) {
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Pedido excluído.',
+              style: TextStyle(color: _readableOn(context.uai.success)),
+            ),
+            backgroundColor: context.uai.success,
+          ),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Não foi possível excluir o pedido agora.',
+              style: TextStyle(color: _readableOn(context.uai.error)),
+            ),
+            backgroundColor: context.uai.error,
+          ),
+        );
+      }
+    }
+  }
+
+Future<void> _registrarPagamentoPedido(
     String docId,
     Map<String, dynamic> data,
   ) async {

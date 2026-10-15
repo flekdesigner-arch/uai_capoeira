@@ -8,6 +8,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'editar_usuario_screen.dart';
 import 'usuario_admin_access.dart';
 import 'usuario_permissoes_screen.dart';
+import 'usuario_historico_screen.dart';
+import '../../sistema/admin/session_intelligence_screen.dart';
+import '../services/usuario_auditoria_service.dart';
 
 class UsuarioDetalheScreen extends StatefulWidget {
   final String userId;
@@ -253,6 +256,13 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
           .doc('configuracoes');
 
       await docRef.set(permissoes, SetOptions(merge: true));
+      await UsuarioAuditoriaService.registrar(
+        userId: widget.userId,
+        tipo: 'permissoes',
+        titulo: 'Permissões atualizadas',
+        descricao: 'Permissões alteradas pela tela de detalhes do usuário.',
+        detalhes: {'total_campos_recebidos': permissoes.length},
+      );
       _log('✅ Comando set executado com sucesso!');
 
       if (context.mounted) {
@@ -352,6 +362,7 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
     _log('ABRINDO DIÁLOGO DE PERMISSÕES');
 
     final permissoesAtuais = await _carregarPermissoes();
+    if (!context.mounted) return;
     _log('Permissões atuais carregadas:', dados: permissoesAtuais);
 
     // Agrupa permissões por categoria
@@ -527,13 +538,14 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
 
     Color getCorCategoria(String categoria) {
       if (categoria == PermissionCatalog.categoryVisibility)
-        return t.associacao;
+        { return t.associacao; }
       if (categoria == PermissionCatalog.categoryStudents) return t.uniformes;
       if (categoria.contains('CHAMADA')) return t.warning;
       if (categoria.contains('GERAL')) return t.inscricoes;
       if (categoria.contains('PARTICIPANTES')) return t.info;
       if (categoria.contains('PAGAMENTOS')) return t.warning;
       if (categoria.contains('FINANCEIRO')) return t.success;
+      if (categoria == PermissionCatalog.categoryCertificates) return t.inscricoes;
       if (categoria == PermissionCatalog.categoryUsers) return t.error;
       if (categoria == PermissionCatalog.categoryUniforms) return t.accent;
       if (categoria == PermissionCatalog.categoryDashboardTurma) return t.info;
@@ -550,7 +562,7 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
       if (categoria.contains('PAGAMENTOS')) return Icons.add_card_rounded;
       if (categoria.contains('FINANCEIRO')) return Icons.payments_rounded;
       if (categoria == PermissionCatalog.categoryStudents)
-        return Icons.people_rounded;
+        { return Icons.people_rounded; }
       if (categoria.contains('CHAMADA')) return Icons.fact_check_rounded;
       if (categoria == PermissionCatalog.categoryUsers) {
         return Icons.admin_panel_settings_rounded;
@@ -587,9 +599,9 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
                 Container(
                   padding: const EdgeInsets.all(7),
                   decoration: BoxDecoration(
-                    color: corCategoria.withOpacity(0.12),
+                    color: corCategoria.withAlpha(31),
                     borderRadius: BorderRadius.circular(t.buttonRadius),
-                    border: Border.all(color: corCategoria.withOpacity(0.20)),
+                    border: Border.all(color: corCategoria.withAlpha(51)),
                   ),
                   child: Icon(
                     getIconCategoria(categoria),
@@ -639,12 +651,12 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
                           ),
                           decoration: BoxDecoration(
                             color: marcado
-                                ? corCategoria.withOpacity(0.13)
-                                : t.cardAlt.withOpacity(0.55),
+                                ? corCategoria.withAlpha(33)
+                                : t.cardAlt.withAlpha(140),
                             borderRadius: BorderRadius.circular(t.buttonRadius),
                             border: Border.all(
                               color: marcado
-                                  ? corCategoria.withOpacity(0.35)
+                                  ? corCategoria.withAlpha(89)
                                   : t.border,
                             ),
                           ),
@@ -725,6 +737,8 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
         return 'Eventos — Pagamentos';
       case PermissionCatalog.categoryEventsFinancial:
         return 'Eventos — Financeiro';
+      case PermissionCatalog.categoryCertificates:
+        return 'Certificados';
       case PermissionCatalog.categoryAttendance:
         return 'Chamada / Avaliações';
       case PermissionCatalog.categoryUsers:
@@ -843,8 +857,8 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
                             ),
                             decoration: BoxDecoration(
                               color: e.value == true
-                                  ? context.uai.success.withOpacity(0.16)
-                                  : context.uai.error.withOpacity(0.16),
+                                  ? context.uai.success.withAlpha(41)
+                                  : context.uai.error.withAlpha(41),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
@@ -861,7 +875,7 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
                       ),
                     ),
                   )
-                  .toList(),
+                  ,
             ],
           ),
         ),
@@ -896,12 +910,12 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
           return buildAcessoNegadoGestaoUsuarios(context);
         }
 
-        return _buildConteudoAutorizado(context);
+        return _buildConteudoAutorizado(context, access);
       },
     );
   }
 
-  Widget _buildConteudoAutorizado(BuildContext context) {
+  Widget _buildConteudoAutorizado(BuildContext context, UsuarioAdminAccess access) {
     return Scaffold(
       backgroundColor: context.uai.background,
       appBar: AppBar(
@@ -921,6 +935,28 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
             ),
         elevation: 0,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.history_rounded),
+            onPressed: () async {
+              final snap = await FirebaseFirestore.instance
+                  .collection('usuarios')
+                  .doc(widget.userId)
+                  .get();
+              if (!context.mounted) return;
+              final data = snap.data() ?? <String, dynamic>{};
+              final nome = (data['nome_completo'] ?? data['name'] ?? 'Usuário').toString();
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => UsuarioHistoricoScreen(
+                    userId: widget.userId,
+                    nomeUsuario: nome,
+                  ),
+                ),
+              );
+            },
+            tooltip: 'Histórico administrativo',
+          ),
           IconButton(
             icon: const Icon(Icons.bug_report_rounded),
             onPressed: () => _diagnosticarPermissoesCompleto(context),
@@ -974,11 +1010,33 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
           final aprovadoEm = data['aprovado_em'] as Timestamp?;
           final aprovadoPor = data['aprovado_por'] as String?;
           final aprovadoPorNome = data['aprovado_por_nome'] as String?;
+          final acessoGestao = data['acesso_gestao'] == true ||
+              statusConta.toString().toLowerCase() == 'ativa' ||
+              aprovadoEm != null ||
+              pesoPermissao > 0;
+          final acessoAreaAluno = data['acesso_area_aluno'] == true ||
+              data['identificado_area_aluno'] == true ||
+              const ['area_aluno', 'gestao_area_aluno'].contains(
+                (data['contexto_conta'] ?? '').toString().toLowerCase(),
+              );
+          final origemCadastro =
+              (data['origem_cadastro'] ?? 'Não informada').toString();
+          final contextoConta =
+              (data['contexto_conta'] ?? (acessoGestao ? 'gestao' : 'indefinido'))
+                  .toString();
+          final origemAreaAluno =
+              (data['identificacao_area_aluno_origem'] ?? '').toString();
+          final predefinicaoNome =
+              (data['predefinicao_permissoes_nome'] ?? '').toString();
+          final ultimoAcessoOrigem =
+              (data['ultimo_acesso_origem'] ?? '').toString();
+          final ultimoAcessoApp =
+              (data['ultimo_acesso_app'] ?? '').toString();
 
           return LayoutBuilder(
             builder: (context, constraints) {
-              final compact = constraints.maxWidth < 620;
-              final wide = constraints.maxWidth >= 960;
+              final compact = constraints.maxWidth < 720;
+              final wide = constraints.maxWidth >= 900;
 
               return SingleChildScrollView(
                 padding: EdgeInsets.fromLTRB(
@@ -989,7 +1047,7 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
                 ),
                 child: Center(
                   child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 1120),
+                    constraints: const BoxConstraints(maxWidth: 1200),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -1011,7 +1069,48 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
                           statusConta: statusConta.toString(),
                           pesoPermissao: pesoPermissao,
                         ),
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => SessionIntelligenceScreen(
+                                userId: widget.userId,
+                                userName: nomeCompleto.toString(),
+                              ),
+                            ),
+                          ),
+                          icon: const Icon(Icons.route_rounded),
+                          label: const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 14),
+                            child: Text('HISTÓRICO DE NAVEGAÇÃO'),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: context.uai.info,
+                            side: BorderSide(color: context.uai.info.withAlpha(102)),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          ),
+                        ),
                         const SizedBox(height: 14),
+                        _buildIdentityAccessCard(
+                          acessoGestao: acessoGestao,
+                          acessoAreaAluno: acessoAreaAluno,
+                          origemCadastro: origemCadastro,
+                          contextoConta: contextoConta,
+                          origemAreaAluno: origemAreaAluno,
+                          email: email.toString(),
+                        ),
+                        const SizedBox(height: 14),
+                        if (predefinicaoNome.isNotEmpty ||
+                            ultimoAcessoOrigem.isNotEmpty ||
+                            ultimoAcessoApp.isNotEmpty) ...[
+                          _buildTechnicalContextCard(
+                            predefinicaoNome: predefinicaoNome,
+                            ultimoAcessoOrigem: ultimoAcessoOrigem,
+                            ultimoAcessoApp: ultimoAcessoApp,
+                          ),
+                          const SizedBox(height: 14),
+                        ],
                         if (wide)
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1125,9 +1224,9 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
             width: compact ? 94 : 118,
             height: compact ? 94 : 118,
             decoration: BoxDecoration(
-              color: onPrimary.withOpacity(0.14),
+              color: onPrimary.withAlpha(36),
               borderRadius: BorderRadius.circular(compact ? 32 : 40),
-              border: Border.all(color: onPrimary.withOpacity(0.20), width: 2),
+              border: Border.all(color: onPrimary.withAlpha(51), width: 2),
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(compact ? 30 : 38),
@@ -1182,7 +1281,7 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
                 email,
                 textAlign: narrow ? TextAlign.center : TextAlign.left,
                 style: TextStyle(
-                  color: onPrimary.withOpacity(0.82),
+                  color: onPrimary.withAlpha(209),
                   fontSize: compact ? 12.5 : 14,
                   fontWeight: FontWeight.w600,
                 ),
@@ -1214,9 +1313,9 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
                 width: 56,
                 height: 56,
                 decoration: BoxDecoration(
-                  color: tipoColor.withOpacity(0.18),
+                  color: tipoColor.withAlpha(46),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: statusColor.withOpacity(0.22)),
+                  border: Border.all(color: statusColor.withAlpha(56)),
                 ),
                 child: Icon(_getTipoIcon(tipo), color: onPrimary, size: 30),
               ),
@@ -1228,15 +1327,14 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
   }
 
   Widget _whiteChip(IconData icon, String label) {
-    final t = context.uai;
     final onPrimary = _onHeroGradient();
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: onPrimary.withOpacity(0.14),
+        color: onPrimary.withAlpha(36),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: onPrimary.withOpacity(0.16)),
+        border: Border.all(color: onPrimary.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1335,7 +1433,7 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
           label: const Text('DIAGNÓSTICO'),
           style: OutlinedButton.styleFrom(
             foregroundColor: t.info,
-            side: BorderSide(color: t.info.withOpacity(0.25)),
+            side: BorderSide(color: t.info.withAlpha(64)),
             padding: const EdgeInsets.symmetric(vertical: 13),
             textStyle: const TextStyle(fontWeight: FontWeight.w900),
             shape: RoundedRectangleBorder(
@@ -1384,9 +1482,9 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.09),
+            color: color.withAlpha(23),
             borderRadius: BorderRadius.circular(99),
-            border: Border.all(color: color.withOpacity(0.20)),
+            border: Border.all(color: color.withAlpha(51)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -1423,12 +1521,12 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [color.withOpacity(0.08), color.withOpacity(0.14)],
+                colors: [color.withAlpha(20), color.withAlpha(36)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: color.withOpacity(0.14)),
+              border: Border.all(color: color.withAlpha(36)),
             ),
             child: Row(
               children: [
@@ -1574,6 +1672,389 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
     );
   }
 
+  Future<List<Map<String, dynamic>>> _carregarAlunosVinculados(
+    String email,
+  ) async {
+    final encontrados = <String, Map<String, dynamic>>{};
+
+    Future<void> absorver(
+      Future<QuerySnapshot<Map<String, dynamic>>> consulta,
+    ) async {
+      try {
+        final snap = await consulta;
+        for (final doc in snap.docs) {
+          encontrados[doc.id] = {'id': doc.id, ...doc.data()};
+        }
+      } catch (e) {
+        _log('Falha ao consultar vínculo da Área do Aluno', dados: e);
+      }
+    }
+
+    await absorver(
+      FirebaseFirestore.instance
+          .collection('alunos')
+          .where('areaAlunoGoogleUid', isEqualTo: widget.userId)
+          .get(),
+    );
+
+    final emailLimpo = email.trim().toLowerCase();
+    if (emailLimpo.isNotEmpty && emailLimpo != 'email não informado') {
+      await absorver(
+        FirebaseFirestore.instance
+            .collection('alunos')
+            .where('areaAlunoGoogleEmail', isEqualTo: emailLimpo)
+            .get(),
+      );
+    }
+
+    return encontrados.values.toList();
+  }
+
+  String _rotuloContextoConta(String contexto) {
+    switch (contexto.trim().toLowerCase()) {
+      case 'gestao_area_aluno':
+        return 'Gestão + Área do Aluno';
+      case 'area_aluno':
+        return 'Somente Área do Aluno';
+      case 'gestao':
+        return 'Somente gestão';
+      default:
+        return 'Não classificada';
+    }
+  }
+
+  String _rotuloOrigem(String origem) {
+    final valor = origem.trim().toLowerCase();
+    switch (valor) {
+      case 'google':
+      case 'google_sign_in':
+        return 'Conta Google';
+      case 'email':
+      case 'email_senha':
+        return 'E-mail e senha';
+      case 'vinculo_aluno_uid':
+        return 'Vínculo detectado pelo UID do aluno';
+      case 'vinculo_aluno_email':
+        return 'Vínculo detectado pelo e-mail do aluno';
+      case 'marcacao_manual_admin':
+        return 'Marcado manualmente pela administração';
+      case 'vinculo_detectado':
+        return 'Vínculo detectado automaticamente';
+      case 'nao informada':
+      case '':
+        return 'Não informada';
+      default:
+        return origem.replaceAll('_', ' ');
+    }
+  }
+
+  Widget _accessBadge({
+    required bool ativo,
+    required String label,
+    required IconData icon,
+    required Color color,
+  }) {
+    final badgeColor = ativo ? color : context.uai.textMuted;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: badgeColor.withAlpha(ativo ? 26 : 15),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: badgeColor.withAlpha(46)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            ativo ? Icons.check_circle_rounded : Icons.cancel_outlined,
+            color: badgeColor,
+            size: 17,
+          ),
+          const SizedBox(width: 7),
+          Icon(icon, color: badgeColor, size: 17),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              color: badgeColor,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildIdentityAccessCard({
+    required bool acessoGestao,
+    required bool acessoAreaAluno,
+    required String origemCadastro,
+    required String contextoConta,
+    required String origemAreaAluno,
+    required String email,
+  }) {
+    final hibrida = acessoGestao && acessoAreaAluno;
+    final destaque = hibrida
+        ? context.uai.success
+        : acessoGestao
+        ? context.uai.info
+        : context.uai.associacao;
+
+    return _premiumCard(
+      title: 'Identidade e acessos',
+      icon: Icons.badge_rounded,
+      color: destaque,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: destaque.withAlpha(20),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: destaque.withAlpha(41)),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  hibrida
+                      ? Icons.hub_rounded
+                      : acessoGestao
+                      ? Icons.admin_panel_settings_rounded
+                      : Icons.school_rounded,
+                  color: destaque,
+                  size: 30,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        hibrida
+                            ? 'Conta híbrida'
+                            : _rotuloContextoConta(contextoConta),
+                        style: TextStyle(
+                          color: destaque,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        hibrida
+                            ? 'Esta mesma identidade pode entrar na gestão e também na Área do Aluno.'
+                            : 'Os acessos são tratados de forma independente pelo sistema.',
+                        style: TextStyle(
+                          color: context.uai.textSecondary,
+                          fontSize: 12.5,
+                          height: 1.35,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _accessBadge(
+                ativo: acessoGestao,
+                label: acessoGestao ? 'Gestão liberada' : 'Sem gestão',
+                icon: Icons.admin_panel_settings_rounded,
+                color: context.uai.info,
+              ),
+              _accessBadge(
+                ativo: acessoAreaAluno,
+                label: acessoAreaAluno
+                    ? 'Área do Aluno vinculada'
+                    : 'Sem Área do Aluno',
+                icon: Icons.school_rounded,
+                color: context.uai.success,
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _infoLine(
+            Icons.account_tree_rounded,
+            'Contexto da conta',
+            _rotuloContextoConta(contextoConta),
+          ),
+          Divider(height: 20, color: context.uai.border),
+          _infoLine(
+            Icons.login_rounded,
+            'Origem do cadastro',
+            _rotuloOrigem(origemCadastro),
+          ),
+          if (origemAreaAluno.trim().isNotEmpty) ...[
+            Divider(height: 20, color: context.uai.border),
+            _infoLine(
+              Icons.link_rounded,
+              'Como o vínculo de aluno foi identificado',
+              _rotuloOrigem(origemAreaAluno),
+            ),
+          ],
+          if (acessoAreaAluno) ...[
+            Divider(height: 20, color: context.uai.border),
+            FutureBuilder<List<Map<String, dynamic>>>(
+              future: _carregarAlunosVinculados(email),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return Row(
+                    children: [
+                      SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: destaque,
+                        ),
+                      ),
+                      const SizedBox(width: 9),
+                      Text(
+                        'Localizando aluno(s) vinculado(s)...',
+                        style: TextStyle(
+                          color: context.uai.textSecondary,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  );
+                }
+
+                final alunos = snapshot.data ?? const <Map<String, dynamic>>[];
+                if (alunos.isEmpty) {
+                  return _infoLine(
+                    Icons.warning_amber_rounded,
+                    'Aluno vinculado',
+                    'Vínculo de acesso registrado, mas nenhum cadastro de aluno foi localizado por UID/e-mail.',
+                  );
+                }
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      alunos.length == 1
+                          ? 'ALUNO VINCULADO'
+                          : '${alunos.length} ALUNOS VINCULADOS',
+                      style: TextStyle(
+                        color: destaque,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: .5,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    ...alunos.map((aluno) {
+                      final nome = (aluno['nome_completo'] ??
+                              aluno['nome'] ??
+                              aluno['nomeAluno'] ??
+                              'Aluno sem nome')
+                          .toString();
+                      final academia = (aluno['academia_nome'] ??
+                              aluno['academia'] ??
+                              aluno['unidade'] ??
+                              '')
+                          .toString();
+                      return Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(bottom: 7),
+                        padding: const EdgeInsets.all(11),
+                        decoration: BoxDecoration(
+                          color: context.uai.background.withAlpha(115),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: context.uai.border),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.person_rounded, color: destaque, size: 21),
+                            const SizedBox(width: 9),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    nome,
+                                    style: TextStyle(
+                                      color: context.uai.textPrimary,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                  if (academia.trim().isNotEmpty)
+                                    Text(
+                                      academia,
+                                      style: TextStyle(
+                                        color: context.uai.textSecondary,
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                  ],
+                );
+              },
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTechnicalContextCard({
+    required String predefinicaoNome,
+    required String ultimoAcessoOrigem,
+    required String ultimoAcessoApp,
+  }) {
+    return _premiumCard(
+      title: 'Contexto operacional',
+      icon: Icons.tune_rounded,
+      color: context.uai.associacao,
+      child: Column(
+        children: [
+          if (predefinicaoNome.isNotEmpty)
+            _infoLine(
+              Icons.auto_awesome_rounded,
+              'Predefinição aplicada',
+              predefinicaoNome,
+            ),
+          if (predefinicaoNome.isNotEmpty &&
+              (ultimoAcessoOrigem.isNotEmpty || ultimoAcessoApp.isNotEmpty))
+            Divider(height: 20, color: context.uai.border),
+          if (ultimoAcessoApp.isNotEmpty)
+            _infoLine(
+              Icons.apps_rounded,
+              'Último contexto de acesso',
+              _rotuloOrigem(ultimoAcessoApp),
+            ),
+          if (ultimoAcessoApp.isNotEmpty && ultimoAcessoOrigem.isNotEmpty)
+            Divider(height: 20, color: context.uai.border),
+          if (ultimoAcessoOrigem.isNotEmpty)
+            _infoLine(
+              Icons.route_rounded,
+              'Origem do último acesso',
+              _rotuloOrigem(ultimoAcessoOrigem),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildIdCard() {
     return _premiumCard(
       title: 'Identificação',
@@ -1618,7 +2099,7 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
       decoration: BoxDecoration(
         color: t.card,
         borderRadius: BorderRadius.circular(t.cardRadius),
-        border: Border.all(color: color.withOpacity(0.18)),
+        border: Border.all(color: color.withAlpha(46)),
         boxShadow: t.softShadow,
       ),
       child: Column(
@@ -1643,9 +2124,9 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
           width: 38,
           height: 38,
           decoration: BoxDecoration(
-            color: color.withOpacity(0.08),
+            color: color.withAlpha(20),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: color.withOpacity(0.14)),
+            border: Border.all(color: color.withAlpha(36)),
           ),
           child: Icon(icon, color: color, size: 21),
         ),
@@ -1774,9 +2255,9 @@ class _UsuarioDetalheScreenState extends State<UsuarioDetalheScreen> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
+            color: color.withAlpha(26),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: color.withOpacity(0.3)),
+            border: Border.all(color: color.withAlpha(77)),
           ),
           child: Text(
             value,

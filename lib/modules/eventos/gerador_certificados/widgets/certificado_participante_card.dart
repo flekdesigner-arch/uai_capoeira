@@ -11,12 +11,16 @@ class CertificadoParticipanteCard extends StatelessWidget {
   final bool processando;
   final bool compacto;
   final ValueChanged<bool>? onSelecionar;
+  final VoidCallback? onUploadPdf;
   final VoidCallback? onPreview;
   final VoidCallback? onGerarPdf;
   final VoidCallback? onGerarPng;
   final VoidCallback? onImprimir;
   final VoidCallback? onCompartilhar;
   final VoidCallback? onMarcarImpresso;
+  final VoidCallback? onEmitirV2;
+  final VoidCallback? onAbrirValidador;
+  final VoidCallback? onCopiarLink;
 
   const CertificadoParticipanteCard({
     super.key,
@@ -26,12 +30,16 @@ class CertificadoParticipanteCard extends StatelessWidget {
     this.processando = false,
     this.compacto = false,
     this.onSelecionar,
+    this.onUploadPdf,
     this.onPreview,
     this.onGerarPdf,
     this.onGerarPng,
     this.onImprimir,
     this.onCompartilhar,
     this.onMarcarImpresso,
+    this.onEmitirV2,
+    this.onAbrirValidador,
+    this.onCopiarLink,
   });
 
   Color _readableOn(Color background) {
@@ -76,17 +84,17 @@ class CertificadoParticipanteCard extends StatelessWidget {
     final t = context.uai;
 
     final template = participante.tipoTemplate(evento);
-    final templateLabel = _templateLabel(template);
+    final templateLabel = participante.pdfImportado ? 'PDF importado' : evento.exigePdfIndividual ? 'PDF individual' : _templateLabel(template);
     final accent = _ensureVisible(_hexToColor(participante.cor1), t.card);
     final borderColor = selecionado
-        ? accent.withOpacity(0.38)
+        ? accent.withAlpha(97)
         : participante.temCertificadoGerado
-        ? _ensureVisible(t.success, t.card).withOpacity(0.24)
+        ? _ensureVisible(t.success, t.card).withAlpha(61)
         : t.border;
 
     return Material(
       color: selecionado
-          ? Color.alphaBlend(accent.withOpacity(0.08), t.card)
+          ? Color.alphaBlend(accent.withAlpha(20), t.card)
           : t.card,
       borderRadius: BorderRadius.circular(t.cardRadius),
       clipBehavior: Clip.antiAlias,
@@ -145,7 +153,7 @@ class CertificadoParticipanteCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(t.buttonRadius),
             boxShadow: [
               BoxShadow(
-                color: accent.withOpacity(0.18),
+                color: accent.withAlpha(46),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               ),
@@ -259,34 +267,77 @@ class CertificadoParticipanteCard extends StatelessWidget {
   Widget _buildStatusRow(BuildContext context) {
     final t = context.uai;
 
+    final oficialV2 = participante.temEmissaoOficialV2NoEvento(evento);
+    final statusEvento = participante.statusEmissaoV2NoEvento(evento);
+    final processandoV2 = const {'preparando', 'gerando', 'publicando'}.contains(statusEvento);
+    final erroV2 = statusEvento == 'erro';
     final gerado = participante.temCertificadoGerado;
-    final statusColor = _ensureVisible(gerado ? t.success : t.warning, t.card);
+    final statusColor = _ensureVisible(
+      oficialV2
+          ? t.info
+          : erroV2
+              ? t.error
+              : processandoV2
+                  ? t.warning
+                  : (gerado ? t.success : t.warning),
+      t.card,
+    );
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(statusColor.withOpacity(0.08), t.cardAlt),
+        color: Color.alphaBlend(statusColor.withAlpha(20), t.cardAlt),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: statusColor.withOpacity(0.16)),
+        border: Border.all(color: statusColor.withAlpha(41)),
       ),
       child: Row(
         children: [
           Icon(
-            gerado ? Icons.verified_rounded : Icons.hourglass_empty_rounded,
+            oficialV2
+                ? Icons.verified_user_rounded
+                : erroV2
+                    ? Icons.error_outline_rounded
+                    : processandoV2
+                        ? Icons.sync_rounded
+                        : (gerado
+                            ? Icons.verified_rounded
+                            : Icons.hourglass_empty_rounded),
             color: statusColor,
             size: 18,
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(
-              gerado
-                  ? 'Certificado gerado e vinculado à participação'
-                  : 'Certificado ainda não gerado',
-              style: TextStyle(
-                color: statusColor,
-                fontSize: 11.8,
-                fontWeight: FontWeight.w800,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  oficialV2
+                      ? 'CERTIFICADO OFICIAL • autenticidade ativa'
+                      : erroV2
+                          ? 'Emissão interrompida • pode tentar novamente'
+                          : processandoV2
+                              ? 'Emitindo certificado oficial • ${participante.statusEmissaoV2NoEvento(evento)}'
+                              : gerado
+                                  ? 'PDF gerado • ainda não é certificado oficial'
+                                  : 'Certificado ainda não gerado',
+                  style: TextStyle(
+                    color: statusColor,
+                    fontSize: 11.8,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                if (oficialV2 && participante.codigoValidacaoNoEvento(evento).isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    participante.codigoValidacaoNoEvento(evento),
+                    style: TextStyle(
+                      color: t.textSecondary,
+                      fontSize: 10.8,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
           if (participante.certificadoAtualizadoEm != null) ...[
@@ -313,7 +364,34 @@ class CertificadoParticipanteCard extends StatelessWidget {
       builder: (context, constraints) {
         final compactActions = constraints.maxWidth < 560;
 
+        final officialActions = <Widget>[
+          if (participante.temEmissaoOficialV2NoEvento(evento)) ...[
+            _action(
+              context,
+              icon: Icons.open_in_new_rounded,
+              label: 'Validador',
+              color: t.info,
+              onTap: onAbrirValidador,
+            ),
+            _action(
+              context,
+              icon: Icons.link_rounded,
+              label: 'Copiar link',
+              color: t.success,
+              onTap: onCopiarLink,
+            ),
+          ] else if (onEmitirV2 != null)
+            _action(
+              context,
+              icon: Icons.verified_user_rounded,
+              label: 'Emitir V2',
+              color: t.info,
+              onTap: onEmitirV2,
+            ),
+        ];
+
         final actions = [
+          if (onUploadPdf != null) _action(context, icon: Icons.upload_file_rounded, label: 'Enviar PDF', color: primary, onTap: onUploadPdf),
           _action(
             context,
             icon: Icons.visibility_rounded,
@@ -328,7 +406,7 @@ class CertificadoParticipanteCard extends StatelessWidget {
             color: t.error,
             onTap: onGerarPdf,
           ),
-          _action(
+          if (!evento.exigePdfIndividual && !participante.pdfImportado) _action(
             context,
             icon: Icons.image_rounded,
             label: 'PNG',
@@ -359,11 +437,11 @@ class CertificadoParticipanteCard extends StatelessWidget {
         ];
 
         if (compactActions) {
-          return Wrap(spacing: 7, runSpacing: 7, children: actions);
+          return Wrap(spacing: 7, runSpacing: 7, children: [...officialActions, ...actions]);
         }
 
         return Row(
-          children: actions
+          children: [...officialActions, ...actions]
               .map(
                 (item) => Expanded(
                   child: Padding(
@@ -398,7 +476,7 @@ class CertificadoParticipanteCard extends StatelessWidget {
           foregroundColor: accent,
           disabledForegroundColor: t.textMuted,
           side: BorderSide(
-            color: onTap == null ? t.border : accent.withOpacity(0.22),
+            color: onTap == null ? t.border : accent.withAlpha(56),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 8),
           textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900),
@@ -422,9 +500,9 @@ class CertificadoParticipanteCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), t.cardAlt),
+        color: Color.alphaBlend(accent.withAlpha(20), t.cardAlt),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: accent.withOpacity(0.14)),
+        border: Border.all(color: accent.withAlpha(36)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

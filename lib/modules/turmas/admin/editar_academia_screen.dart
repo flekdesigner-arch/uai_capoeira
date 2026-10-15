@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'widgets/premium_user_selector_dialog.dart';
 
 class EditarAcademiaScreen extends StatefulWidget {
   final String? academiaId;
@@ -32,6 +33,8 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
   final TextEditingController _nomeController = TextEditingController();
   final TextEditingController _cidadeController = TextEditingController();
   final TextEditingController _enderecoController = TextEditingController();
+  final TextEditingController _referenciaLocalController = TextEditingController();
+  final TextEditingController _googleMapsUrlController = TextEditingController();
   final TextEditingController _telefoneController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _whatsappController = TextEditingController();
@@ -111,6 +114,8 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
     _nomeController.dispose();
     _cidadeController.dispose();
     _enderecoController.dispose();
+    _referenciaLocalController.dispose();
+    _googleMapsUrlController.dispose();
     _telefoneController.dispose();
     _emailController.dispose();
     _whatsappController.dispose();
@@ -227,6 +232,8 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
       _nomeController.text = data['nome']?.toString() ?? '';
       _cidadeController.text = data['cidade']?.toString() ?? '';
       _enderecoController.text = data['endereco']?.toString() ?? '';
+      _referenciaLocalController.text = data['referencia_local']?.toString() ?? '';
+      _googleMapsUrlController.text = data['google_maps_url']?.toString() ?? '';
       _telefoneController.text = data['telefone']?.toString() ?? '';
       _emailController.text = data['email']?.toString() ?? '';
       _whatsappController.text =
@@ -361,355 +368,20 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
   }
 
   Future<void> _mostrarDialogProfessores() async {
-    final t = context.uai;
-    final primary = _ensureVisible(t.primary, t.surface);
-    final info = _ensureVisible(t.info, t.surface);
-    final success = _ensureVisible(t.success, t.surface);
-
-    List<String> selecaoTemporaria = List.from(_professoresSelecionadosIds);
-
-    await showDialog<void>(
+    final selecionados = await showPremiumMultiUserSelectorDialog(
       context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return Dialog(
-              insetPadding: const EdgeInsets.all(14),
-              backgroundColor: Colors.transparent,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(context).size.height * 0.84,
-                  maxWidth: 560,
-                ),
-                child: Material(
-                  color: t.surface,
-                  borderRadius: BorderRadius.circular(t.cardRadius + 2),
-                  clipBehavior: Clip.antiAlias,
-                  child: Column(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.fromLTRB(18, 18, 8, 14),
-                        decoration: BoxDecoration(gradient: t.primaryGradient),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 48,
-                              height: 48,
-                              decoration: BoxDecoration(
-                                color: _readableOn(t.primary).withOpacity(0.14),
-                                borderRadius: BorderRadius.circular(
-                                  t.buttonRadius,
-                                ),
-                                border: Border.all(
-                                  color: _readableOn(
-                                    t.primary,
-                                  ).withOpacity(0.16),
-                                ),
-                              ),
-                              child: Icon(
-                                Icons.people_rounded,
-                                color: _readableOn(t.primary),
-                                size: 27,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Gerenciar Professores',
-                                    style: TextStyle(
-                                      color: _readableOn(t.primary),
-                                      fontSize: 19,
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 3),
-                                  Text(
-                                    'Selecione quem terá acesso à academia.',
-                                    style: TextStyle(
-                                      color: _readableOn(
-                                        t.primary,
-                                      ).withOpacity(0.78),
-                                      fontSize: 12,
-                                      height: 1.25,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            IconButton(
-                              onPressed: () => Navigator.pop(dialogContext),
-                              icon: Icon(
-                                Icons.close_rounded,
-                                color: _readableOn(t.primary),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Expanded(
-                        child: _usuariosCarregando
-                            ? Center(
-                                child: CircularProgressIndicator(
-                                  color: t.primary,
-                                ),
-                              )
-                            : _professoresDisponiveis.isEmpty
-                            ? _dialogEmptyProfessores()
-                            : ListView.builder(
-                                padding: const EdgeInsets.all(14),
-                                itemCount: _professoresDisponiveis.length,
-                                itemBuilder: (context, index) {
-                                  final professor =
-                                      _professoresDisponiveis[index];
-                                  final id = professor['id']?.toString() ?? '';
-                                  final isSelecionado = selecaoTemporaria
-                                      .contains(id);
-
-                                  return Padding(
-                                    padding: const EdgeInsets.only(bottom: 10),
-                                    child: Material(
-                                      color: isSelecionado
-                                          ? Color.alphaBlend(
-                                              primary.withOpacity(0.10),
-                                              t.cardAlt,
-                                            )
-                                          : t.cardAlt,
-                                      borderRadius: BorderRadius.circular(
-                                        t.inputRadius,
-                                      ),
-                                      clipBehavior: Clip.antiAlias,
-                                      child: InkWell(
-                                        onTap: () {
-                                          setDialogState(() {
-                                            if (isSelecionado) {
-                                              selecaoTemporaria.remove(id);
-                                            } else if (id.isNotEmpty) {
-                                              selecaoTemporaria.add(id);
-                                            }
-                                          });
-                                        },
-                                        child: Container(
-                                          padding: const EdgeInsets.all(12),
-                                          decoration: BoxDecoration(
-                                            borderRadius: BorderRadius.circular(
-                                              t.inputRadius,
-                                            ),
-                                            border: Border.all(
-                                              color: isSelecionado
-                                                  ? primary.withOpacity(0.34)
-                                                  : t.border,
-                                              width: isSelecionado ? 1.3 : 1,
-                                            ),
-                                          ),
-                                          child: Row(
-                                            children: [
-                                              _professorAvatar(
-                                                professor: professor,
-                                                selected: isSelecionado,
-                                                accent: primary,
-                                              ),
-                                              const SizedBox(width: 12),
-                                              Expanded(
-                                                child: Column(
-                                                  crossAxisAlignment:
-                                                      CrossAxisAlignment.start,
-                                                  children: [
-                                                    Text(
-                                                      professor['nome']
-                                                              ?.toString() ??
-                                                          'Sem nome',
-                                                      maxLines: 1,
-                                                      overflow:
-                                                          TextOverflow.ellipsis,
-                                                      style: TextStyle(
-                                                        color: isSelecionado
-                                                            ? primary
-                                                            : t.textPrimary,
-                                                        fontSize: 15,
-                                                        fontWeight:
-                                                            FontWeight.w900,
-                                                      ),
-                                                    ),
-                                                    const SizedBox(height: 3),
-                                                    Text(
-                                                      professor['email']
-                                                              ?.toString() ??
-                                                          'Sem email',
-                                                      maxLines: 1,
-                                                      overflow:
-                                                          TextOverflow.ellipsis,
-                                                      style: TextStyle(
-                                                        color: t.textSecondary,
-                                                        fontSize: 12,
-                                                      ),
-                                                    ),
-                                                    const SizedBox(height: 7),
-                                                    Wrap(
-                                                      spacing: 6,
-                                                      runSpacing: 6,
-                                                      children: [
-                                                        _miniBadge(
-                                                          label:
-                                                              professor['tipo']
-                                                                  ?.toString()
-                                                                  .toUpperCase() ??
-                                                              'PROFESSOR',
-                                                          color: info,
-                                                          icon: Icons
-                                                              .badge_rounded,
-                                                        ),
-                                                        _miniBadge(
-                                                          label:
-                                                              'Peso ${professor['peso_permissao'] ?? 0}',
-                                                          color: success,
-                                                          icon: Icons
-                                                              .security_rounded,
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                              const SizedBox(width: 10),
-                                              Container(
-                                                width: 28,
-                                                height: 28,
-                                                decoration: BoxDecoration(
-                                                  shape: BoxShape.circle,
-                                                  color: isSelecionado
-                                                      ? primary
-                                                      : Colors.transparent,
-                                                  border: Border.all(
-                                                    color: isSelecionado
-                                                        ? primary
-                                                        : t.border,
-                                                    width: 2,
-                                                  ),
-                                                ),
-                                                child: isSelecionado
-                                                    ? Icon(
-                                                        Icons.check_rounded,
-                                                        color: _readableOn(
-                                                          primary,
-                                                        ),
-                                                        size: 18,
-                                                      )
-                                                    : null,
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: t.card,
-                          border: Border(top: BorderSide(color: t.border)),
-                        ),
-                        child: Column(
-                          children: [
-                            _infoBox(
-                              icon: Icons.info_outline_rounded,
-                              color: t.info,
-                              text:
-                                  '${selecaoTemporaria.length} professor(es) selecionado(s)',
-                            ),
-                            const SizedBox(height: 12),
-                            LayoutBuilder(
-                              builder: (context, constraints) {
-                                final narrow = constraints.maxWidth < 380;
-
-                                final cancel = OutlinedButton(
-                                  onPressed: () => Navigator.pop(dialogContext),
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: t.textPrimary,
-                                    side: BorderSide(color: t.border),
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 14,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(
-                                        t.buttonRadius,
-                                      ),
-                                    ),
-                                  ),
-                                  child: const Text(
-                                    'CANCELAR',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                                  ),
-                                );
-
-                                final confirm = ElevatedButton(
-                                  onPressed: () {
-                                    setState(() {
-                                      _professoresSelecionadosIds =
-                                          List<String>.from(selecaoTemporaria);
-                                    });
-                                    Navigator.pop(dialogContext);
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: t.primary,
-                                    foregroundColor: _readableOn(t.primary),
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 14,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(
-                                        t.buttonRadius,
-                                      ),
-                                    ),
-                                  ),
-                                  child: const Text(
-                                    'CONFIRMAR',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                                  ),
-                                );
-
-                                if (narrow) {
-                                  return Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.stretch,
-                                    children: [
-                                      cancel,
-                                      const SizedBox(height: 10),
-                                      confirm,
-                                    ],
-                                  );
-                                }
-
-                                return Row(
-                                  children: [
-                                    Expanded(child: cancel),
-                                    const SizedBox(width: 10),
-                                    Expanded(child: confirm),
-                                  ],
-                                );
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
+      title: 'Gerenciar Professores',
+      subtitle: 'Selecione quem terá acesso à academia.',
+      users: _professoresDisponiveis,
+      selectedIds: _professoresSelecionadosIds,
+      icon: Icons.people_rounded,
     );
+
+    if (!mounted || selecionados == null) return;
+
+    setState(() {
+      _professoresSelecionadosIds = List<String>.from(selecionados);
+    });
   }
 
   Widget _dialogEmptyProfessores() {
@@ -784,7 +456,7 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
 
     return Container(
       color: selected
-          ? Color.alphaBlend(accent.withOpacity(0.14), t.cardAlt)
+          ? Color.alphaBlend(accent.withAlpha(36), t.cardAlt)
           : t.cardAlt,
       child: Icon(
         Icons.person_rounded,
@@ -805,9 +477,9 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.10), t.cardAlt),
+        color: Color.alphaBlend(accent.withAlpha(26), t.cardAlt),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: accent.withOpacity(0.16)),
+        border: Border.all(color: accent.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -870,6 +542,8 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
         'nome': _nomeController.text.trim().toUpperCase(),
         'cidade': _cidadeController.text.trim().toUpperCase(),
         'endereco': _enderecoController.text.trim(),
+        'referencia_local': _referenciaLocalController.text.trim(),
+        'google_maps_url': _googleMapsUrlController.text.trim(),
         'responsavel_id': _responsavelSelecionadoId,
         'responsavel': responsavelNome,
         'responsavel_nome': responsavelNome,
@@ -1045,7 +719,7 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
                                 width: 48,
                                 height: 48,
                                 decoration: BoxDecoration(
-                                  color: t.error.withOpacity(0.12),
+                                  color: t.error.withAlpha(31),
                                   borderRadius: BorderRadius.circular(
                                     t.buttonRadius,
                                   ),
@@ -1209,9 +883,9 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(error.withOpacity(0.10), t.cardAlt),
+        color: Color.alphaBlend(error.withAlpha(26), t.cardAlt),
         borderRadius: BorderRadius.circular(t.inputRadius),
-        border: Border.all(color: error.withOpacity(0.18)),
+        border: Border.all(color: error.withAlpha(46)),
       ),
       child: Text(
         '"$nomeAcademia"',
@@ -1351,10 +1025,10 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
   }) {
     final t = context.uai;
 
-    final normalizedItems = <String>[
+    final normalizedItems = <String>{
       ...items,
       if (value.trim().isNotEmpty && !items.contains(value)) value,
-    ].toSet().toList();
+    }.toList();
 
     final safeValue = normalizedItems.contains(value)
         ? value
@@ -1363,7 +1037,7 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: DropdownButtonFormField<String>(
-        value: safeValue,
+        initialValue: safeValue,
         isExpanded: true,
         dropdownColor: t.surface,
         style: TextStyle(color: t.textPrimary),
@@ -1385,9 +1059,35 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
 
   Widget _buildSelecaoResponsavel() {
     final t = context.uai;
-    final primary = _ensureVisible(t.primary, t.cardAlt);
     final success = _ensureVisible(t.success, t.cardAlt);
     final warning = _ensureVisible(t.warning, t.cardAlt);
+    final selected = _usuariosDisponiveis.firstWhere(
+      (user) => user['id'] == _responsavelSelecionadoId,
+      orElse: () => <String, dynamic>{},
+    );
+    final selectedEmail = selected['email']?.toString() ?? '';
+    final selectedTipo = selected['tipo']?.toString() ?? '';
+
+    Future<void> abrirSeletor() async {
+      final novoId = await showPremiumSingleUserSelectorDialog(
+        context: context,
+        title: 'Selecionar Responsável',
+        subtitle: 'Escolha o usuário responsável por esta academia.',
+        users: _usuariosDisponiveis,
+        selectedId: _responsavelSelecionadoId,
+        icon: Icons.admin_panel_settings_rounded,
+      );
+
+      if (!mounted || novoId == null) return;
+      final usuario = _usuariosDisponiveis.firstWhere(
+        (u) => u['id'] == novoId,
+        orElse: () => <String, dynamic>{},
+      );
+      setState(() {
+        _responsavelSelecionadoId = novoId;
+        _responsavelNome = usuario['nome']?.toString() ?? '';
+      });
+    }
 
     return _sectionCard(
       icon: Icons.admin_panel_settings_rounded,
@@ -1409,76 +1109,87 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
               text: 'Nenhum usuário disponível como responsável.',
             )
           else
-            DropdownButtonFormField<String>(
-              value: _responsavelSelecionadoId,
-              isExpanded: true,
-              dropdownColor: t.surface,
-              decoration: _inputDecoration(
-                label: 'Responsável *',
-                icon: Icons.person_rounded,
-              ),
-              hint: Text(
-                'Selecione um responsável',
-                style: TextStyle(color: t.textMuted),
-              ),
-              style: TextStyle(color: t.textPrimary),
-              items: _usuariosDisponiveis.map((usuario) {
-                final nome = usuario['nome']?.toString() ?? '';
-                final email = usuario['email']?.toString() ?? '';
-
-                return DropdownMenuItem<String>(
-                  value: usuario['id']?.toString(),
-                  child: Text(
-                    nome.isEmpty ? email : '$nome • $email',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: t.textPrimary),
-                  ),
-                );
-              }).toList(),
-              onChanged: (String? novoId) {
-                if (novoId == null) return;
-
-                final usuario = _usuariosDisponiveis.firstWhere(
-                  (u) => u['id'] == novoId,
-                  orElse: () => {'nome': '', 'email': ''},
-                );
-
-                setState(() {
-                  _responsavelSelecionadoId = novoId;
-                  _responsavelNome = usuario['nome']?.toString() ?? '';
-                });
-              },
-            ),
-          if (_responsavelSelecionadoId != null &&
-              _responsavelNome.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Color.alphaBlend(success.withOpacity(0.10), t.cardAlt),
-                borderRadius: BorderRadius.circular(t.inputRadius),
-                border: Border.all(color: success.withOpacity(0.18)),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.check_circle_rounded, color: success, size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Responsável: $_responsavelNome',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: success,
-                        fontWeight: FontWeight.w900,
-                      ),
+            Material(
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(t.inputRadius),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: abrirSeletor,
+                child: Ink(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: _responsavelSelecionadoId == null
+                        ? t.cardAlt
+                        : Color.alphaBlend(success.withAlpha(20), t.cardAlt),
+                    borderRadius: BorderRadius.circular(t.inputRadius),
+                    border: Border.all(
+                      color: _responsavelSelecionadoId == null
+                          ? t.border
+                          : success.withAlpha(71),
+                      width: _responsavelSelecionadoId == null ? 1 : 1.3,
                     ),
                   ),
-                ],
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: (_responsavelSelecionadoId == null ? t.info : success)
+                              .withAlpha(28),
+                          border: Border.all(
+                            color: (_responsavelSelecionadoId == null ? t.info : success)
+                                .withAlpha(51),
+                          ),
+                        ),
+                        child: Icon(
+                          _responsavelSelecionadoId == null
+                              ? Icons.person_search_rounded
+                              : Icons.verified_user_rounded,
+                          color: _responsavelSelecionadoId == null ? t.info : success,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _responsavelSelecionadoId == null
+                                  ? 'Selecionar responsável'
+                                  : _responsavelNome,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: t.textPrimary,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              _responsavelSelecionadoId == null
+                                  ? 'Toque para abrir o seletor premium'
+                                  : [selectedEmail, selectedTipo.toUpperCase()]
+                                      .where((v) => v.trim().isNotEmpty)
+                                      .join(' • '),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(color: t.textSecondary, fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(Icons.chevron_right_rounded, color: t.textSecondary),
+                    ],
+                  ),
+                ),
               ),
             ),
-          ] else if (!_usuariosCarregando) ...[
+          if (_responsavelSelecionadoId == null && !_usuariosCarregando) ...[
             const SizedBox(height: 10),
             _infoBox(
               icon: Icons.info_outline_rounded,
@@ -1530,10 +1241,10 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
                       width: 48,
                       height: 48,
                       decoration: BoxDecoration(
-                        color: _readableOn(info).withOpacity(0.16),
+                        color: _readableOn(info).withAlpha(41),
                         borderRadius: BorderRadius.circular(t.buttonRadius),
                         border: Border.all(
-                          color: _readableOn(info).withOpacity(0.18),
+                          color: _readableOn(info).withAlpha(46),
                         ),
                       ),
                       child: Icon(
@@ -1561,7 +1272,7 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
                                 ? 'Nenhum professor selecionado'
                                 : '${_professoresSelecionadosIds.length} professor(es) selecionado(s)',
                             style: TextStyle(
-                              color: _readableOn(info).withOpacity(0.86),
+                              color: _readableOn(info).withAlpha(219),
                               fontSize: 12,
                               height: 1.25,
                             ),
@@ -1652,7 +1363,7 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(t.cardRadius),
-          border: Border.all(color: accent.withOpacity(0.14)),
+          border: Border.all(color: accent.withAlpha(36)),
           boxShadow: t.softShadow,
         ),
         child: Column(
@@ -1686,9 +1397,9 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            color: color.withOpacity(0.12),
+            color: color.withAlpha(31),
             borderRadius: BorderRadius.circular(t.buttonRadius),
-            border: Border.all(color: color.withOpacity(0.16)),
+            border: Border.all(color: color.withAlpha(41)),
           ),
           child: Icon(icon, color: color, size: 23),
         ),
@@ -1734,9 +1445,9 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
       width: double.infinity,
       padding: EdgeInsets.all(compact ? 10 : 12),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.09), t.cardAlt),
+        color: Color.alphaBlend(accent.withAlpha(23), t.cardAlt),
         borderRadius: BorderRadius.circular(t.inputRadius),
-        border: Border.all(color: accent.withOpacity(0.16)),
+        border: Border.all(color: accent.withAlpha(41)),
       ),
       child: Row(
         children: [
@@ -1777,9 +1488,9 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
             width: 62,
             height: 62,
             decoration: BoxDecoration(
-              color: onPrimary.withOpacity(0.14),
+              color: onPrimary.withAlpha(36),
               borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: onPrimary.withOpacity(0.16)),
+              border: Border.all(color: onPrimary.withAlpha(41)),
             ),
             child: Icon(
               _isEditing
@@ -1810,7 +1521,7 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
                 'Configure dados do núcleo, responsável, professores e canais de contato.',
                 textAlign: narrow ? TextAlign.center : TextAlign.left,
                 style: TextStyle(
-                  color: onPrimary.withOpacity(0.82),
+                  color: onPrimary.withAlpha(209),
                   fontSize: 13,
                   height: 1.35,
                 ),
@@ -1865,9 +1576,9 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: onPrimary.withOpacity(0.14),
+        color: onPrimary.withAlpha(36),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: onPrimary.withOpacity(0.16)),
+        border: Border.all(color: onPrimary.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -2041,6 +1752,18 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
                                   label: 'Endereço Completo',
                                   icon: Icons.location_on_rounded,
                                   maxLines: 2,
+                                ),
+                                _buildFormField(
+                                  controller: _referenciaLocalController,
+                                  label: 'Complemento / Referência do Local',
+                                  icon: Icons.assistant_direction_rounded,
+                                  maxLines: 2,
+                                ),
+                                _buildFormField(
+                                  controller: _googleMapsUrlController,
+                                  label: 'Link da Localização no Google Maps',
+                                  icon: Icons.map_rounded,
+                                  keyboardType: TextInputType.url,
                                 ),
                               ],
                             ),

@@ -306,6 +306,7 @@ class _VincularAlunoInativoTurmaScreenState
     setState(() => _isLoading = true);
     try {
       final temVaga = await _turmaTemVagaNoServidor();
+      if (!mounted) return;
       if (!temVaga) {
         _mostrarSnack(
           'Esta turma está lotada. Escolha outra turma ou aumente a capacidade.',
@@ -391,7 +392,7 @@ class _VincularAlunoInativoTurmaScreenState
     } catch (e) {
       debugPrint('Erro ao reativar aluno: $e');
       if (mounted)
-        _mostrarSnack('Erro ao reativar aluno: $e', context.uai.error);
+        { _mostrarSnack('Erro ao reativar aluno: $e', context.uai.error); }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -484,10 +485,10 @@ class _VincularAlunoInativoTurmaScreenState
                           width: double.infinity,
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: t.success.withOpacity(0.10),
+                            color: t.success.withAlpha(26),
                             borderRadius: BorderRadius.circular(14),
                             border: Border.all(
-                              color: t.success.withOpacity(0.22),
+                              color: t.success.withAlpha(56),
                             ),
                           ),
                           child: Text(
@@ -521,12 +522,12 @@ class _VincularAlunoInativoTurmaScreenState
                                 padding: const EdgeInsets.all(11),
                                 decoration: BoxDecoration(
                                   color: selected
-                                      ? motivo.cor.withOpacity(0.12)
+                                      ? motivo.cor.withAlpha(31)
                                       : t.card,
                                   borderRadius: BorderRadius.circular(12),
                                   border: Border.all(
                                     color: selected
-                                        ? motivo.cor.withOpacity(0.55)
+                                        ? motivo.cor.withAlpha(140)
                                         : t.border,
                                     width: selected ? 1.5 : 1,
                                   ),
@@ -557,11 +558,13 @@ class _VincularAlunoInativoTurmaScreenState
                                         ],
                                       ),
                                     ),
-                                    Radio<String>(
-                                      value: motivo.id,
+                                    RadioGroup<String>(
                                       groupValue: motivoSelecionado?.id,
                                       onChanged: (_) => setSheetState(
                                         () => motivoSelecionado = motivo,
+                                      ),
+                                      child: Radio<String>(
+                                        value: motivo.id,
                                       ),
                                     ),
                                   ],
@@ -852,7 +855,7 @@ class _VincularAlunoInativoTurmaScreenState
       padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
       child: Material(
         color: selecionado
-            ? Color.alphaBlend(accent.withOpacity(0.08), t.card)
+            ? Color.alphaBlend(accent.withAlpha(20), t.card)
             : t.card,
         borderRadius: BorderRadius.circular(t.cardRadius),
         clipBehavior: Clip.antiAlias,
@@ -864,7 +867,7 @@ class _VincularAlunoInativoTurmaScreenState
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(t.cardRadius),
               border: Border.all(
-                color: selecionado ? accent.withOpacity(0.55) : t.border,
+                color: selecionado ? accent.withAlpha(140) : t.border,
                 width: selecionado ? 1.6 : 1,
               ),
               boxShadow: t.softShadow,
@@ -936,11 +939,13 @@ class _VincularAlunoInativoTurmaScreenState
                   ),
                 ),
                 const SizedBox(width: 8),
-                Radio<String>(
-                  value: aluno['id'].toString(),
+                RadioGroup<String>(
                   groupValue: _alunoSelecionadoId,
                   onChanged: (_) => _selecionarAluno(aluno),
-                  activeColor: accent,
+                  child: Radio<String>(
+                    value: aluno['id'].toString(),
+                    activeColor: accent,
+                  ),
                 ),
               ],
             ),
@@ -975,7 +980,7 @@ class _VincularAlunoInativoTurmaScreenState
             ? Image.network(
                 fotoUrl,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _avatarFallback(nome),
+                errorBuilder: (_, _, _) => _avatarFallback(nome),
               )
             : _avatarFallback(nome),
       ),
@@ -986,7 +991,7 @@ class _VincularAlunoInativoTurmaScreenState
     final t = context.uai;
     final primary = _ensureVisible(t.primary, t.cardAlt);
     return Container(
-      color: Color.alphaBlend(primary.withOpacity(0.10), t.cardAlt),
+      color: Color.alphaBlend(primary.withAlpha(26), t.cardAlt),
       alignment: Alignment.center,
       child: Text(
         _iniciais(nome),
@@ -1005,9 +1010,9 @@ class _VincularAlunoInativoTurmaScreenState
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.07), t.cardAlt),
+        color: Color.alphaBlend(accent.withAlpha(18), t.cardAlt),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: accent.withOpacity(0.12)),
+        border: Border.all(color: accent.withAlpha(31)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1050,9 +1055,9 @@ class _VincularAlunoInativoTurmaScreenState
             width: 54,
             height: 54,
             decoration: BoxDecoration(
-              color: onPrimary.withOpacity(0.14),
+              color: onPrimary.withAlpha(36),
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: onPrimary.withOpacity(0.16)),
+              border: Border.all(color: onPrimary.withAlpha(41)),
             ),
             child: Icon(
               Icons.person_add_alt_1_rounded,
@@ -1082,7 +1087,7 @@ class _VincularAlunoInativoTurmaScreenState
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: onPrimary.withOpacity(0.78),
+                    color: onPrimary.withAlpha(199),
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                   ),
@@ -1113,9 +1118,9 @@ class _VincularAlunoInativoTurmaScreenState
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(
-        color: onPrimary.withOpacity(0.14),
+        color: onPrimary.withAlpha(36),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: onPrimary.withOpacity(0.16)),
+        border: Border.all(color: onPrimary.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1240,9 +1245,9 @@ class _VincularAlunoInativoTurmaScreenState
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), t.cardAlt),
+        color: Color.alphaBlend(accent.withAlpha(20), t.cardAlt),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: accent.withOpacity(0.13)),
+        border: Border.all(color: accent.withAlpha(33)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1382,7 +1387,7 @@ class _VincularAlunoInativoTurmaScreenState
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: _appBarFg().withOpacity(0.78),
+                color: _appBarFg().withAlpha(199),
               ),
             ),
           ],

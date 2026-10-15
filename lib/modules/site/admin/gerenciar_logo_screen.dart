@@ -228,9 +228,9 @@ class _GerenciarLogoScreenState extends State<GerenciarLogoScreen> {
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: primary.withOpacity(0.12),
+                  color: primary.withAlpha(31),
                   borderRadius: BorderRadius.circular(t.buttonRadius),
-                  border: Border.all(color: primary.withOpacity(0.16)),
+                  border: Border.all(color: primary.withAlpha(41)),
                 ),
                 child: Icon(Icons.preview_rounded, color: primary),
               ),
@@ -405,9 +405,9 @@ class _GerenciarLogoScreenState extends State<GerenciarLogoScreen> {
             width: 62,
             height: 62,
             decoration: BoxDecoration(
-              color: onPrimary.withOpacity(0.14),
+              color: onPrimary.withAlpha(36),
               borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: onPrimary.withOpacity(0.16)),
+              border: Border.all(color: onPrimary.withAlpha(41)),
             ),
             child: Icon(Icons.image_rounded, color: onPrimary, size: 34),
           );
@@ -432,7 +432,7 @@ class _GerenciarLogoScreenState extends State<GerenciarLogoScreen> {
                 'Configure a imagem exibida na página inicial e nas áreas públicas do site.',
                 textAlign: narrow ? TextAlign.center : TextAlign.left,
                 style: TextStyle(
-                  color: onPrimary.withOpacity(0.82),
+                  color: onPrimary.withAlpha(209),
                   fontSize: 13,
                   height: 1.35,
                   fontWeight: FontWeight.w600,
@@ -480,9 +480,9 @@ class _GerenciarLogoScreenState extends State<GerenciarLogoScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: onPrimary.withOpacity(0.14),
+        color: onPrimary.withAlpha(36),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: onPrimary.withOpacity(0.16)),
+        border: Border.all(color: onPrimary.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -580,7 +580,7 @@ class _GerenciarLogoScreenState extends State<GerenciarLogoScreen> {
             label: const Text('PRÉ-VISUALIZAR ESTA URL'),
             style: OutlinedButton.styleFrom(
               foregroundColor: primary,
-              side: BorderSide(color: primary.withOpacity(0.35)),
+              side: BorderSide(color: primary.withAlpha(89)),
               padding: const EdgeInsets.symmetric(vertical: 14),
               textStyle: const TextStyle(fontWeight: FontWeight.w900),
               shape: RoundedRectangleBorder(
@@ -600,9 +600,9 @@ class _GerenciarLogoScreenState extends State<GerenciarLogoScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(info.withOpacity(0.08), t.card),
+        color: Color.alphaBlend(info.withAlpha(20), t.card),
         borderRadius: BorderRadius.circular(t.cardRadius),
-        border: Border.all(color: info.withOpacity(0.16)),
+        border: Border.all(color: info.withAlpha(41)),
         boxShadow: t.softShadow,
       ),
       child: Row(
@@ -612,9 +612,9 @@ class _GerenciarLogoScreenState extends State<GerenciarLogoScreen> {
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: info.withOpacity(0.12),
+              color: info.withAlpha(31),
               borderRadius: BorderRadius.circular(t.buttonRadius),
-              border: Border.all(color: info.withOpacity(0.16)),
+              border: Border.all(color: info.withAlpha(41)),
             ),
             child: Icon(Icons.info_rounded, color: info),
           ),
@@ -667,9 +667,9 @@ class _GerenciarLogoScreenState extends State<GerenciarLogoScreen> {
           width: 42,
           height: 42,
           decoration: BoxDecoration(
-            color: accent.withOpacity(0.10),
+            color: accent.withAlpha(26),
             borderRadius: BorderRadius.circular(t.buttonRadius),
-            border: Border.all(color: accent.withOpacity(0.14)),
+            border: Border.all(color: accent.withAlpha(36)),
           ),
           child: Icon(icon, color: accent),
         ),

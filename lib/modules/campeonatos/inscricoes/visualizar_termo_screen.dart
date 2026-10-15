@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:uai_capoeira/modules/campeonatos/models/inscricao_campeonato_model.dart'; // 👈 IMPORT CORRETO!
 
 class VisualizarTermoScreen extends StatelessWidget {
@@ -14,9 +13,7 @@ class VisualizarTermoScreen extends StatelessWidget {
     final isMaior = inscricao.isMaiorIdade;
     final temAssinatura =
         inscricao.assinaturaUrl != null && inscricao.assinaturaUrl!.isNotEmpty;
-    final temTermo =
-        inscricao.termoAutorizacao != null &&
-        inscricao.termoAutorizacao!.isNotEmpty;
+    final temTermo = inscricao.termoAutorizacao.isNotEmpty;
 
     return Scaffold(
       appBar: AppBar(
@@ -166,7 +163,7 @@ class VisualizarTermoScreen extends StatelessWidget {
                       ),
                       child: SelectableText(
                         // 👈 Agora pode selecionar o texto
-                        inscricao.termoAutorizacao!,
+                        inscricao.termoAutorizacao,
                         style: const TextStyle(fontSize: 14, height: 1.5),
                       ),
                     ),

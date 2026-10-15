@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'package:uai_capoeira/modules/inscricoes/services/inscricoes_permission_service.dart';
 
 import 'gerenciar_inscricoes_screen.dart';
+import 'configuracoes_avancadas_inscricoes_screen.dart';
+import 'auditoria_inscricoes_screen.dart';
+import 'configurar_card_inscricao_screen.dart';
 
 class ConfigurarInscricoesScreen extends StatefulWidget {
   const ConfigurarInscricoesScreen({super.key});
@@ -15,6 +21,10 @@ class ConfigurarInscricoesScreen extends StatefulWidget {
 class _ConfigurarInscricoesScreenState
     extends State<ConfigurarInscricoesScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final InscricoesPermissionService _inscricoesPermissionService =
+      InscricoesPermissionService();
+  bool _permissoesCarregadas = false;
+  bool _podeVerAuditoria = false;
 
   bool _inscricoesAbertas = false;
   int _vagasDisponiveis = 0;
@@ -24,6 +34,34 @@ class _ConfigurarInscricoesScreenState
   int _idadeMaxima = 16;
 
   bool _recolherAssinatura = true;
+  bool _segurancaDetectarDuplicidade = true;
+  bool _segurancaDetectarTelefoneSuspeito = true;
+  bool _segurancaDetectarPreenchimentoRapido = true;
+  bool _segurancaDetectarNomeSuspeito = true;
+
+  bool _roboAulaAtivo = true;
+  bool _roboEnviarEmail = true;
+  Map<String, dynamic> _roboUltimoResultado = const {};
+  Timestamp? _roboUltimaExecucaoEm;
+  bool _executandoRobo = false;
+
+  bool _roboLimpezaAtivo = false;
+  bool _roboLimpezaSimulacao = false;
+  bool _roboLimpezaSinalizar = true;
+  bool _roboLimpezaSemMovimento = true;
+  bool _roboLimpezaInteressado = true;
+  bool _roboLimpezaAulaVencida = true;
+  bool _roboLimpezaExpirada = true;
+  bool _roboLimpezaProtegerAulaFutura = true;
+  Map<String, dynamic> _roboLimpezaUltimoResultado = const {};
+  Timestamp? _roboLimpezaUltimaExecucaoEm;
+  bool _executandoRoboLimpeza = false;
+  bool _integrarChamadaConversao = true;
+  final TextEditingController _limpezaAlertarDiasController = TextEditingController(text: '7');
+  final TextEditingController _limpezaSemMovimentoDiasController = TextEditingController(text: '30');
+  final TextEditingController _limpezaInteressadoDiasController = TextEditingController(text: '21');
+  final TextEditingController _limpezaAulaVencidaDiasController = TextEditingController(text: '7');
+  final TextEditingController _limpezaLimiteController = TextEditingController(text: '100');
 
   final TextEditingController _idadeMinimaController = TextEditingController();
   final TextEditingController _idadeMaximaController = TextEditingController();
@@ -35,7 +73,25 @@ class _ConfigurarInscricoesScreenState
   @override
   void initState() {
     super.initState();
+    _carregarPermissoes();
     _carregarConfiguracao();
+  }
+
+  Future<void> _carregarPermissoes() async {
+    try {
+      final permissoes = await _inscricoesPermissionService.carregar();
+      if (!mounted) return;
+      setState(() {
+        _podeVerAuditoria = permissoes.verAuditoria;
+        _permissoesCarregadas = true;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _podeVerAuditoria = false;
+        _permissoesCarregadas = true;
+      });
+    }
   }
 
   @override
@@ -43,6 +99,11 @@ class _ConfigurarInscricoesScreenState
     _idadeMinimaController.dispose();
     _idadeMaximaController.dispose();
     _vagasController.dispose();
+    _limpezaAlertarDiasController.dispose();
+    _limpezaSemMovimentoDiasController.dispose();
+    _limpezaInteressadoDiasController.dispose();
+    _limpezaAulaVencidaDiasController.dispose();
+    _limpezaLimiteController.dispose();
     super.dispose();
   }
 
@@ -67,7 +128,7 @@ class _ConfigurarInscricoesScreenState
   }
 
   Color _onCard() => _readableOn(context.uai.card);
-  Color _onCardMuted() => _onCard().withOpacity(0.68);
+  Color _onCardMuted() => _onCard().withAlpha(173);
 
   bool _temaPrimarioMuitoClaroEmFundoEscuro() {
     final t = context.uai;
@@ -82,7 +143,7 @@ class _ConfigurarInscricoesScreenState
   Color _safeHeroBase() {
     final t = context.uai;
     if (_temaPrimarioMuitoClaroEmFundoEscuro()) {
-      return Color.alphaBlend(t.primary.withOpacity(0.58), t.surface);
+      return Color.alphaBlend(t.primary.withAlpha(148), t.surface);
     }
     return t.primary;
   }
@@ -220,6 +281,49 @@ class _ConfigurarInscricoesScreenState
         _idadeMinima = data['idade_minima'] ?? 5;
         _idadeMaxima = data['idade_maxima'] ?? 16;
         _recolherAssinatura = data['recolher_assinatura'] ?? true;
+        _segurancaDetectarDuplicidade =
+            data['seguranca_detectar_duplicidade'] ?? true;
+        _segurancaDetectarTelefoneSuspeito =
+            data['seguranca_detectar_telefone_suspeito'] ?? true;
+        _segurancaDetectarPreenchimentoRapido =
+            data['seguranca_detectar_preenchimento_rapido'] ?? true;
+        _segurancaDetectarNomeSuspeito =
+            data['seguranca_detectar_nome_suspeito'] ?? true;
+        final robo = Map<String, dynamic>.from(
+          data['robo_aula_experimental'] as Map? ?? const {},
+        );
+        _roboAulaAtivo = robo['ativo'] != false;
+        _roboEnviarEmail = robo['enviar_email'] != false;
+        _roboUltimoResultado = Map<String, dynamic>.from(
+          robo['ultima_execucao_resultado'] as Map? ?? const {},
+        );
+        _roboUltimaExecucaoEm = robo['ultima_execucao_em'] as Timestamp?;
+
+        final limpeza = Map<String, dynamic>.from(
+          data['robo_limpeza_inscricoes'] as Map? ?? const {},
+        );
+        _roboLimpezaAtivo = limpeza['ativo'] == true;
+        _roboLimpezaSimulacao = limpeza['modo_simulacao'] == true;
+        _roboLimpezaSinalizar = limpeza['sinalizar_sem_movimento'] != false;
+        _roboLimpezaSemMovimento = limpeza['arquivar_sem_movimento'] != false;
+        _roboLimpezaInteressado = limpeza['arquivar_interessado'] != false;
+        _roboLimpezaAulaVencida = limpeza['arquivar_aula_vencida'] != false;
+        _roboLimpezaExpirada = limpeza['arquivar_expirada'] != false;
+        _roboLimpezaProtegerAulaFutura = limpeza['proteger_aula_futura'] != false;
+        _limpezaAlertarDiasController.text = '${limpeza['alertar_dias'] ?? 7}';
+        _limpezaSemMovimentoDiasController.text = '${limpeza['dias_sem_movimento'] ?? 30}';
+        _limpezaInteressadoDiasController.text = '${limpeza['dias_interessado'] ?? 21}';
+        _limpezaAulaVencidaDiasController.text = '${limpeza['dias_apos_aula'] ?? 7}';
+        _limpezaLimiteController.text = '${limpeza['limite_por_execucao'] ?? 100}';
+        _roboLimpezaUltimoResultado = Map<String, dynamic>.from(
+          limpeza['ultima_execucao_resultado'] as Map? ?? const {},
+        );
+        _roboLimpezaUltimaExecucaoEm = limpeza['ultima_execucao_em'] as Timestamp?;
+
+        final integracao = Map<String, dynamic>.from(
+          data['integracao_chamada_conversao'] as Map? ?? const {},
+        );
+        _integrarChamadaConversao = integracao['ativo'] != false;
       }
 
       final inscricoesSnapshot = await _firestore
@@ -283,8 +387,57 @@ class _ConfigurarInscricoesScreenState
         'idade_minima': idadeMin,
         'idade_maxima': idadeMax,
         'recolher_assinatura': _recolherAssinatura,
+        'seguranca_detectar_duplicidade': _segurancaDetectarDuplicidade,
+        'seguranca_detectar_telefone_suspeito':
+            _segurancaDetectarTelefoneSuspeito,
+        'seguranca_detectar_preenchimento_rapido':
+            _segurancaDetectarPreenchimentoRapido,
+        'seguranca_detectar_nome_suspeito': _segurancaDetectarNomeSuspeito,
+        'seguranca_modo': 'alertar_sem_bloquear',
+        'robo_aula_experimental': {
+          'ativo': _roboAulaAtivo,
+          'enviar_email': _roboEnviarEmail,
+          'horario': '12:00',
+          'fuso': 'America/Sao_Paulo',
+          'somente_email_confirmado': true,
+          'somente_aula_do_dia': true,
+          if (_roboUltimoResultado.isNotEmpty)
+            'ultima_execucao_resultado': _roboUltimoResultado,
+          if (_roboUltimaExecucaoEm != null)
+            'ultima_execucao_em': _roboUltimaExecucaoEm,
+        },
+        'robo_limpeza_inscricoes': {
+          'ativo': _roboLimpezaAtivo,
+          'horario': '11:00',
+          'fuso': 'America/Sao_Paulo',
+          'modo_simulacao': _roboLimpezaSimulacao,
+          'sinalizar_sem_movimento': _roboLimpezaSinalizar,
+          'alertar_dias': int.tryParse(_limpezaAlertarDiasController.text.trim()) ?? 7,
+          'arquivar_sem_movimento': _roboLimpezaSemMovimento,
+          'dias_sem_movimento': int.tryParse(_limpezaSemMovimentoDiasController.text.trim()) ?? 30,
+          'arquivar_interessado': _roboLimpezaInteressado,
+          'dias_interessado': int.tryParse(_limpezaInteressadoDiasController.text.trim()) ?? 21,
+          'arquivar_aula_vencida': _roboLimpezaAulaVencida,
+          'dias_apos_aula': int.tryParse(_limpezaAulaVencidaDiasController.text.trim()) ?? 7,
+          'arquivar_expirada': _roboLimpezaExpirada,
+          'proteger_aula_futura': _roboLimpezaProtegerAulaFutura,
+          'limite_por_execucao': int.tryParse(_limpezaLimiteController.text.trim()) ?? 100,
+          if (_roboLimpezaUltimoResultado.isNotEmpty)
+            'ultima_execucao_resultado': _roboLimpezaUltimoResultado,
+          if (_roboLimpezaUltimaExecucaoEm != null)
+            'ultima_execucao_em': _roboLimpezaUltimaExecucaoEm,
+        },
+        'integracao_chamada_conversao': {
+          'ativo': _integrarChamadaConversao,
+          'modo_presenca': 'resultado_aula',
+          'somente_mesmo_dia': true,
+          'somente_mesma_turma': true,
+        },
+        'config_alterada_por_uid': FirebaseAuth.instance.currentUser?.uid,
+        'config_alterada_por_email': FirebaseAuth.instance.currentUser?.email,
+        'config_alterada_em': FieldValue.serverTimestamp(),
         'ultima_atualizacao': FieldValue.serverTimestamp(),
-      });
+      }, SetOptions(merge: true));
 
       setState(() {
         _idadeMinima = idadeMin;
@@ -328,6 +481,36 @@ class _ConfigurarInscricoesScreenState
     return (_totalInscricoes / _vagasDisponiveis).clamp(0, 1).toDouble();
   }
 
+  Future<void> _executarRoboAgora() async {
+    if (_executandoRobo) return;
+    setState(() => _executandoRobo = true);
+    try {
+      final callable = FirebaseFunctions.instanceFor(region: 'us-central1')
+          .httpsCallable('executarRoboAulaExperimentalAgora');
+      final response = await callable.call<Map<String, dynamic>>();
+      final data = Map<String, dynamic>.from(response.data);
+      if (!mounted) return;
+      setState(() => _roboUltimoResultado = data);
+      final enviadas = data['enviadas'] ?? 0;
+      final falhas = data['falhas'] ?? 0;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Robô concluído: $enviadas e-mail(s) enviado(s), $falhas falha(s).'),
+          backgroundColor: context.uai.success,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } on FirebaseFunctionsException catch (e) {
+      if (!mounted) return;
+      _mostrarErro(e.message ?? 'Não foi possível executar o robô agora.');
+    } catch (e) {
+      if (!mounted) return;
+      _mostrarErro('Não foi possível executar o robô agora: $e');
+    } finally {
+      if (mounted) setState(() => _executandoRobo = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = context.uai;
@@ -355,6 +538,15 @@ class _ConfigurarInscricoesScreenState
           style: TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: [
+          if (_permissoesCarregadas && _podeVerAuditoria)
+            IconButton(
+              tooltip: 'Auditoria',
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AuditoriaInscricoesScreen()),
+              ),
+              icon: const Icon(Icons.fact_check_rounded),
+            ),
           IconButton(
             tooltip: 'Salvar',
             onPressed: _salvando ? null : _salvarConfiguracao,
@@ -504,7 +696,7 @@ class _ConfigurarInscricoesScreenState
       child: Container(
         padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
         decoration: BoxDecoration(
-          color: Color.alphaBlend(t.surface.withOpacity(0.94), t.background),
+          color: Color.alphaBlend(t.surface.withAlpha(240), t.background),
           border: Border(top: BorderSide(color: t.border)),
           boxShadow: t.softShadow,
         ),
@@ -538,6 +730,36 @@ class _ConfigurarInscricoesScreenState
     );
   }
 
+
+  Future<void> _executarRoboLimpezaAgora({required bool simular}) async {
+    if (_executandoRoboLimpeza) return;
+    setState(() => _executandoRoboLimpeza = true);
+    try {
+      final callable = FirebaseFunctions.instance
+          .httpsCallable('executarRoboLimpezaInscricoesAgora');
+      final response = await callable.call({'simular': simular});
+      final data = Map<String, dynamic>.from(response.data as Map? ?? const {});
+      if (!mounted) return;
+      setState(() => _roboLimpezaUltimoResultado = data);
+      final quantidade = simular
+          ? (data['seriam_arquivadas'] ?? 0)
+          : (data['arquivadas'] ?? 0);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(simular
+              ? 'Simulação concluída: $quantidade inscrição(ões) seriam arquivadas.'
+              : 'Limpeza concluída: $quantidade inscrição(ões) arquivadas.'),
+          backgroundColor: simular ? context.uai.info : context.uai.success,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (mounted) _mostrarErro('Erro ao executar robô de limpeza: $e');
+    } finally {
+      if (mounted) setState(() => _executandoRoboLimpeza = false);
+    }
+  }
+
   Widget _buildHeroCard() {
     final t = context.uai;
     final onHero = _onHero();
@@ -548,7 +770,7 @@ class _ConfigurarInscricoesScreenState
       decoration: BoxDecoration(
         gradient: _safeHeroGradient(),
         borderRadius: BorderRadius.circular(t.cardRadius + 6),
-        border: Border.all(color: onHero.withOpacity(0.13)),
+        border: Border.all(color: onHero.withAlpha(33)),
         boxShadow: t.cardShadow,
       ),
       child: LayoutBuilder(
@@ -559,9 +781,9 @@ class _ConfigurarInscricoesScreenState
             width: narrow ? 58 : 64,
             height: narrow ? 58 : 64,
             decoration: BoxDecoration(
-              color: onHero.withOpacity(0.14),
+              color: onHero.withAlpha(36),
               borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: onHero.withOpacity(0.16)),
+              border: Border.all(color: onHero.withAlpha(41)),
             ),
             child: Icon(
               Icons.app_registration_rounded,
@@ -591,7 +813,7 @@ class _ConfigurarInscricoesScreenState
                 'Controle vagas, idade permitida, assinatura digital e status público do formulário.',
                 textAlign: narrow ? TextAlign.center : TextAlign.left,
                 style: TextStyle(
-                  color: onHero.withOpacity(0.82),
+                  color: onHero.withAlpha(209),
                   fontSize: narrow ? 12.2 : 13,
                   height: 1.35,
                   fontWeight: FontWeight.w600,
@@ -636,9 +858,9 @@ class _ConfigurarInscricoesScreenState
         vertical: narrow ? 8 : 9,
       ),
       decoration: BoxDecoration(
-        color: onHero.withOpacity(0.14),
+        color: onHero.withAlpha(36),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: onHero.withOpacity(0.16)),
+        border: Border.all(color: onHero.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -733,9 +955,9 @@ class _ConfigurarInscricoesScreenState
             width: compact ? 34 : 38,
             height: compact ? 34 : 38,
             decoration: BoxDecoration(
-              color: Color.alphaBlend(accent.withOpacity(0.12), t.cardAlt),
+              color: Color.alphaBlend(accent.withAlpha(31), t.cardAlt),
               borderRadius: BorderRadius.circular(13),
-              border: Border.all(color: accent.withOpacity(0.14)),
+              border: Border.all(color: accent.withAlpha(36)),
             ),
             child: Icon(icon, color: accent, size: compact ? 19 : 21),
           ),
@@ -797,7 +1019,391 @@ class _ConfigurarInscricoesScreenState
         _buildAgeCard(),
         const SizedBox(height: 12),
         _buildVagasCard(),
+        const SizedBox(height: 12),
+        _buildSecurityCard(),
+        const SizedBox(height: 12),
+        _buildCardLegoCard(),
+        const SizedBox(height: 12),
+        _buildIntegracaoChamadaCard(),
+        const SizedBox(height: 12),
+        _buildRoboAulaCard(),
+        const SizedBox(height: 12),
+        _buildRoboLimpezaCard(),
+        const SizedBox(height: 12),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: t.card,
+            borderRadius: BorderRadius.circular(t.cardRadius),
+            border: Border.all(color: t.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(children: [
+                Icon(Icons.tune_rounded, color: t.primary),
+                const SizedBox(width: 8),
+                Text('Jornada do Pré-Aluno', style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900, fontSize: 16)),
+              ]),
+              const SizedBox(height: 8),
+              Text(
+                'Configure campos do formulário, mensagens, expiração por inatividade e comunicação da nova Minha UAI.',
+                style: TextStyle(color: t.textSecondary, height: 1.4),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ConfiguracoesAvancadasInscricoesScreen()),
+                ),
+                icon: const Icon(Icons.settings_suggest_rounded),
+                label: const Text('ABRIR CONFIGURAÇÕES AVANÇADAS'),
+              ),
+            ],
+          ),
+        ),
       ],
+    );
+  }
+
+
+  Widget _buildCardLegoCard() {
+    final t = context.uai;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: t.card,
+        borderRadius: BorderRadius.circular(t.cardRadius),
+        border: Border.all(color: t.border),
+        boxShadow: t.softShadow,
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Icon(Icons.dashboard_customize_rounded, color: t.info),
+          const SizedBox(width: 9),
+          Expanded(child: Text('Card LEGO das inscrições', style: TextStyle(color: t.textPrimary, fontSize: 16, fontWeight: FontWeight.w900))),
+        ]),
+        const SizedBox(height: 7),
+        Text('Monte o card do seu jeito: ordem dos blocos, itens visíveis, texto e cor de cada etapa.', style: TextStyle(color: t.textSecondary, height: 1.35)),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ConfigurarCardInscricaoScreen())),
+          icon: const Icon(Icons.view_quilt_rounded),
+          label: const Text('MONTAR CARD'),
+        ),
+      ]),
+    );
+  }
+
+  Widget _buildIntegracaoChamadaCard() {
+    final t = context.uai;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: t.card,
+        borderRadius: BorderRadius.circular(t.cardRadius),
+        border: Border.all(color: t.success.withAlpha(56)),
+        boxShadow: t.softShadow,
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Icon(Icons.how_to_reg_rounded, color: t.success),
+          const SizedBox(width: 9),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Conversão → chamada do dia', style: TextStyle(color: t.textPrimary, fontSize: 16, fontWeight: FontWeight.w900)),
+            Text('Evita o novo aluno ficar fora da chamada que já foi feita.', style: TextStyle(color: t.textSecondary, fontSize: 11.5)),
+          ])),
+          Switch.adaptive(value: _integrarChamadaConversao, onChanged: (v) => setState(() => _integrarChamadaConversao = v)),
+        ]),
+        const SizedBox(height: 10),
+        Text(
+          'Ao converter uma inscrição, o sistema procura uma chamada da mesma turma no mesmo dia. Se existir, inclui apenas esse aluno de forma idempotente. Se o resultado da aula experimental estiver como “compareceu”, ele entra presente; caso contrário entra ausente para não inventar presença.',
+          style: TextStyle(color: t.textSecondary, height: 1.4),
+        ),
+      ]),
+    );
+  }
+
+  Widget _buildRoboAulaCard() {
+    final t = context.uai;
+    final accent = _ensureVisible(t.associacao, t.card);
+    final enviadas = _roboUltimoResultado['enviadas'];
+    final falhas = _roboUltimoResultado['falhas'];
+    final encontradas = _roboUltimoResultado['encontradas'];
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: t.card,
+        borderRadius: BorderRadius.circular(t.cardRadius),
+        border: Border.all(color: accent.withAlpha(51)),
+        boxShadow: t.softShadow,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(color: accent.withAlpha(31), borderRadius: BorderRadius.circular(14)),
+                child: Icon(Icons.smart_toy_rounded, color: accent),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Robô da Aula Experimental', style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900, fontSize: 16)),
+                  const SizedBox(height: 3),
+                  Text('Todos os dias às 12:00 • horário de Brasília', style: TextStyle(color: t.textSecondary, fontSize: 11.5, fontWeight: FontWeight.w700)),
+                ]),
+              ),
+              Switch.adaptive(
+                value: _roboAulaAtivo,
+                onChanged: (v) => setState(() => _roboAulaAtivo = v),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: t.cardAlt, borderRadius: BorderRadius.circular(15), border: Border.all(color: t.border)),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Icon(Icons.mark_email_read_rounded, color: accent, size: 19),
+                const SizedBox(width: 8),
+                Expanded(child: Text('Enviar automaticamente o e-mail da aula agendada', style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w800))),
+                Switch.adaptive(value: _roboEnviarEmail, onChanged: _roboAulaAtivo ? (v) => setState(() => _roboEnviarEmail = v) : null),
+              ]),
+              Text('Somente inscrições pendentes, com aula marcada para o dia e e-mail confirmado. O mesmo aluno não recebe duas vezes pelo robô na mesma data.', style: TextStyle(color: t.textSecondary, fontSize: 11.5, height: 1.4)),
+            ]),
+          ),
+          if (_roboUltimoResultado.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              _roboMiniInfo('Encontradas', '${encontradas ?? 0}', Icons.search_rounded, t.info),
+              _roboMiniInfo('Enviadas', '${enviadas ?? 0}', Icons.mark_email_read_rounded, t.success),
+              _roboMiniInfo('Falhas', '${falhas ?? 0}', Icons.error_outline_rounded, t.error),
+            ]),
+          ],
+          const SizedBox(height: 12),
+          Row(children: [
+            if (_permissoesCarregadas && _podeVerAuditoria) ...[
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AuditoriaInscricoesScreen())),
+                  icon: const Icon(Icons.fact_check_rounded),
+                  label: const Text('AUDITORIA'),
+                ),
+              ),
+              const SizedBox(width: 10),
+            ],
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: _roboAulaAtivo && !_executandoRobo ? _executarRoboAgora : null,
+                icon: _executandoRobo
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.play_arrow_rounded),
+                label: Text(_executandoRobo ? 'EXECUTANDO...' : 'EXECUTAR AGORA'),
+              ),
+            ),
+          ]),
+        ],
+      ),
+    );
+  }
+
+
+  Widget _buildRoboLimpezaCard() {
+    final t = context.uai;
+    final accent = _ensureVisible(t.warning, t.card);
+    final r = _roboLimpezaUltimoResultado;
+    final arquivadas = r['arquivadas'] ?? r['seriam_arquivadas'] ?? 0;
+    final protegidas = r['protegidas'] ?? 0;
+    final sinalizadas = r['sinalizadas'] ?? 0;
+
+    Widget numero(String label, TextEditingController controller, {int max = 365}) {
+      return SizedBox(
+        width: 145,
+        child: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(
+            labelText: label,
+            isDense: true,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(13)),
+          ),
+          onChanged: (v) {
+            final n = int.tryParse(v);
+            if (n != null && n > max) controller.text = '$max';
+          },
+        ),
+      );
+    }
+
+    Widget regra({required IconData icon, required String title, required String subtitle, required bool value, required ValueChanged<bool>? onChanged, Widget? trailing}) {
+      return Container(
+        padding: const EdgeInsets.all(11),
+        decoration: BoxDecoration(color: t.cardAlt, borderRadius: BorderRadius.circular(14), border: Border.all(color: t.border)),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+          Icon(icon, color: accent, size: 19),
+          const SizedBox(width: 9),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 2),
+            Text(subtitle, style: TextStyle(color: t.textSecondary, fontSize: 11.2, height: 1.3)),
+          ])),
+          if (trailing != null) ...[const SizedBox(width: 8), trailing],
+          Switch.adaptive(value: value, onChanged: onChanged),
+        ]),
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: t.card,
+        borderRadius: BorderRadius.circular(t.cardRadius),
+        border: Border.all(color: accent.withAlpha(64)),
+        boxShadow: t.softShadow,
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Container(
+            width: 44, height: 44,
+            decoration: BoxDecoration(color: accent.withAlpha(31), borderRadius: BorderRadius.circular(14)),
+            child: Icon(Icons.auto_delete_rounded, color: accent),
+          ),
+          const SizedBox(width: 11),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Robô de Limpeza das Inscrições', style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900, fontSize: 16)),
+            const SizedBox(height: 3),
+            Text('Todos os dias às 11:00 • horário de Brasília', style: TextStyle(color: t.textSecondary, fontSize: 11.5, fontWeight: FontWeight.w700)),
+          ])),
+          Switch.adaptive(value: _roboLimpezaAtivo, onChanged: (v) => setState(() => _roboLimpezaAtivo = v)),
+        ]),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(color: accent.withAlpha(18), borderRadius: BorderRadius.circular(14), border: Border.all(color: accent.withAlpha(46))),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Icon(Icons.shield_outlined, color: accent, size: 19),
+            const SizedBox(width: 8),
+            Expanded(child: Text(
+              'Ele só analisa inscrições PENDENTES. Aula futura fica protegida. Antes de ativar pela primeira vez, use SIMULAR para conferir exatamente o que seria arquivado.',
+              style: TextStyle(color: t.textPrimary, fontSize: 11.5, height: 1.4, fontWeight: FontWeight.w700),
+            )),
+          ]),
+        ),
+        const SizedBox(height: 10),
+        regra(
+          icon: Icons.visibility_rounded,
+          title: 'Modo simulação no horário automático',
+          subtitle: 'Às 11h o robô apenas calcula e registra a auditoria, sem mover inscrições.',
+          value: _roboLimpezaSimulacao,
+          onChanged: _roboLimpezaAtivo ? (v) => setState(() => _roboLimpezaSimulacao = v) : null,
+        ),
+        const SizedBox(height: 8),
+        regra(
+          icon: Icons.notification_important_outlined,
+          title: 'Sinalizar inscrições paradas',
+          subtitle: 'Antes de arquivar, marca o card como sem movimento.',
+          value: _roboLimpezaSinalizar,
+          onChanged: (v) => setState(() => _roboLimpezaSinalizar = v),
+          trailing: numero('Alertar após', _limpezaAlertarDiasController),
+        ),
+        const SizedBox(height: 8),
+        regra(
+          icon: Icons.hourglass_bottom_rounded,
+          title: 'Arquivar por inatividade geral',
+          subtitle: 'Inscrições esquecidas sem qualquer andamento por muitos dias.',
+          value: _roboLimpezaSemMovimento,
+          onChanged: (v) => setState(() => _roboLimpezaSemMovimento = v),
+          trailing: numero('Dias parados', _limpezaSemMovimentoDiasController),
+        ),
+        const SizedBox(height: 8),
+        regra(
+          icon: Icons.person_search_rounded,
+          title: 'Arquivar interessados sem retorno',
+          subtitle: 'Etapas “nova” ou “interessado” que não evoluíram.',
+          value: _roboLimpezaInteressado,
+          onChanged: (v) => setState(() => _roboLimpezaInteressado = v),
+          trailing: numero('Dias', _limpezaInteressadoDiasController),
+        ),
+        const SizedBox(height: 8),
+        regra(
+          icon: Icons.event_busy_rounded,
+          title: 'Arquivar aula experimental vencida',
+          subtitle: 'Aula já passou e a inscrição continuou como “aula agendada”.',
+          value: _roboLimpezaAulaVencida,
+          onChanged: (v) => setState(() => _roboLimpezaAulaVencida = v),
+          trailing: numero('Após a aula', _limpezaAulaVencidaDiasController),
+        ),
+        const SizedBox(height: 8),
+        regra(
+          icon: Icons.inventory_2_outlined,
+          title: 'Arquivar inscrições já expiradas',
+          subtitle: 'Resolve automaticamente registros que já foram marcados como expirados.',
+          value: _roboLimpezaExpirada,
+          onChanged: (v) => setState(() => _roboLimpezaExpirada = v),
+        ),
+        const SizedBox(height: 8),
+        regra(
+          icon: Icons.event_available_rounded,
+          title: 'Proteger qualquer aula futura',
+          subtitle: 'Nunca arquiva uma inscrição que ainda possui aula experimental futura marcada.',
+          value: _roboLimpezaProtegerAulaFutura,
+          onChanged: (v) => setState(() => _roboLimpezaProtegerAulaFutura = v),
+        ),
+        const SizedBox(height: 10),
+        Wrap(spacing: 10, runSpacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
+          numero('Máx. por execução', _limpezaLimiteController, max: 500),
+          if (r.isNotEmpty) ...[
+            _roboMiniInfo('Arquivadas', '$arquivadas', Icons.inventory_2_rounded, t.warning),
+            _roboMiniInfo('Sinalizadas', '$sinalizadas', Icons.flag_rounded, t.info),
+            _roboMiniInfo('Protegidas', '$protegidas', Icons.shield_rounded, t.success),
+          ],
+        ]),
+        const SizedBox(height: 12),
+        Wrap(spacing: 10, runSpacing: 10, children: [
+          OutlinedButton.icon(
+            onPressed: _executandoRoboLimpeza ? null : () => _executarRoboLimpezaAgora(simular: true),
+            icon: const Icon(Icons.science_outlined),
+            label: const Text('SIMULAR AGORA'),
+          ),
+          FilledButton.icon(
+            onPressed: _executandoRoboLimpeza ? null : () => _executarRoboLimpezaAgora(simular: false),
+            icon: _executandoRoboLimpeza
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.cleaning_services_rounded),
+            label: Text(_executandoRoboLimpeza ? 'EXECUTANDO...' : 'EXECUTAR LIMPEZA'),
+          ),
+          if (_permissoesCarregadas && _podeVerAuditoria)
+            OutlinedButton.icon(
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AuditoriaInscricoesScreen())),
+              icon: const Icon(Icons.fact_check_outlined),
+              label: const Text('VER AUDITORIA'),
+            ),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _roboMiniInfo(String label, String value, IconData icon, Color color) {
+    final t = context.uai;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(color: color.withAlpha(20), borderRadius: BorderRadius.circular(12)),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(icon, color: color, size: 15),
+        const SizedBox(width: 5),
+        Text('$label: $value', style: TextStyle(color: t.textPrimary, fontSize: 11, fontWeight: FontWeight.w800)),
+      ]),
     );
   }
 
@@ -861,9 +1467,9 @@ class _ConfigurarInscricoesScreenState
             width: veryNarrow ? 44 : 48,
             height: veryNarrow ? 44 : 48,
             decoration: BoxDecoration(
-              color: Color.alphaBlend(accent.withOpacity(0.12), t.cardAlt),
+              color: Color.alphaBlend(accent.withAlpha(31), t.cardAlt),
               borderRadius: BorderRadius.circular(t.buttonRadius),
-              border: Border.all(color: accent.withOpacity(0.16)),
+              border: Border.all(color: accent.withAlpha(41)),
             ),
             child: Icon(icon, color: accent, size: veryNarrow ? 23 : 26),
           );
@@ -904,12 +1510,137 @@ class _ConfigurarInscricoesScreenState
               const SizedBox(width: 8),
               Switch(
                 value: value,
-                activeColor: accent,
+                activeThumbColor: accent,
                 onChanged: onChanged,
               ),
             ],
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildSecurityCard() {
+    final t = context.uai;
+    final accent = _ensureVisible(t.error, t.card);
+
+    Widget option({
+      required IconData icon,
+      required String title,
+      required String subtitle,
+      required bool value,
+      required ValueChanged<bool> onChanged,
+    }) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 10),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () => onChanged(!value),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: Color.alphaBlend(accent.withAlpha(11), t.cardAlt),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: t.border.withAlpha(184)),
+              ),
+              child: Row(
+                children: [
+                  Icon(icon, color: value ? accent : t.textMuted, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: TextStyle(
+                            color: t.textPrimary,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 13,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle,
+                          style: TextStyle(
+                            color: t.textSecondary,
+                            fontSize: 11,
+                            height: 1.2,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Switch(
+                    value: value,
+                    activeThumbColor: accent,
+                    onChanged: onChanged,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: _cardDecoration(color: accent),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _sectionHeader(
+            icon: Icons.shield_outlined,
+            title: 'Segurança e qualidade',
+            color: accent,
+          ),
+          const SizedBox(height: 8),
+          _noticeBox(
+            icon: Icons.info_outline_rounded,
+            color: accent,
+            text:
+                'As verificações apenas criam alertas para a equipe. Nenhuma inscrição será bloqueada automaticamente.',
+          ),
+          option(
+            icon: Icons.content_copy_rounded,
+            title: 'Detectar possíveis duplicidades',
+            subtitle:
+                'CPF e nome + nascimento. Responsáveis compartilhados entre alunos não são tratados como duplicidade.',
+            value: _segurancaDetectarDuplicidade,
+            onChanged: (v) =>
+                setState(() => _segurancaDetectarDuplicidade = v),
+          ),
+          option(
+            icon: Icons.phone_in_talk_rounded,
+            title: 'Detectar telefone suspeito',
+            subtitle: 'Sinaliza sequências improváveis ou números fora do padrão.',
+            value: _segurancaDetectarTelefoneSuspeito,
+            onChanged: (v) =>
+                setState(() => _segurancaDetectarTelefoneSuspeito = v),
+          ),
+          option(
+            icon: Icons.speed_rounded,
+            title: 'Detectar preenchimento muito rápido',
+            subtitle:
+                'Ajuda a identificar testes automatizados sem impedir o envio.',
+            value: _segurancaDetectarPreenchimentoRapido,
+            onChanged: (v) =>
+                setState(() => _segurancaDetectarPreenchimentoRapido = v),
+          ),
+          option(
+            icon: Icons.person_search_rounded,
+            title: 'Detectar nome suspeito',
+            subtitle:
+                'Sinaliza padrões como TESTE, ASDF e repetições exageradas.',
+            value: _segurancaDetectarNomeSuspeito,
+            onChanged: (v) =>
+                setState(() => _segurancaDetectarNomeSuspeito = v),
+          ),
+        ],
       ),
     );
   }
@@ -1008,9 +1739,9 @@ class _ConfigurarInscricoesScreenState
                 width: narrow ? double.infinity : 104,
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Color.alphaBlend(accent.withOpacity(0.08), t.cardAlt),
+                  color: Color.alphaBlend(accent.withAlpha(20), t.cardAlt),
                   borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: accent.withOpacity(0.14)),
+                  border: Border.all(color: accent.withAlpha(36)),
                 ),
                 child: Column(
                   children: [
@@ -1138,6 +1869,11 @@ class _ConfigurarInscricoesScreenState
             value: '$_idadeMinima a $_idadeMaxima anos',
             color: t.associacao,
           ),
+          _buildResumoRow(
+            label: 'Triagem',
+            value: 'ALERTAR, NÃO BLOQUEAR',
+            color: t.error,
+          ),
         ],
       ),
     );
@@ -1156,9 +1892,9 @@ class _ConfigurarInscricoesScreenState
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: Color.alphaBlend(accent.withOpacity(0.12), t.cardAlt),
+              color: Color.alphaBlend(accent.withAlpha(31), t.cardAlt),
               borderRadius: BorderRadius.circular(15),
-              border: Border.all(color: accent.withOpacity(0.14)),
+              border: Border.all(color: accent.withAlpha(36)),
             ),
             child: Icon(Icons.info_rounded, color: accent, size: 24),
           ),
@@ -1192,9 +1928,9 @@ class _ConfigurarInscricoesScreenState
           width: 40,
           height: 40,
           decoration: BoxDecoration(
-            color: Color.alphaBlend(accent.withOpacity(0.12), t.cardAlt),
+            color: Color.alphaBlend(accent.withAlpha(31), t.cardAlt),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: accent.withOpacity(0.14)),
+            border: Border.all(color: accent.withAlpha(36)),
           ),
           child: Icon(icon, color: accent, size: 21),
         ),
@@ -1263,9 +1999,9 @@ class _ConfigurarInscricoesScreenState
       width: double.infinity,
       padding: const EdgeInsets.all(11),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), t.cardAlt),
+        color: Color.alphaBlend(accent.withAlpha(20), t.cardAlt),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: accent.withOpacity(0.14)),
+        border: Border.all(color: accent.withAlpha(36)),
       ),
       child: Row(
         children: [
@@ -1299,9 +2035,9 @@ class _ConfigurarInscricoesScreenState
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.07), t.cardAlt),
+        color: Color.alphaBlend(accent.withAlpha(18), t.cardAlt),
         borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: accent.withOpacity(0.12)),
+        border: Border.all(color: accent.withAlpha(31)),
       ),
       child: Row(
         children: [
@@ -1385,7 +2121,7 @@ class _ConfigurarInscricoesScreenState
     return BoxDecoration(
       color: t.card,
       borderRadius: BorderRadius.circular(t.cardRadius),
-      border: Border.all(color: accent.withOpacity(0.12)),
+      border: Border.all(color: accent.withAlpha(31)),
       boxShadow: t.softShadow,
     );
   }

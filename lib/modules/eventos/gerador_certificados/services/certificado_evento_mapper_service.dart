@@ -14,6 +14,11 @@ class CertificadoEventoMapperService {
       'participacoes_eventos_em_andamento';
   static const String alunosCollection = 'alunos';
   static const String graduacoesCollection = 'graduacoes';
+  static const String academiasCollection = 'academias';
+  static const String turmasCollection = 'turmas';
+
+  final Map<String, String> _academiaNomeCache = <String, String>{};
+  final Map<String, String> _turmaNomeCache = <String, String>{};
 
   Future<List<CertificadoParticipanteData>> carregarParticipantesDoEvento({
     required CertificadoEventoData evento,
@@ -89,7 +94,47 @@ class CertificadoEventoMapperService {
   }) async {
     try {
       final alunoId = _asString(participacao['aluno_id']);
-      final aluno = await _buscarAluno(alunoId);
+      final alunoOriginal = await _buscarAluno(alunoId);
+      final aluno = alunoOriginal == null
+          ? null
+          : Map<String, dynamic>.from(alunoOriginal);
+
+      // O certificado deve refletir o vínculo REAL do aluno, e nunca o local/cidade
+      // do evento como se fosse academia. Resolve nomes por ID somente quando
+      // necessário e mantém cache por tela para não multiplicar leituras.
+      if (aluno != null) {
+        final academiaId = _firstNotEmpty([
+          participacao['academia_id'],
+          aluno['academia_id'],
+        ]);
+        var academiaNome = _firstNotEmpty([
+          participacao['academia_nome'],
+          participacao['academia'],
+          aluno['academia_nome'],
+          aluno['academia'],
+        ]);
+        if (academiaNome.isEmpty && academiaId.isNotEmpty) {
+          academiaNome = await _buscarNomeAcademia(academiaId);
+        }
+        if (academiaId.isNotEmpty) aluno['academia_id'] = academiaId;
+        if (academiaNome.isNotEmpty) aluno['academia_nome'] = academiaNome;
+
+        final turmaId = _firstNotEmpty([
+          participacao['turma_id'],
+          aluno['turma_id'],
+        ]);
+        var turmaNome = _firstNotEmpty([
+          participacao['turma_nome'],
+          participacao['turma'],
+          aluno['turma_nome'],
+          aluno['turma'],
+        ]);
+        if (turmaNome.isEmpty && turmaId.isNotEmpty) {
+          turmaNome = await _buscarNomeTurma(turmaId);
+        }
+        if (turmaId.isNotEmpty) aluno['turma_id'] = turmaId;
+        if (turmaNome.isNotEmpty) aluno['turma_nome'] = turmaNome;
+      }
 
       // Busca a graduação nova preferindo a participação.
       // Se por algum motivo a participação antiga não tiver o ID novo,
@@ -144,6 +189,48 @@ class CertificadoEventoMapperService {
     }
   }
 
+  Future<String> _buscarNomeAcademia(String academiaId) async {
+    final id = academiaId.trim();
+    if (id.isEmpty) return '';
+    final cached = _academiaNomeCache[id];
+    if (cached != null) return cached;
+    try {
+      final doc = await _firestore.collection(academiasCollection).doc(id).get();
+      final nome = _firstNotEmpty([
+        doc.data()?['nome'],
+        doc.data()?['academia_nome'],
+        doc.data()?['titulo'],
+      ]);
+      _academiaNomeCache[id] = nome;
+      return nome;
+    } catch (e) {
+      debugPrint('⚠️ Erro ao resolver academia $id: $e');
+      _academiaNomeCache[id] = '';
+      return '';
+    }
+  }
+
+  Future<String> _buscarNomeTurma(String turmaId) async {
+    final id = turmaId.trim();
+    if (id.isEmpty) return '';
+    final cached = _turmaNomeCache[id];
+    if (cached != null) return cached;
+    try {
+      final doc = await _firestore.collection(turmasCollection).doc(id).get();
+      final nome = _firstNotEmpty([
+        doc.data()?['nome'],
+        doc.data()?['turma_nome'],
+        doc.data()?['titulo'],
+      ]);
+      _turmaNomeCache[id] = nome;
+      return nome;
+    } catch (e) {
+      debugPrint('⚠️ Erro ao resolver turma $id: $e');
+      _turmaNomeCache[id] = '';
+      return '';
+    }
+  }
+
   Future<Map<String, dynamic>?> _buscarGraduacao(String graduacaoId) async {
     if (graduacaoId.trim().isEmpty || graduacaoId == '0') return null;
 
@@ -167,6 +254,10 @@ class CertificadoEventoMapperService {
     required String linkCertificado,
     String? storagePath,
     String? tipoArquivo,
+    String? emissaoV2Id,
+    String? codigoPublico,
+    String? codigoHumano,
+    String? urlAutenticidade,
   }) async {
     if (participacaoId.trim().isEmpty) {
       throw Exception('ID da participação não informado.');
@@ -189,6 +280,19 @@ class CertificadoEventoMapperService {
 
     if (tipoArquivo != null && tipoArquivo.trim().isNotEmpty) {
       data['certificado_tipo_arquivo'] = tipoArquivo.trim();
+    }
+    if (emissaoV2Id != null && emissaoV2Id.trim().isNotEmpty) {
+      data['certificado_emissao_v2_id'] = emissaoV2Id.trim();
+      data['certificado_modo_emissao'] = 'profissional_v2';
+    }
+    if (codigoPublico != null && codigoPublico.trim().isNotEmpty) {
+      data['certificado_codigo_publico'] = codigoPublico.trim();
+    }
+    if (codigoHumano != null && codigoHumano.trim().isNotEmpty) {
+      data['certificado_codigo'] = codigoHumano.trim();
+    }
+    if (urlAutenticidade != null && urlAutenticidade.trim().isNotEmpty) {
+      data['certificado_url_autenticidade'] = urlAutenticidade.trim();
     }
 
     await _firestore

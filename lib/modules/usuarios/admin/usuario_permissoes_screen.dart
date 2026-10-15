@@ -1,8 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:uai_capoeira/modules/usuarios/widgets/usuario_action_overlay.dart';
 import 'package:uai_capoeira/core/permissions/permission_catalog.dart';
 import 'package:uai_capoeira/core/permissions/permission_definition.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'package:uai_capoeira/modules/usuarios/models/permissao_predefinida_model.dart';
+import 'package:uai_capoeira/modules/usuarios/services/permissao_predefinida_service.dart';
+import '../services/usuario_auditoria_service.dart';
 import 'usuario_admin_access.dart';
 
 class UsuarioPermissoesScreen extends StatefulWidget {
@@ -32,17 +36,25 @@ enum _PermissionFilter {
   todas,
   ativas,
   criticas,
-  sistema,
+  telas,
+  associacao,
   eventos,
+  certificados,
+  transportes,
+  inscricoes,
   alunos,
   chamada,
   uniformes,
+  usuarios,
   dashboard,
+  sistema,
 }
 
 class _UsuarioPermissoesScreenState extends State<UsuarioPermissoesScreen> {
   final TextEditingController _buscaController = TextEditingController();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final PermissaoPredefinidaService _predefinicaoService =
+      PermissaoPredefinidaService();
   late Future<UsuarioAdminAccess> _accessFuture;
 
   bool _carregando = true;
@@ -115,6 +127,26 @@ class _UsuarioPermissoesScreenState extends State<UsuarioPermissoesScreen> {
       permissionsData.forEach((key, value) {
         if (value is bool) carregadas[key] = value;
       });
+
+      // Migração visual das permissões da Associação.
+      // Quem já tinha apenas "Acessar associação" mantém o acesso atual
+      // até o administrador salvar as novas permissões granulares.
+      final associacaoGranulares = _catalogo
+          .where((p) => p.category.startsWith('ASSOCIAÇÃO'))
+          .toList(growable: false);
+      final associacaoJaMigrada = associacaoGranulares.any(
+        (p) => p.linkedKeys.any(permissionsData.containsKey),
+      );
+      final tinhaAcessoAssociacao =
+          carregadas['pode_acessar_associacao'] == true ||
+          carregadas['podeAcessarAssociacao'] == true;
+      if (!associacaoJaMigrada && tinhaAcessoAssociacao) {
+        for (final p in associacaoGranulares) {
+          for (final chave in p.linkedKeys) {
+            carregadas[chave] = true;
+          }
+        }
+      }
 
       for (final permissao in _catalogo) {
         final ativa = _permissaoAtivaEmMapa(permissao, carregadas);
@@ -326,6 +358,7 @@ class _UsuarioPermissoesScreenState extends State<UsuarioPermissoesScreen> {
       }
       return;
     }
+    if (!mounted) return;
 
     final criticasNovas = _catalogo
         .where(
@@ -343,10 +376,17 @@ class _UsuarioPermissoesScreenState extends State<UsuarioPermissoesScreen> {
             'Você está ativando permissões críticas. Isso pode liberar áreas sensíveis do sistema para este usuário.',
         permissoes: criticasNovas,
       );
-      if (!ok) return;
+      if (!ok || !mounted) return;
     }
+    if (!mounted) return;
 
     setState(() => _salvando = true);
+    UsuarioActionOverlay.show(
+      context,
+      title: 'Salvando permissões...',
+      subtitle: 'Aplicando as regras de acesso e registrando a auditoria.',
+      icon: Icons.admin_panel_settings_rounded,
+    );
     try {
       final update = <String, bool>{};
       for (final permissao in _catalogo) {
@@ -358,6 +398,22 @@ class _UsuarioPermissoesScreenState extends State<UsuarioPermissoesScreen> {
 
       await _permissoesRef().set(update, SetOptions(merge: true));
 
+      final alteradas = <String>[];
+      update.forEach((key, value) {
+        if (_permissoesOriginais[key] != value) alteradas.add(key);
+      });
+      if (alteradas.isNotEmpty) {
+        await UsuarioAuditoriaService.registrar(
+          userId: widget.userId,
+          tipo: 'permissoes',
+          titulo: 'Permissões atualizadas',
+          descricao: '${alteradas.length} permissão(ões) alterada(s).',
+          detalhes: {
+            'chaves_alteradas': alteradas,
+          },
+        );
+      }
+
       if (!mounted) return;
       setState(() {
         _permissoesOriginais = Map<String, bool>.from(_permissoes);
@@ -365,9 +421,15 @@ class _UsuarioPermissoesScreenState extends State<UsuarioPermissoesScreen> {
       });
       _snack('Permissões salvas com sucesso.', success: true);
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) {
+        UsuarioActionOverlay.hide();
+        return;
+      }
       setState(() => _salvando = false);
       _snack('Erro ao salvar permissões: $e');
+    } finally {
+      UsuarioActionOverlay.hide();
+      if (mounted && _salvando) setState(() => _salvando = false);
     }
   }
 
@@ -376,6 +438,163 @@ class _UsuarioPermissoesScreenState extends State<UsuarioPermissoesScreen> {
       _permissoes = Map<String, bool>.from(_permissoesOriginais);
     });
     _snack('Alterações descartadas.');
+  }
+
+  Future<void> _abrirPredefinicoes() async {
+    final preset = await showModalBottomSheet<PermissaoPredefinidaModel>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        final t = sheetContext.uai;
+        return SafeArea(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(sheetContext).size.height * 0.72,
+            ),
+            child: StreamBuilder<List<PermissaoPredefinidaModel>>(
+              stream: _predefinicaoService.streamPredefinicoes(
+                apenasAtivas: true,
+              ),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return Center(
+                    child: CircularProgressIndicator(color: t.primary),
+                  );
+                }
+                if (snapshot.hasError) {
+                  return Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(
+                      'Não foi possível carregar as predefinições.',
+                      style: TextStyle(color: t.textPrimary),
+                    ),
+                  );
+                }
+                final presets =
+                    snapshot.data ?? const <PermissaoPredefinidaModel>[];
+                if (presets.isEmpty) {
+                  return Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.tune_rounded, color: t.textMuted, size: 48),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Nenhuma predefinição ativa encontrada.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: t.textPrimary,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+                return ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 18),
+                  itemCount: presets.length + 1,
+                  separatorBuilder: (_, _) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    if (index == 0) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Text(
+                          'Aplicar predefinição',
+                          style: TextStyle(
+                            color: t.textPrimary,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      );
+                    }
+                    final item = presets[index - 1];
+                    return Card(
+                      child: ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: t.primary.withValues(alpha: 0.12),
+                          foregroundColor: t.primary,
+                          child: const Icon(Icons.fact_check_rounded),
+                        ),
+                        title: Text(
+                          item.nome,
+                          style: const TextStyle(fontWeight: FontWeight.w900),
+                        ),
+                        subtitle: Text(
+                          '${item.totalAtivas} permissões marcadas${item.descricao.isEmpty ? '' : ' · ${item.descricao}'}',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        onTap: () => Navigator.pop(sheetContext, item),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+
+    if (preset == null || !mounted) return;
+
+    final possuiPermissoesAtuais = _catalogo.any(_permissaoAtiva);
+    if (possuiPermissoesAtuais) {
+      final substituir = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Substituir permissões atuais?'),
+          content: Text(
+            'A predefinição "${preset.nome}" vai preencher todas as permissões conhecidas desta tela. Revise antes de salvar.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Substituir permissões atuais'),
+            ),
+          ],
+        ),
+      );
+      if (substituir != true) return;
+    }
+
+    final novas = preset.permissoesConhecidas(_chavesControladas);
+    final criticasNovas = _catalogo
+        .where(
+          (permissao) =>
+              permissao.critical &&
+              permissao.linkedKeys.any((chave) => novas[chave] == true) &&
+              !_permissaoAtiva(permissao),
+        )
+        .toList(growable: false);
+
+    if (criticasNovas.isNotEmpty) {
+      final ok = await _confirmarCriticas(
+        titulo: 'Predefinição com permissões críticas',
+        mensagem:
+            'Esta predefinição ativa permissões críticas. Revise com cuidado antes de salvar.',
+        permissoes: criticasNovas,
+      );
+      if (!ok) return;
+    }
+
+    setState(() {
+      for (final chave in _chavesControladas) {
+        _permissoes[chave] = novas[chave] == true;
+      }
+    });
+    _snack(
+      'As permissões foram preenchidas pelo modelo. Revise e salve para aplicar.',
+      success: true,
+    );
   }
 
   Future<bool> _confirmarSaida() async {
@@ -435,19 +654,35 @@ class _UsuarioPermissoesScreenState extends State<UsuarioPermissoesScreen> {
             _PermissionFilter.todas => true,
             _PermissionFilter.ativas => _permissaoAtiva(permissao),
             _PermissionFilter.criticas => permissao.critical,
-            _PermissionFilter.sistema =>
-              permissao.category == PermissionCatalog.categorySystemAdmin,
-            _PermissionFilter.eventos => permissao.category.startsWith(
-              'EVENTOS',
-            ),
+            _PermissionFilter.telas =>
+              permissao.category == PermissionCatalog.categoryVisibility,
+            _PermissionFilter.associacao =>
+              permissao.category.startsWith('ASSOCIAÇÃO') ||
+              permissao.key == 'pode_acessar_associacao',
+            _PermissionFilter.eventos =>
+              permissao.category.startsWith('EVENTOS'),
+            _PermissionFilter.certificados =>
+              permissao.category == PermissionCatalog.categoryCertificates,
+            _PermissionFilter.transportes =>
+              permissao.category.startsWith('TRANSPORTES') ||
+              permissao.key == 'pode_acessar_transportes',
+            _PermissionFilter.inscricoes =>
+              permissao.category == PermissionCatalog.categoryRegistrations ||
+              permissao.key == 'pode_acessar_inscricoes',
             _PermissionFilter.alunos =>
               permissao.category == PermissionCatalog.categoryStudents,
             _PermissionFilter.chamada =>
               permissao.category == PermissionCatalog.categoryAttendance,
             _PermissionFilter.uniformes =>
-              permissao.category == PermissionCatalog.categoryUniforms,
+              permissao.category == PermissionCatalog.categoryUniforms ||
+              permissao.key == 'pode_acessar_uniformes',
+            _PermissionFilter.usuarios =>
+              permissao.category == PermissionCatalog.categoryUsers,
             _PermissionFilter.dashboard =>
               permissao.category == PermissionCatalog.categoryDashboardTurma,
+            _PermissionFilter.sistema =>
+              permissao.category == PermissionCatalog.categorySystemAdmin ||
+              permissao.category == PermissionCatalog.categorySystemConfig,
           };
         })
         .toList(growable: false);
@@ -542,6 +777,11 @@ class _UsuarioPermissoesScreenState extends State<UsuarioPermissoesScreen> {
             },
           ),
           actions: [
+            IconButton(
+              tooltip: 'Aplicar predefinição',
+              onPressed: _salvando || _carregando ? null : _abrirPredefinicoes,
+              icon: const Icon(Icons.tune_rounded),
+            ),
             IconButton(
               tooltip: 'Recarregar permissões',
               onPressed: _salvando ? null : _carregarTudo,
@@ -1063,12 +1303,18 @@ class _UsuarioPermissoesScreenState extends State<UsuarioPermissoesScreen> {
       _PermissionFilter.todas => 'Todas',
       _PermissionFilter.ativas => 'Ativas',
       _PermissionFilter.criticas => 'Críticas',
-      _PermissionFilter.sistema => 'Sistema/Admin',
+      _PermissionFilter.telas => 'Telas / Acesso',
+      _PermissionFilter.associacao => 'Associação',
       _PermissionFilter.eventos => 'Eventos',
+      _PermissionFilter.certificados => 'Certificados',
+      _PermissionFilter.transportes => 'Transportes',
+      _PermissionFilter.inscricoes => 'Inscrições',
       _PermissionFilter.alunos => 'Alunos',
       _PermissionFilter.chamada => 'Chamada',
       _PermissionFilter.uniformes => 'Uniformes',
+      _PermissionFilter.usuarios => 'Usuários',
       _PermissionFilter.dashboard => 'Dashboard',
+      _PermissionFilter.sistema => 'Sistema / Admin',
     };
   }
 
@@ -1077,12 +1323,18 @@ class _UsuarioPermissoesScreenState extends State<UsuarioPermissoesScreen> {
       _PermissionFilter.todas => Icons.grid_view_rounded,
       _PermissionFilter.ativas => Icons.check_circle_rounded,
       _PermissionFilter.criticas => Icons.warning_amber_rounded,
-      _PermissionFilter.sistema => Icons.admin_panel_settings_rounded,
+      _PermissionFilter.telas => Icons.visibility_rounded,
+      _PermissionFilter.associacao => Icons.account_balance_rounded,
       _PermissionFilter.eventos => Icons.event_rounded,
+      _PermissionFilter.certificados => Icons.workspace_premium_rounded,
+      _PermissionFilter.transportes => Icons.directions_bus_filled_rounded,
+      _PermissionFilter.inscricoes => Icons.app_registration_rounded,
       _PermissionFilter.alunos => Icons.people_rounded,
       _PermissionFilter.chamada => Icons.fact_check_rounded,
       _PermissionFilter.uniformes => Icons.shopping_bag_rounded,
+      _PermissionFilter.usuarios => Icons.manage_accounts_rounded,
       _PermissionFilter.dashboard => Icons.analytics_rounded,
+      _PermissionFilter.sistema => Icons.admin_panel_settings_rounded,
     };
   }
 
@@ -1092,12 +1344,18 @@ class _UsuarioPermissoesScreenState extends State<UsuarioPermissoesScreen> {
       _PermissionFilter.todas => t.primary,
       _PermissionFilter.ativas => t.success,
       _PermissionFilter.criticas => t.error,
-      _PermissionFilter.sistema => t.primary,
+      _PermissionFilter.telas => t.associacao,
+      _PermissionFilter.associacao => t.associacao,
       _PermissionFilter.eventos => t.eventos,
+      _PermissionFilter.certificados => t.inscricoes,
+      _PermissionFilter.transportes => t.info,
+      _PermissionFilter.inscricoes => t.success,
       _PermissionFilter.alunos => t.uniformes,
       _PermissionFilter.chamada => t.warning,
       _PermissionFilter.uniformes => t.accent,
+      _PermissionFilter.usuarios => t.error,
       _PermissionFilter.dashboard => t.info,
+      _PermissionFilter.sistema => t.primary,
     };
   }
 
@@ -1252,11 +1510,23 @@ class _UsuarioPermissoesScreenState extends State<UsuarioPermissoesScreen> {
     if (categoria == PermissionCatalog.categoryVisibility) {
       return t.associacao;
     }
+    if (categoria.startsWith('ASSOCIAÇÃO')) {
+      return t.associacao;
+    }
+    if (categoria.startsWith('TRANSPORTES')) {
+      return t.info;
+    }
+    if (categoria == PermissionCatalog.categoryRegistrations) {
+      return t.success;
+    }
     if (categoria == PermissionCatalog.categoryStudents) {
       return t.uniformes;
     }
     if (categoria == PermissionCatalog.categoryAttendance) {
       return t.warning;
+    }
+    if (categoria == PermissionCatalog.categoryCertificates) {
+      return t.inscricoes;
     }
     if (categoria == PermissionCatalog.categoryEventsGeneral) {
       return t.eventos;
@@ -1286,11 +1556,23 @@ class _UsuarioPermissoesScreenState extends State<UsuarioPermissoesScreen> {
     if (categoria == PermissionCatalog.categoryVisibility) {
       return Icons.visibility_rounded;
     }
+    if (categoria.startsWith('ASSOCIAÇÃO')) {
+      return Icons.account_balance_rounded;
+    }
+    if (categoria.startsWith('TRANSPORTES')) {
+      return Icons.directions_bus_filled_rounded;
+    }
+    if (categoria == PermissionCatalog.categoryRegistrations) {
+      return Icons.app_registration_rounded;
+    }
     if (categoria == PermissionCatalog.categoryStudents) {
       return Icons.people_rounded;
     }
     if (categoria == PermissionCatalog.categoryAttendance) {
       return Icons.fact_check_rounded;
+    }
+    if (categoria == PermissionCatalog.categoryCertificates) {
+      return Icons.workspace_premium_rounded;
     }
     if (categoria.startsWith('EVENTOS')) {
       return Icons.event_rounded;
@@ -1321,16 +1603,21 @@ class _UsuarioPermissoesScreenState extends State<UsuarioPermissoesScreen> {
       return 'Dashboard / Resumo';
     }
     return categoria
+        .replaceAll('ASSOCIAÇÃO — ', 'Associação — ')
         .replaceAll('EVENTOS — ', 'Eventos — ')
+        .replaceAll('CERTIFICADOS', 'Certificados')
+        .replaceAll('TRANSPORTES — ', 'Transportes — ')
+        .replaceAll('INSCRIÇÕES', 'Inscrições')
         .replaceAll('ALUNOS', 'Alunos')
         .replaceAll('USUÁRIOS', 'Usuários')
-        .replaceAll('UNIFORMES', 'Uniformes');
+        .replaceAll('UNIFORMES', 'Uniformes')
+        .replaceAll('SISTEMA / CONFIGURATIONS', 'Sistema / Configurações');
   }
 
   Widget _buildDashboardQuickPackages(BuildContext context) {
     final t = context.uai;
     return Container(
-      color: t.cardAlt.withOpacity(0.42),
+      color: t.cardAlt.withAlpha(107),
       padding: const EdgeInsets.fromLTRB(14, 8, 14, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1409,7 +1696,7 @@ class _UsuarioPermissoesScreenState extends State<UsuarioPermissoesScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
           decoration: BoxDecoration(
-            border: Border.all(color: activeColor.withOpacity(0.24)),
+            border: Border.all(color: activeColor.withAlpha(61)),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Row(

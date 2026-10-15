@@ -120,6 +120,15 @@
             0% { transform: translateX(-100%); }
             100% { transform: translateX(400%); }
         }
+
+        @media (prefers-reduced-motion: reduce) {
+            .icon,
+            .loading-bar::after,
+            .retry-btn {
+                animation: none !important;
+                transition: none !important;
+            }
+        }
     </style>
 </head>
 <body>
@@ -134,33 +143,22 @@
         🔄 Tentar novamente
     </button>
     <div class="loading-bar"></div>
-    <div class="status">
-        UAI CAPOEIRA - União, Amizade e Inteligência
+    <div class="status" id="connection-status" role="status" aria-live="polite">
+        Sem conexão — aguardando internet
     </div>
 </div>
 
 <script>
-    // Tenta reconectar automaticamente
-    let attempts = 0;
-    const maxAttempts = 5;
+    const statusEl = document.getElementById('connection-status');
 
-    function checkConnection() {
-        if (navigator.onLine) {
-            location.reload();
-            return;
-        }
-
-        attempts++;
-        if (attempts < maxAttempts) {
-            setTimeout(checkConnection, 3000);
-        }
-    }
-
-    window.addEventListener('online', function() {
-        location.reload();
+    window.addEventListener('online', () => {
+        statusEl.textContent = 'Conexão restaurada — recarregando...';
+        setTimeout(() => location.reload(), 250);
     });
 
-    setTimeout(checkConnection, 5000);
+    window.addEventListener('offline', () => {
+        statusEl.textContent = 'Sem conexão — aguardando internet';
+    });
 </script>
 </body>
 </html>

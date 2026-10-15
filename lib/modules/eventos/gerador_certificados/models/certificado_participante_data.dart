@@ -4,10 +4,11 @@ import 'package:flutter/foundation.dart';
 import 'package:uai_capoeira/modules/certificados/models/certificado_preview_data.dart';
 import 'package:uai_capoeira/modules/certificados/models/certificado_template_tipo.dart';
 import 'package:uai_capoeira/modules/eventos/gerador_certificados/models/certificado_evento_data.dart';
-import 'package:uai_capoeira/modules/eventos/models/evento_model.dart';
 
 @immutable
 class CertificadoParticipanteData {
+  bool get pdfImportado => (certificadoStoragePath ?? '').contains('/importados/');
+
   final String participacaoId;
   final String eventoId;
   final String alunoId;
@@ -15,6 +16,10 @@ class CertificadoParticipanteData {
   final String cpf;
   final String sexo;
   final String alunoFoto;
+  final String academiaId;
+  final String academiaNome;
+  final String turmaId;
+  final String turmaNome;
   final String eventoNome;
   final String tipoEvento;
   final String graduacaoAtual;
@@ -49,6 +54,15 @@ class CertificadoParticipanteData {
   final String? certificadoStoragePath;
   final String? certificadoTipoArquivo;
 
+  // Identidade oficial V2 / autenticidade pública.
+  final String? certificadoEmissaoV2Id;
+  final String? certificadoCodigoPublico;
+  final String? certificadoCodigo;
+  final String? certificadoUrlAutenticidade;
+  final String? certificadoEmissaoV2Status;
+  final String? certificadoEmissaoV2Key;
+  final Map<String, Map<String, dynamic>> certificadoEmissoesV2;
+
   const CertificadoParticipanteData({
     required this.participacaoId,
     required this.eventoId,
@@ -57,6 +71,10 @@ class CertificadoParticipanteData {
     required this.cpf,
     this.sexo = '',
     required this.alunoFoto,
+    this.academiaId = '',
+    this.academiaNome = '',
+    this.turmaId = '',
+    this.turmaNome = '',
     required this.eventoNome,
     required this.tipoEvento,
     required this.graduacaoAtual,
@@ -88,6 +106,13 @@ class CertificadoParticipanteData {
     this.certificadoPacoteGraficaNome,
     this.certificadoStoragePath,
     this.certificadoTipoArquivo,
+    this.certificadoEmissaoV2Id,
+    this.certificadoCodigoPublico,
+    this.certificadoCodigo,
+    this.certificadoUrlAutenticidade,
+    this.certificadoEmissaoV2Status,
+    this.certificadoEmissaoV2Key,
+    this.certificadoEmissoesV2 = const {},
   });
 
   factory CertificadoParticipanteData.fromMaps({
@@ -153,6 +178,26 @@ class CertificadoParticipanteData {
         aluno?['foto_url'],
         aluno?['link_foto'],
       ]),
+      academiaId: _firstNotEmpty([
+        participacao['academia_id'],
+        aluno?['academia_id'],
+      ]),
+      academiaNome: _firstNotEmpty([
+        participacao['academia_nome'],
+        participacao['academia'],
+        aluno?['academia_nome'],
+        aluno?['academia'],
+      ]),
+      turmaId: _firstNotEmpty([
+        participacao['turma_id'],
+        aluno?['turma_id'],
+      ]),
+      turmaNome: _firstNotEmpty([
+        participacao['turma_nome'],
+        participacao['turma'],
+        aluno?['turma_nome'],
+        aluno?['turma'],
+      ]),
       eventoNome: _asString(participacao['evento_nome']),
       tipoEvento: _asString(participacao['tipo_evento']),
       graduacaoAtual: _asString(participacao['graduacao']),
@@ -217,6 +262,27 @@ class CertificadoParticipanteData {
       certificadoTipoArquivo: _nullableString(
         participacao['certificado_tipo_arquivo'],
       ),
+      certificadoEmissaoV2Id: _nullableString(
+        participacao['certificado_emissao_v2_id'],
+      ),
+      certificadoCodigoPublico: _nullableString(
+        participacao['certificado_codigo_publico'],
+      ),
+      certificadoCodigo: _nullableString(
+        participacao['certificado_codigo'],
+      ),
+      certificadoUrlAutenticidade: _nullableString(
+        participacao['certificado_url_autenticidade'],
+      ),
+      certificadoEmissaoV2Status: _nullableString(
+        participacao['certificado_emissao_v2_status'],
+      ),
+      certificadoEmissaoV2Key: _nullableString(
+        participacao['certificado_emissao_v2_key'],
+      ),
+      certificadoEmissoesV2: _mapEmissoesV2(
+        participacao['certificado_emissoes_v2'],
+      ),
     );
   }
 
@@ -246,6 +312,93 @@ class CertificadoParticipanteData {
     return sexo.trim().toUpperCase();
   }
 
+  String get statusEmissaoV2Normalizado =>
+      (certificadoEmissaoV2Status ?? '').trim().toLowerCase();
+
+  Map<String, dynamic>? emissaoV2ParaEvento(CertificadoEventoData evento) {
+    final key = evento.emissaoCertificadoKey;
+    final registro = certificadoEmissoesV2[key];
+    if (registro != null) return registro;
+
+    // Compatibilidade com emissões anteriores ao Patch 3.
+    final keyAtual = (certificadoEmissaoV2Key ?? '').trim();
+    final compativelLegado = keyAtual.isEmpty && key == 'graduacao';
+    if (keyAtual == key || compativelLegado) {
+      return {
+        'id': certificadoEmissaoV2Id,
+        'key': keyAtual.isEmpty ? key : keyAtual,
+        'codigo_publico': certificadoCodigoPublico,
+        'codigo': certificadoCodigo,
+        'url_autenticidade': certificadoUrlAutenticidade,
+        'status': certificadoEmissaoV2Status,
+      };
+    }
+    return null;
+  }
+
+  bool temEmissaoOficialV2NoEvento(CertificadoEventoData evento) {
+    final registro = emissaoV2ParaEvento(evento);
+    if (registro == null) return false;
+    final id = (registro['id'] ?? '').toString().trim();
+    final codigo = (registro['codigo_publico'] ?? '').toString().trim();
+    final url = (registro['url_autenticidade'] ?? '').toString().trim();
+    if (id.isEmpty || codigo.isEmpty || url.isEmpty) return false;
+    final status = (registro['status'] ?? '').toString().trim().toLowerCase();
+    return status == 'valido' || status.isEmpty;
+  }
+
+  String codigoValidacaoNoEvento(CertificadoEventoData evento) {
+    final registro = emissaoV2ParaEvento(evento);
+    if (registro == null) return '';
+    final humano = (registro['codigo'] ?? '').toString().trim();
+    if (humano.isNotEmpty) return humano;
+    return (registro['codigo_publico'] ?? '').toString().trim();
+  }
+
+  String urlAutenticidadeNoEvento(CertificadoEventoData evento) {
+    return (emissaoV2ParaEvento(evento)?['url_autenticidade'] ?? '')
+        .toString()
+        .trim();
+  }
+
+  String statusEmissaoV2NoEvento(CertificadoEventoData evento) {
+    return (emissaoV2ParaEvento(evento)?['status'] ?? '')
+        .toString()
+        .trim()
+        .toLowerCase();
+  }
+
+  bool get temIdentidadeV2Completa {
+    return (certificadoEmissaoV2Id?.trim().isNotEmpty ?? false) &&
+        (certificadoCodigoPublico?.trim().isNotEmpty ?? false) &&
+        (certificadoUrlAutenticidade?.trim().isNotEmpty ?? false);
+  }
+
+  bool get temEmissaoOficialV2 {
+    if (!temIdentidadeV2Completa) return false;
+
+    final status = statusEmissaoV2Normalizado;
+    if (status == 'valido') return true;
+
+    // Retrocompatibilidade: emissões válidas criadas antes do Patch 2 não
+    // possuíam certificado_emissao_v2_status na participação.
+    return status.isEmpty;
+  }
+
+  bool get emissaoV2EmAndamento => const {
+        'preparando',
+        'gerando',
+        'publicando',
+      }.contains(statusEmissaoV2Normalizado);
+
+  bool get emissaoV2ComErro => statusEmissaoV2Normalizado == 'erro';
+
+  String get codigoValidacaoExibicao {
+    final humano = certificadoCodigo?.trim() ?? '';
+    if (humano.isNotEmpty) return humano;
+    return certificadoCodigoPublico?.trim() ?? '';
+  }
+
   bool get temCertificadoGerado {
     return certificadoGerado ||
         (linkCertificado != null && linkCertificado!.trim().isNotEmpty);
@@ -259,6 +412,25 @@ class CertificadoParticipanteData {
 
   bool get estaProntoParaGerar {
     return alunoNome.trim().isNotEmpty && temGraduacaoNova;
+  }
+
+  /// Validação contextual para o Studio NASA.
+  ///
+  /// Mantém [estaProntoParaGerar] intacto para compatibilidade com fluxos
+  /// legados, mas permite templates genéricos (homenagem, aluno destaque,
+  /// participação etc.) que não usam graduação.
+  bool estaProntoParaGerarNoEvento(CertificadoEventoData evento) {
+    if (alunoNome.trim().isEmpty) return false;
+
+    final studio = evento.configuracoes.studio;
+    final exigeGraduacao = studio.ehGraduacao || studio.blocoAtivo('graduacao');
+    if (exigeGraduacao && !temGraduacaoNova) return false;
+
+    final modeloForcaCpf = studio.ehGraduacao &&
+        evento.modeloPadrao.toUpperCase() == 'CERTIFICADOCOMCPF';
+    if (modeloForcaCpf && cpf.trim().isEmpty) return false;
+
+    return true;
   }
 
   CertificadoTemplateTipo tipoTemplate(CertificadoEventoData evento) {
@@ -309,6 +481,10 @@ class CertificadoParticipanteData {
       'evento_id': eventoId,
       'aluno_id': alunoId,
       'aluno_nome': alunoNome,
+      'academia_id': academiaId,
+      'academia_nome': academiaNome,
+      'turma_id': turmaId,
+      'turma_nome': turmaNome,
       'cpf': cpf,
       'sexo': sexoNormalizado,
       'evento_nome': eventoNome,
@@ -336,6 +512,8 @@ class CertificadoParticipanteData {
       'certificado_incluido_zip': certificadoIncluidoZip,
       'tem_certificado_gerado': temCertificadoGerado,
       'esta_quitado': estaQuitado,
+      'certificado_emissao_v2_key': certificadoEmissaoV2Key,
+      'certificado_emissoes_v2': certificadoEmissoesV2,
     };
   }
 
@@ -347,6 +525,10 @@ class CertificadoParticipanteData {
     String? cpf,
     String? sexo,
     String? alunoFoto,
+    String? academiaId,
+    String? academiaNome,
+    String? turmaId,
+    String? turmaNome,
     String? eventoNome,
     String? tipoEvento,
     String? graduacaoAtual,
@@ -378,6 +560,12 @@ class CertificadoParticipanteData {
     String? certificadoPacoteGraficaNome,
     String? certificadoStoragePath,
     String? certificadoTipoArquivo,
+    String? certificadoEmissaoV2Id,
+    String? certificadoCodigoPublico,
+    String? certificadoCodigo,
+    String? certificadoUrlAutenticidade,
+    String? certificadoEmissaoV2Key,
+    Map<String, Map<String, dynamic>>? certificadoEmissoesV2,
   }) {
     return CertificadoParticipanteData(
       participacaoId: participacaoId ?? this.participacaoId,
@@ -387,6 +575,10 @@ class CertificadoParticipanteData {
       cpf: cpf ?? this.cpf,
       sexo: sexo ?? this.sexo,
       alunoFoto: alunoFoto ?? this.alunoFoto,
+      academiaId: academiaId ?? this.academiaId,
+      academiaNome: academiaNome ?? this.academiaNome,
+      turmaId: turmaId ?? this.turmaId,
+      turmaNome: turmaNome ?? this.turmaNome,
       eventoNome: eventoNome ?? this.eventoNome,
       tipoEvento: tipoEvento ?? this.tipoEvento,
       graduacaoAtual: graduacaoAtual ?? this.graduacaoAtual,
@@ -428,7 +620,31 @@ class CertificadoParticipanteData {
           certificadoStoragePath ?? this.certificadoStoragePath,
       certificadoTipoArquivo:
           certificadoTipoArquivo ?? this.certificadoTipoArquivo,
+      certificadoEmissaoV2Id:
+          certificadoEmissaoV2Id ?? this.certificadoEmissaoV2Id,
+      certificadoCodigoPublico:
+          certificadoCodigoPublico ?? this.certificadoCodigoPublico,
+      certificadoCodigo: certificadoCodigo ?? this.certificadoCodigo,
+      certificadoUrlAutenticidade:
+          certificadoUrlAutenticidade ?? this.certificadoUrlAutenticidade,
+      certificadoEmissaoV2Status: certificadoEmissaoV2Status,
+      certificadoEmissaoV2Key:
+          certificadoEmissaoV2Key ?? this.certificadoEmissaoV2Key,
+      certificadoEmissoesV2:
+          certificadoEmissoesV2 ?? this.certificadoEmissoesV2,
     );
+  }
+
+  static Map<String, Map<String, dynamic>> _mapEmissoesV2(dynamic raw) {
+    if (raw is! Map) return const {};
+    final result = <String, Map<String, dynamic>>{};
+    for (final entry in raw.entries) {
+      final key = entry.key.toString().trim();
+      final value = entry.value;
+      if (key.isEmpty || value is! Map) continue;
+      result[key] = Map<String, dynamic>.from(value);
+    }
+    return result;
   }
 
   static String _normalizarSexo(String value) {

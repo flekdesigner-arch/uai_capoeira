@@ -43,6 +43,47 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+
+class AppReleaseArtifact {
+  final String platform;
+  final String architecture;
+  final String nomeArquivo;
+  final String storagePath;
+  final String downloadUrl;
+  final int tamanhoBytes;
+  final String sha256;
+
+  const AppReleaseArtifact({
+    required this.platform,
+    required this.architecture,
+    required this.nomeArquivo,
+    required this.storagePath,
+    required this.downloadUrl,
+    required this.tamanhoBytes,
+    this.sha256 = '',
+  });
+
+  factory AppReleaseArtifact.fromMap(Map<String, dynamic> map) => AppReleaseArtifact(
+    platform: (map['platform'] ?? 'android').toString(),
+    architecture: (map['architecture'] ?? '').toString(),
+    nomeArquivo: (map['nomeArquivo'] ?? '').toString(),
+    storagePath: (map['storagePath'] ?? '').toString(),
+    downloadUrl: (map['downloadUrl'] ?? '').toString(),
+    tamanhoBytes: map['tamanhoBytes'] is num ? (map['tamanhoBytes'] as num).toInt() : int.tryParse('${map['tamanhoBytes']}') ?? 0,
+    sha256: (map['sha256'] ?? '').toString(),
+  );
+
+  Map<String, dynamic> toMap() => {
+    'platform': platform,
+    'architecture': architecture,
+    'nomeArquivo': nomeArquivo,
+    'storagePath': storagePath,
+    'downloadUrl': downloadUrl,
+    'tamanhoBytes': tamanhoBytes,
+    'sha256': sha256,
+  };
+}
+
 class AppVersionModel {
   final String versionId;
   final String versao;
@@ -52,6 +93,20 @@ class AppVersionModel {
   final String storagePath;
   final String downloadUrl;
   final int tamanhoBytes;
+
+  /// Artefatos Android por ABI: arm64-v8a, armeabi-v7a, x86_64.
+  final Map<String, AppReleaseArtifact> androidArtifacts;
+
+  /// Metadados da release multiplataforma. PWA e Windows nao precisam ser
+  /// artefatos baixaveis para existir no historico; o mapa registra o que foi
+  /// realmente gerado/publicado pela automacao.
+  final Map<String, dynamic> platformArtifacts;
+
+  /// Central V3: audiencia, compatibilidade e health check.
+  final Map<String, dynamic> distribuicao;
+  final Map<String, dynamic> compatibilidade;
+  final Map<String, dynamic> healthCheck;
+  final bool protegida;
 
   final bool obrigatoria;
   final bool publicada;
@@ -86,6 +141,12 @@ class AppVersionModel {
     required this.storagePath,
     required this.downloadUrl,
     required this.tamanhoBytes,
+    this.androidArtifacts = const {},
+    this.platformArtifacts = const {},
+    this.distribuicao = const {},
+    this.compatibilidade = const {},
+    this.healthCheck = const {},
+    this.protegida = false,
     required this.obrigatoria,
     required this.publicada,
     required this.canal,
@@ -111,9 +172,15 @@ class AppVersionModel {
       versao: versao,
       build: build,
       nomeArquivo: versao.trim().isEmpty ? '' : 'uai_capoeira_$versao.apk',
-      storagePath: versao.trim().isEmpty ? '' : 'apks/uai_capoeira_$versao.apk',
+      storagePath: versao.trim().isEmpty ? '' : gerarStoragePathPorAbi(versao, 'arm64-v8a'),
       downloadUrl: '',
       tamanhoBytes: 0,
+      androidArtifacts: const {},
+      platformArtifacts: const {},
+      distribuicao: const {},
+      compatibilidade: const {},
+      healthCheck: const {},
+      protegida: false,
       obrigatoria: false,
       publicada: false,
       canal: 'producao',
@@ -158,6 +225,12 @@ class AppVersionModel {
       storagePath: _asString(map['storagePath']),
       downloadUrl: _asString(map['downloadUrl']),
       tamanhoBytes: _asInt(map['tamanhoBytes']),
+      androidArtifacts: _asArtifacts(map['androidArtifacts'] ?? map['android_artifacts']),
+      platformArtifacts: _asDynamicMap(map['platformArtifacts'] ?? map['platform_artifacts']),
+      distribuicao: _asDynamicMap(map['distribuicao']),
+      compatibilidade: _asDynamicMap(map['compatibilidade']),
+      healthCheck: _asDynamicMap(map['healthCheck']),
+      protegida: _asBool(map['protegida']),
       obrigatoria: _asBool(map['obrigatoria']),
       publicada: _asBool(map['publicada']),
       canal: _asString(map['canal'], fallback: 'producao'),
@@ -190,6 +263,12 @@ class AppVersionModel {
       'storagePath': storagePath,
       'downloadUrl': downloadUrl,
       'tamanhoBytes': tamanhoBytes,
+      'androidArtifacts': androidArtifacts.map((key, value) => MapEntry(key, value.toMap())),
+      'platformArtifacts': platformArtifacts,
+      'distribuicao': distribuicao,
+      'compatibilidade': compatibilidade,
+      'healthCheck': healthCheck,
+      'protegida': protegida,
       'obrigatoria': obrigatoria,
       'publicada': publicada,
       'canal': canal,
@@ -256,6 +335,7 @@ class AppVersionModel {
   }) {
     return {
       'versao_atual': versao,
+      'build_atual': build,
       'versao_minima_obrigatoria': obrigatoria ? versao : FieldValue.delete(),
       'ultima_versao_id': versionId,
       'atualizacao_obrigatoria': obrigatoria,
@@ -265,6 +345,9 @@ class AppVersionModel {
       'apk_path': storagePath,
       'apk_nome_arquivo': nomeArquivo,
       'apk_tamanho_bytes': tamanhoBytes,
+      'android_artifacts': androidArtifacts.map((key, value) => MapEntry(key, value.toMap())),
+      'platform_artifacts': platformArtifacts,
+      'release_storage_root': gerarReleaseRoot(versao),
       'atualizado_em': FieldValue.serverTimestamp(),
       'atualizado_por': usuarioId,
       'atualizado_por_nome': usuarioNome,
@@ -279,6 +362,12 @@ class AppVersionModel {
     String? storagePath,
     String? downloadUrl,
     int? tamanhoBytes,
+    Map<String, AppReleaseArtifact>? androidArtifacts,
+    Map<String, dynamic>? platformArtifacts,
+    Map<String, dynamic>? distribuicao,
+    Map<String, dynamic>? compatibilidade,
+    Map<String, dynamic>? healthCheck,
+    bool? protegida,
     bool? obrigatoria,
     bool? publicada,
     String? canal,
@@ -306,6 +395,12 @@ class AppVersionModel {
       storagePath: storagePath ?? this.storagePath,
       downloadUrl: downloadUrl ?? this.downloadUrl,
       tamanhoBytes: tamanhoBytes ?? this.tamanhoBytes,
+      androidArtifacts: androidArtifacts ?? this.androidArtifacts,
+      platformArtifacts: platformArtifacts ?? this.platformArtifacts,
+      distribuicao: distribuicao ?? this.distribuicao,
+      compatibilidade: compatibilidade ?? this.compatibilidade,
+      healthCheck: healthCheck ?? this.healthCheck,
+      protegida: protegida ?? this.protegida,
       obrigatoria: obrigatoria ?? this.obrigatoria,
       publicada: publicada ?? this.publicada,
       canal: canal ?? this.canal,
@@ -323,6 +418,36 @@ class AppVersionModel {
       criadoPorNome: criadoPorNome ?? this.criadoPorNome,
     );
   }
+
+
+  bool get isBeta => canal.trim().toLowerCase() == 'beta';
+  bool get isTesteInterno => canal.trim().toLowerCase() == 'teste_interno' || canal.trim().toLowerCase() == 'teste';
+  bool get isProducao => !isBeta && !isTesteInterno;
+  String get canalLabel => isBeta ? 'BETA' : (isTesteInterno ? 'TESTE INTERNO' : 'PRODUÇÃO');
+  int get audienciaQuantidade => _asInt(distribuicao['quantidadeUsuarios']);
+  String get audienciaModo => _asString(distribuicao['modo'], fallback: isProducao ? 'todos' : 'usuarios');
+  int get healthScore => _asInt(healthCheck['score']);
+  bool get healthOk => healthCheck.isEmpty || healthCheck['ok'] == true;
+  int get totalFalhas => _asInt(releaseMetrics['falhas']);
+  int get totalCancelamentos => _asInt(releaseMetrics['cancelamentos']);
+  double get taxaInstalacao => totalDownloads <= 0 ? 0 : totalInstalacoes / totalDownloads;
+
+
+  Map<String, dynamic> get pwaArtifact => _asDynamicMap(platformArtifacts['pwa']);
+  Map<String, dynamic> get windowsArtifact => _asDynamicMap(platformArtifacts['windows']);
+  Map<String, dynamic> get releaseMetrics => _asDynamicMap(platformArtifacts['metrics']);
+
+  int get totalDownloads => _asInt(releaseMetrics['downloads']);
+  int get totalInstalacoes => _asInt(releaseMetrics['instalacoes']);
+  Map<String, dynamic> get metricasPorAbi => _asDynamicMap(releaseMetrics['porAbi']);
+
+  bool get pwaPublicado => pwaArtifact['publicado'] == true;
+  bool get windowsGerado => windowsArtifact['gerado'] == true || windowsArtifact['instalado'] == true;
+
+  int get tamanhoAndroidTotal => androidArtifacts.values.fold<int>(0, (total, item) => total + item.tamanhoBytes);
+  int get tamanhoPwaBytes => _asInt(pwaArtifact['tamanhoBytes']);
+  int get tamanhoWindowsBytes => _asInt(windowsArtifact['tamanhoBytes']);
+  int get tamanhoReleaseConhecidoBytes => (tamanhoAndroidTotal > 0 ? tamanhoAndroidTotal : tamanhoBytes) + tamanhoPwaBytes + tamanhoWindowsBytes;
 
   bool get temApk =>
       storagePath.trim().isNotEmpty && downloadUrl.trim().isNotEmpty;
@@ -370,8 +495,20 @@ class AppVersionModel {
     return 'uai_capoeira_${versao.trim()}.apk';
   }
 
+  static String gerarReleaseRoot(String versao) => 'releases/${versao.trim()}';
+
+  static String gerarNomeArquivoPorAbi(String versao, String abi) {
+    return 'uai_capoeira_${versao.trim()}_${abi.trim()}.apk';
+  }
+
+  static String gerarStoragePathPorAbi(String versao, String abi) {
+    return '${gerarReleaseRoot(versao)}/android/${abi.trim()}/${gerarNomeArquivoPorAbi(versao, abi)}';
+  }
+
+  /// Legado: continua apontando para um caminho válido para telas antigas.
+  /// Novas releases usam gerarStoragePathPorAbi().
   static String gerarStoragePath(String versao) {
-    return 'apks/${gerarNomeArquivo(versao)}';
+    return gerarStoragePathPorAbi(versao, 'arm64-v8a');
   }
 
   static bool versaoValida(String versao) {
@@ -447,6 +584,23 @@ class AppVersionModel {
     if (value is DateTime) return value;
 
     return DateTime.tryParse(value.toString());
+  }
+
+  static Map<String, dynamic> _asDynamicMap(dynamic value) {
+    if (value is Map<String, dynamic>) return Map<String, dynamic>.from(value);
+    if (value is Map) return Map<String, dynamic>.from(value);
+    return <String, dynamic>{};
+  }
+
+  static Map<String, AppReleaseArtifact> _asArtifacts(dynamic value) {
+    if (value is! Map) return const {};
+    final result = <String, AppReleaseArtifact>{};
+    for (final entry in value.entries) {
+      if (entry.value is Map) {
+        result[entry.key.toString()] = AppReleaseArtifact.fromMap(Map<String, dynamic>.from(entry.value as Map));
+      }
+    }
+    return result;
   }
 
   static List<String> _asStringList(dynamic value) {

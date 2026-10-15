@@ -221,9 +221,9 @@ class _EditarCamisaModalState extends State<EditarCamisaModal> {
                     width: 44,
                     height: 44,
                     decoration: BoxDecoration(
-                      color: info.withOpacity(0.12),
+                      color: info.withAlpha(31),
                       borderRadius: BorderRadius.circular(t.buttonRadius),
-                      border: Border.all(color: info.withOpacity(0.18)),
+                      border: Border.all(color: info.withAlpha(46)),
                     ),
                     child: Icon(Icons.checkroom_rounded, color: info),
                   ),
@@ -373,39 +373,37 @@ class _EditarCamisaModalState extends State<EditarCamisaModal> {
                       color: success,
                     ),
                     const SizedBox(height: 8),
-                    RadioListTile<bool>(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(
-                        'Pendente',
-                        style: TextStyle(
-                          color: t.textPrimary,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      value: false,
+                    RadioGroup<bool>(
                       groupValue: _entregue,
-                      onChanged: (value) {
-                        if (value == null) return;
-                        setState(() => _entregue = value);
-                      },
-                      activeColor: warning,
-                    ),
-                    RadioListTile<bool>(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(
-                        'Entregue',
-                        style: TextStyle(
-                          color: t.textPrimary,
-                          fontWeight: FontWeight.w800,
-                        ),
+                      onChanged: (value) { if (value != null) setState(() => _entregue = value); },
+                      child: Column(
+                        children: [
+                          RadioListTile<bool>(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(
+                              'Pendente',
+                              style: TextStyle(
+                                color: t.textPrimary,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            value: false,
+                            activeColor: warning,
+                          ),
+                          RadioListTile<bool>(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(
+                              'Entregue',
+                              style: TextStyle(
+                                color: t.textPrimary,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            value: true,
+                            activeColor: success,
+                          ),
+                        ],
                       ),
-                      value: true,
-                      groupValue: _entregue,
-                      onChanged: (value) {
-                        if (value == null) return;
-                        setState(() => _entregue = value);
-                      },
-                      activeColor: success,
                     ),
                   ],
                 ),
@@ -416,9 +414,9 @@ class _EditarCamisaModalState extends State<EditarCamisaModal> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Color.alphaBlend(info.withOpacity(0.08), t.cardAlt),
+                  color: Color.alphaBlend(info.withAlpha(20), t.cardAlt),
                   borderRadius: BorderRadius.circular(t.inputRadius),
-                  border: Border.all(color: info.withOpacity(0.16)),
+                  border: Border.all(color: info.withAlpha(41)),
                 ),
                 child: Row(
                   children: [

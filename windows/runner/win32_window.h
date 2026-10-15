@@ -3,6 +3,8 @@
 
 #include <windows.h>
 
+#include <cstdint>
+
 #include <functional>
 #include <memory>
 #include <string>
@@ -51,6 +53,12 @@ class Win32Window {
 
   // If true, closing this window will quit the application.
   void SetQuitOnClose(bool quit_on_close);
+
+  // Applies the UAI theme to the native Windows title bar. Colors are ARGB
+  // values coming from Flutter. Unsupported DWM attributes are ignored by
+  // Windows, preserving compatibility with older versions.
+  void SetTitleBarTheme(uint32_t caption_argb, uint32_t text_argb,
+                        uint32_t border_argb, bool dark_icons);
 
   // Return a RECT representing the bounds of the current client area.
   RECT GetClientArea();

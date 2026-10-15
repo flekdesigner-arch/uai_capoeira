@@ -1,7 +1,7 @@
+import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'dart:typed_data';
 import 'package:flutter/rendering.dart';
 import 'dart:ui' as ui;
 import 'package:path_provider/path_provider.dart';
@@ -12,12 +12,29 @@ import 'package:flutter/services.dart';
 import 'package:uai_capoeira/modules/alunos/services/mensagem_aniversario_service.dart';
 import 'package:uai_capoeira/modules/alunos/models/mensagem_aniversario_model.dart';
 
+/// Fecha o sheet antes de abrir a galeria e usa o contexto da tela para erros.
+Future<void> abrirGaleriaAposFecharSheet(
+  BuildContext sheetContext,
+  BuildContext parentContext,
+  Future<void> Function() abrirGaleria,
+) async {
+  Navigator.pop(sheetContext);
+  try {
+    await abrirGaleria();
+  } catch (_) {
+    if (!parentContext.mounted) return;
+    ScaffoldMessenger.of(parentContext).showSnackBar(
+      const SnackBar(content: Text('Arte salva em Downloads/Pictures')),
+    );
+  }
+}
+
 class ArteAniversarioScreen extends StatefulWidget {
   final String alunoId;
   final String nomeAluno;
   final String? fotoUrl;
 
-  ArteAniversarioScreen({
+  const ArteAniversarioScreen({
     super.key,
     required this.alunoId,
     required this.nomeAluno,
@@ -35,19 +52,7 @@ class _ArteAniversarioScreenState extends State<ArteAniversarioScreen> {
         : const Color(0xFFFFFFFF);
   }
 
-  Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance())
-        .abs();
-    if (diff >= 0.26) return color;
 
-    final bgIsDark = background.computeLuminance() < 0.45;
-    final hsl = HSLColor.fromColor(color);
-
-    return hsl
-        .withLightness(bgIsDark ? 0.72 : 0.32)
-        .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
-        .toColor();
-  }
 
   MensagemAniversario? _mensagemAtual;
   bool _carregando = true;
@@ -116,7 +121,7 @@ class _ArteAniversarioScreenState extends State<ArteAniversarioScreen> {
         ).invokeMethod('scanFile', {'path': path});
       }
     } catch (e) {
-      print('Erro ao escanear arquivo: $e');
+      developer.log('Erro ao escanear arquivo: $e');
     }
   }
 
@@ -189,7 +194,7 @@ class _ArteAniversarioScreenState extends State<ArteAniversarioScreen> {
         _mostrarDialogoPermissao();
       }
     } catch (e) {
-      print('Erro no download: $e');
+      developer.log('Erro no download: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -263,7 +268,7 @@ class _ArteAniversarioScreenState extends State<ArteAniversarioScreen> {
               leading: Container(
                 padding: EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: context.uai.info.withOpacity(0.10),
+                  color: context.uai.info.withAlpha(26),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(Icons.photo_library, color: context.uai.info),
@@ -274,23 +279,16 @@ class _ArteAniversarioScreenState extends State<ArteAniversarioScreen> {
                 style: TextStyle(fontSize: 12),
               ),
               onTap: () async {
-                Navigator.pop(context);
-                if (Platform.isAndroid) {
-                  try {
-                    await MethodChannel(
-                      'com.example.uai_capoeira/media',
-                    ).invokeMethod('openGallery');
-                  } catch (e) {
-                    // Se não conseguir abrir a galeria, mostra mensagem
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Arte salva em Downloads/Pictures'),
-                        ),
-                      );
-                    }
-                  }
+                if (!Platform.isAndroid) {
+                  Navigator.pop(context);
+                  return;
                 }
+                await abrirGaleriaAposFecharSheet(
+                  context,
+                  this.context,
+                  () => const MethodChannel('com.example.uai_capoeira/media')
+                      .invokeMethod<void>('openGallery'),
+                );
               },
             ),
 
@@ -299,7 +297,7 @@ class _ArteAniversarioScreenState extends State<ArteAniversarioScreen> {
               leading: Container(
                 padding: EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: context.uai.success.withOpacity(0.10),
+                  color: context.uai.success.withAlpha(26),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(Icons.share, color: context.uai.success),
@@ -320,7 +318,7 @@ class _ArteAniversarioScreenState extends State<ArteAniversarioScreen> {
               leading: Container(
                 padding: EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: context.uai.warning.withOpacity(0.10),
+                  color: context.uai.warning.withAlpha(26),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(Icons.folder_open, color: context.uai.warning),
@@ -365,7 +363,7 @@ class _ArteAniversarioScreenState extends State<ArteAniversarioScreen> {
         await Share.shareXFiles([XFile(filePath)]);
       }
     } catch (e) {
-      print('Erro ao compartilhar: $e');
+      developer.log('Erro ao compartilhar: $e');
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -444,7 +442,7 @@ class _ArteAniversarioScreenState extends State<ArteAniversarioScreen> {
                     borderRadius: BorderRadius.circular(24),
                     boxShadow: [
                       BoxShadow(
-                        color: context.uai.textPrimary.withOpacity(0.2),
+                        color: context.uai.textPrimary.withAlpha(51),
                         blurRadius: 20,
                         offset: Offset(0, 10),
                       ),
@@ -491,7 +489,7 @@ class _ArteAniversarioScreenState extends State<ArteAniversarioScreen> {
                                     ),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: Colors.black.withOpacity(0.3),
+                                        color: Colors.black.withAlpha(77),
                                         blurRadius: 10,
                                         spreadRadius: 2,
                                       ),
@@ -656,7 +654,7 @@ class _ArteAniversarioScreenState extends State<ArteAniversarioScreen> {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: context.uai.primary.withOpacity(0.5),
+                  color: context.uai.primary.withAlpha(128),
                   width: 2,
                 ),
               ),
@@ -709,7 +707,7 @@ class _ArteAniversarioScreenState extends State<ArteAniversarioScreen> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: corFim.withOpacity(0.5),
+            color: corFim.withAlpha(128),
             blurRadius: 8,
             offset: Offset(0, 4),
           ),

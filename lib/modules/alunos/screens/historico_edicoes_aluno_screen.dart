@@ -40,6 +40,14 @@ class _HistoricoEdicoesAlunoScreenState
 
   bool _revertendo = false;
 
+  @override
+  void initState() {
+    super.initState();
+    _historicoService
+        .sincronizarHistoricoInscricaoVinculada(widget.alunoId)
+        .catchError((_) {});
+  }
+
   Stream<QuerySnapshot<Map<String, dynamic>>> _historicoStream() {
     return FirebaseFirestore.instance
         .collection('alunos')
@@ -317,7 +325,12 @@ class _HistoricoEdicoesAlunoScreenState
           ),
         ],
       ),
-      child: ExpansionTile(
+      // Material local mantém o efeito de toque acima da decoração do card.
+      child: Material(
+        type: MaterialType.transparency,
+        borderRadius: BorderRadius.circular(12),
+        clipBehavior: Clip.antiAlias,
+        child: ExpansionTile(
         tilePadding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
         childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
         iconColor: t.primary,
@@ -327,7 +340,7 @@ class _HistoricoEdicoesAlunoScreenState
           runSpacing: 8,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            _chipTipo(tipo, subtipo: subtipo),
+            _chipTipo(tipo, subtipo: subtipo, data: data),
             if (revertido) _chip('Revertida', t.warning),
           ],
         ),
@@ -348,6 +361,32 @@ class _HistoricoEdicoesAlunoScreenState
                 '${AlunoHistoricoEdicaoService.formatarValor(criadoEm)} • por $autor',
                 style: TextStyle(color: t.textSecondary, fontSize: 12),
               ),
+              if ((data['descricao_evento']?.toString() ?? '').isNotEmpty) ...[
+                const SizedBox(height: 5),
+                Text(
+                  data['descricao_evento'].toString(),
+                  style: TextStyle(color: t.textSecondary, fontSize: 12.5),
+                ),
+              ],
+              if (_metodoVinculo(data).isNotEmpty) ...[
+                const SizedBox(height: 5),
+                Row(
+                  children: [
+                    Icon(Icons.key_rounded, size: 14, color: t.primary),
+                    const SizedBox(width: 5),
+                    Expanded(
+                      child: Text(
+                        'Método de vínculo: ${_metodoVinculo(data)}',
+                        style: TextStyle(
+                          color: t.textPrimary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
               if ((data['motivo_titulo']?.toString() ?? '').isNotEmpty) ...[
                 const SizedBox(height: 3),
                 Text(
@@ -379,7 +418,7 @@ class _HistoricoEdicoesAlunoScreenState
           ),
         ),
         children: [
-          if (campos.isEmpty)
+          if (campos.isEmpty && tipo != 'processo_inscricao')
             Align(
               alignment: Alignment.centerLeft,
               child: Text(
@@ -387,7 +426,7 @@ class _HistoricoEdicoesAlunoScreenState
                 style: TextStyle(color: t.textSecondary),
               ),
             )
-          else
+          else if (campos.isNotEmpty)
             ...campos.map(_buildCampoAlterado),
           if (revertido) _buildRevertidoInfo(data),
           if (podeReverter) ...[
@@ -408,6 +447,7 @@ class _HistoricoEdicoesAlunoScreenState
             ),
           ],
         ],
+        ),
       ),
     );
   }
@@ -521,7 +561,7 @@ class _HistoricoEdicoesAlunoScreenState
     );
   }
 
-  Widget _chipTipo(String? tipo, {String? subtipo}) {
+  Widget _chipTipo(String? tipo, {String? subtipo, required Map<String, dynamic> data}) {
     final t = context.uai;
 
     if (subtipo == 'mudanca_turma') {
@@ -537,6 +577,23 @@ class _HistoricoEdicoesAlunoScreenState
       return _chip('Reativação', t.success);
     }
 
+    if (tipo == 'acesso_area_aluno') {
+      final metodo = _metodoVinculo(data).toLowerCase();
+      if (subtipo == 'google_vinculado' || metodo.contains('google')) {
+        return _chip('Vínculo • Google', t.info);
+      }
+      if (subtipo == 'conta_uai_email_vinculado' ||
+          subtipo == 'acesso_email_confirmado' ||
+          subtipo == 'novo_email_vinculado' ||
+          metodo.contains('e-mail') || metodo.contains('email')) {
+        return _chip('Vínculo • E-mail', t.success);
+      }
+      if (subtipo == 'vinculo_conta_resetado') {
+        return _chip('Vínculo removido', t.warning);
+      }
+      return _chip('Conta vinculada', t.primary);
+    }
+
     switch (tipo) {
       case 'manual':
         return _chip('Manual', t.info);
@@ -548,6 +605,8 @@ class _HistoricoEdicoesAlunoScreenState
         return _chip('Desativação', t.error);
       case 'reativacao':
         return _chip('Reativação', t.success);
+      case 'processo_inscricao':
+        return _chip('Jornada da inscrição', t.primary);
       default:
         return _chip('Histórico', t.textMuted);
     }
@@ -600,6 +659,39 @@ class _HistoricoEdicoesAlunoScreenState
     }).toList();
   }
 
+  String _metodoVinculo(Map<String, dynamic> data) {
+    final direto = data['metodo_vinculo_label']?.toString().trim() ?? '';
+    if (direto.isNotEmpty) return direto;
+
+    final metodo = data['metodo_vinculo']?.toString().trim() ?? '';
+    if (metodo.isNotEmpty) return _metodoVinculoLabel(metodo);
+
+    final evento = data['evento_inscricao'];
+    if (evento is Map) {
+      final eventoMetodo = evento['metodo']?.toString().trim() ?? '';
+      if (eventoMetodo.isNotEmpty) return _metodoVinculoLabel(eventoMetodo);
+    }
+    return '';
+  }
+
+  String _metodoVinculoLabel(String metodoRaw) {
+    switch (metodoRaw.trim().toLowerCase()) {
+      case 'google':
+      case 'google.com':
+        return 'Google';
+      case 'codigo_email':
+        return 'E-mail + código';
+      case 'link_email':
+        return 'E-mail + link seguro';
+      case 'sessao_existente':
+        return 'Conta UAI já confirmada';
+      case 'email':
+        return 'E-mail confirmado';
+      default:
+        return metodoRaw.trim().replaceAll('_', ' ');
+    }
+  }
+
   String _origemLegivel(String? origem) {
     switch (origem) {
       case 'editar_aluno_screen':
@@ -614,6 +706,14 @@ class _HistoricoEdicoesAlunoScreenState
         return 'Reativação/vinculação em turma';
       case 'historico_edicoes_aluno':
         return 'Histórico de edições';
+      case 'formulario_publico':
+        return 'Formulário público de inscrição';
+      case 'conta_uai':
+        return 'Conta UAI';
+      case 'cadastro_aluno_turma':
+        return 'Conversão da inscrição em aluno';
+      case 'processo_inscricao':
+        return 'Jornada da inscrição';
       default:
         return origem?.replaceAll('_', ' ') ?? 'Não informado';
     }

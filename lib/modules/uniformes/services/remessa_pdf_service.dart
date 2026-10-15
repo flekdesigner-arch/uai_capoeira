@@ -64,12 +64,16 @@ class RemessaPdfService {
     for (var doc in pedidosSnapshot.docs) {
       final pedido = doc.data();
       for (var item in pedido['itens'] ?? []) {
+        final nomeItem = _nomeItemSemTamanho(
+          item['nome'] ?? item['produto_nome'],
+          item['tamanho'],
+        );
         final chave =
-            '${item['nome'] ?? 'Item'}_${item['tamanho'] ?? 'Unico'}_${item['cor'] ?? 'N/A'}';
+            '${nomeItem}_${item['tamanho'] ?? 'Unico'}_${item['cor'] ?? 'N/A'}';
         itemsAgrupados.putIfAbsent(
           chave,
           () => {
-            'nome': item['nome'] ?? 'Item',
+            'nome': nomeItem,
             'tamanho': item['tamanho'] ?? 'Unico',
             'cor': item['cor']?.toString().isNotEmpty == true
                 ? item['cor'].toString()
@@ -77,7 +81,7 @@ class RemessaPdfService {
             'quantidade': 0,
           },
         );
-        final qtd = (item['quantidade'] ?? 0) as int;
+        final qtd = _asInt(item['quantidade']);
         itemsAgrupados[chave]!['quantidade'] += qtd;
         totalPecas += qtd;
       }
@@ -95,6 +99,8 @@ class RemessaPdfService {
     pdf.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.fromLTRB(24, 24, 24, 30),
+        footer: (ctx) => _rodapePagina(ctx),
         build: (ctx) => [
           _cabecalho(
             logo,
@@ -134,8 +140,7 @@ class RemessaPdfService {
                 )
                 .toList(),
           ),
-          pw.SizedBox(height: 20),
-          _rodape(),
+
         ],
       ),
     );
@@ -178,8 +183,8 @@ class RemessaPdfService {
       final String statusPgto = _statusPgtoFormatado(
         pedido['status_pagamento'],
       );
-      final double valorTotalPedido = (pedido['valor_total'] ?? 0).toDouble();
-      final double valorPagoPedido = (pedido['valor_pago'] ?? 0).toDouble();
+      final double valorTotalPedido = _asDouble(pedido['valor_total']);
+      final double valorPagoPedido = _asDouble(pedido['valor_pago']);
       totalGeral += valorTotalPedido;
       totalPago += valorPagoPedido;
 
@@ -190,8 +195,8 @@ class RemessaPdfService {
         final cor = item['cor']?.toString().isNotEmpty == true
             ? item['cor'].toString()
             : '---';
-        final qtd = item['quantidade'] ?? 0;
-        final precoUnit = (item['preco_unitario'] ?? 0).toDouble();
+        final qtd = _asInt(item['quantidade']);
+        final precoUnit = _asDouble(item['preco_unitario']);
         final subtotal = qtd * precoUnit;
 
         rows.add([
@@ -211,7 +216,9 @@ class RemessaPdfService {
 
     pdf.addPage(
       pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
+        pageFormat: PdfPageFormat.a4.landscape,
+        margin: const pw.EdgeInsets.fromLTRB(18, 20, 18, 30),
+        footer: (ctx) => _rodapePagina(ctx),
         build: (ctx) => [
           _cabecalho(
             logo,
@@ -282,8 +289,7 @@ class RemessaPdfService {
             dados: rows,
             largurasEspeciais: true, // ativa layout otimizado
           ),
-          pw.SizedBox(height: 20),
-          _rodape(),
+
         ],
       ),
     );
@@ -365,13 +371,13 @@ class RemessaPdfService {
     if (largurasEspeciais) {
       return _tabelaLarga(headers, dados);
     }
-    return pw.Table.fromTextArray(
+    return pw.TableHelper.fromTextArray(
       headerStyle: pw.TextStyle(
         fontWeight: pw.FontWeight.bold,
         color: PdfColors.white,
         fontSize: 9,
       ),
-      cellStyle: pw.TextStyle(fontSize: 8, color: textoEscuro),
+      cellStyle: pw.TextStyle(fontSize: 7.2, color: textoEscuro),
       headerDecoration: pw.BoxDecoration(color: verdeEscuro),
       cellDecoration: (row, col, idx) {
         final color = (idx % 2 == 0) ? cinzaClaro : PdfColors.white;
@@ -389,13 +395,13 @@ class RemessaPdfService {
     List<String> headers,
     List<List<String>> dados,
   ) {
-    return pw.Table.fromTextArray(
+    return pw.TableHelper.fromTextArray(
       headerStyle: pw.TextStyle(
         fontWeight: pw.FontWeight.bold,
         color: PdfColors.white,
         fontSize: 8,
       ),
-      cellStyle: pw.TextStyle(fontSize: 7, color: textoEscuro),
+      cellStyle: pw.TextStyle(fontSize: 6.5, color: textoEscuro),
       headerDecoration: pw.BoxDecoration(color: verdeEscuro),
       cellDecoration: (row, col, idx) {
         final color = (idx % 2 == 0) ? cinzaClaro : PdfColors.white;
@@ -406,14 +412,14 @@ class RemessaPdfService {
       headers: headers,
       data: dados,
       columnWidths: {
-        0: pw.FixedColumnWidth(55), // Pedido (quebra se necessário)
+        0: pw.FixedColumnWidth(62), // Pedido (quebra se necessário)
         1: pw.FlexColumnWidth(2), // Aluno (ajusta ao maior nome)
         2: pw.FlexColumnWidth(3), // Item (quebra para baixo)
-        3: pw.FixedColumnWidth(30), // Tam.
-        4: pw.FixedColumnWidth(40), // Cor
-        5: pw.FixedColumnWidth(25), // Qtd.
-        6: pw.FixedColumnWidth(50), // V. Unit.
-        7: pw.FixedColumnWidth(55), // Subtotal
+        3: pw.FixedColumnWidth(34), // Tam.
+        4: pw.FixedColumnWidth(45), // Cor
+        5: pw.FixedColumnWidth(28), // Qtd.
+        6: pw.FixedColumnWidth(54), // V. Unit.
+        7: pw.FixedColumnWidth(58), // Subtotal
         8: pw.FixedColumnWidth(45), // Status
         9: pw.FixedColumnWidth(45), // Pgto.
       },
@@ -421,21 +427,25 @@ class RemessaPdfService {
     );
   }
 
-  static pw.Widget _rodape() {
-    final agora = DateFormat("dd/MM/yyyy 'as' HH:mm").format(DateTime.now());
+  static pw.Widget _rodapePagina(pw.Context context) {
+    final agora = DateFormat("dd/MM/yyyy HH:mm").format(DateTime.now());
     return pw.Container(
-      padding: pw.EdgeInsets.only(top: 8),
-      decoration: pw.BoxDecoration(
+      padding: const pw.EdgeInsets.only(top: 7),
+      decoration: const pw.BoxDecoration(
         border: pw.Border(
-          top: pw.BorderSide(color: PdfColors.grey400, width: 0.5),
+          top: pw.BorderSide(color: PdfColors.grey400, width: .45),
         ),
       ),
       child: pw.Row(
-        mainAxisAlignment: pw.MainAxisAlignment.end,
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
           pw.Text(
-            'Gerado em $agora - Sistema UAI Capoeira',
-            style: pw.TextStyle(fontSize: 7, color: PdfColors.grey),
+            'Sistema UAI Capoeira - $agora',
+            style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey600),
+          ),
+          pw.Text(
+            'Página ${context.pageNumber}/${context.pagesCount}',
+            style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey600),
           ),
         ],
       ),
@@ -467,4 +477,37 @@ class RemessaPdfService {
         return status?.toString() ?? '---';
     }
   }
+  static double _asDouble(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  static int _asInt(dynamic value) {
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  static String _nomeItemSemTamanho(dynamic nomeRaw, dynamic tamanhoRaw) {
+    var nome = (nomeRaw ?? 'Item').toString().trim();
+    final tamanho = (tamanhoRaw ?? '').toString().trim();
+    if (tamanho.isEmpty) return nome;
+
+    final escaped = RegExp.escape(tamanho);
+    return nome
+        .replaceFirst(
+          RegExp(r'\s+' + escaped + r'\s*$', caseSensitive: false),
+          '',
+        )
+        .trim();
+  }
+
+  static String _textoSeguro(dynamic value) {
+    return (value ?? '')
+        .toString()
+        .replaceAll('\r', ' ')
+        .replaceAll(RegExp(r'\n+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
 }

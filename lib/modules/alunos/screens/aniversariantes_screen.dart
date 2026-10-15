@@ -25,7 +25,7 @@ import 'arte_aniversario_screen.dart';
 // - Datas mais seguras: Timestamp, DateTime, String ISO ou dd/MM/yyyy
 
 class AniversariantesPage extends StatefulWidget {
-  AniversariantesPage({super.key});
+  const AniversariantesPage({super.key});
 
   @override
   State<AniversariantesPage> createState() => _AniversariantesPageState();
@@ -71,7 +71,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
   }
 
   Color _onCard() => _readableOn(context.uai.card);
-  Color _onCardMuted() => _onCard().withOpacity(0.68);
+  Color _onCardMuted() => _onCard().withAlpha(173);
 
   bool get _isWideDashboard {
     final width = MediaQuery.sizeOf(context).width;
@@ -293,10 +293,6 @@ class _AniversariantesPageState extends State<AniversariantesPage>
     return proximoAniversario.difference(hoje).inDays;
   }
 
-  String _formatarDataNascimento(DateTime data) {
-    return DateFormat('dd/MM/yyyy').format(data);
-  }
-
   String _formatarDiaMes(DateTime data) {
     return DateFormat('dd/MM').format(data);
   }
@@ -514,12 +510,11 @@ class _AniversariantesPageState extends State<AniversariantesPage>
       final pesoPermissao = userDoc.data()?['peso_permissao'] as int? ?? 0;
       final isAdmin = pesoPermissao >= 90;
 
+      if (!context.mounted) return;
       if (!podeVisualizarAlunos && !isAdmin) {
         _mostrarDialogoSemPermissao(context, 'visualizar alunos');
         return;
       }
-
-      if (!context.mounted) return;
 
       Navigator.push(
         context,
@@ -528,6 +523,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
         ),
       );
     } catch (e) {
+      if (!context.mounted) return;
       _mostrarSnackBar(
         context,
         'Erro ao verificar permissão',
@@ -685,7 +681,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                           colors: [
                             context.uai.primary,
                             context.uai.primaryDark,
-                            context.uai.warning.withOpacity(0.10),
+                            context.uai.warning.withAlpha(26),
                           ],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
@@ -732,7 +728,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                             Text(
                               '"$apelido"',
                               style: TextStyle(
-                                color: _onPrimary().withOpacity(0.72),
+                                color: _onPrimary().withAlpha(184),
                                 fontSize: 14,
                                 fontStyle: FontStyle.italic,
                               ),
@@ -744,10 +740,10 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                               vertical: 8,
                             ),
                             decoration: BoxDecoration(
-                              color: _onPrimary().withOpacity(0.18),
+                              color: _onPrimary().withAlpha(46),
                               borderRadius: BorderRadius.circular(20),
                               border: Border.all(
-                                color: _onPrimary().withOpacity(0.20),
+                                color: _onPrimary().withAlpha(51),
                               ),
                             ),
                             child: Text(
@@ -854,14 +850,14 @@ class _AniversariantesPageState extends State<AniversariantesPage>
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [color, color.withOpacity(0.82)],
+          colors: [color, color.withAlpha(209)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-            color: color.withOpacity(0.28),
+            color: color.withAlpha(71),
             blurRadius: 8,
             offset: Offset(0, 4),
           ),
@@ -900,13 +896,12 @@ class _AniversariantesPageState extends State<AniversariantesPage>
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async {
-        if (_selectedMonth != null) {
+    return PopScope(
+      canPop: _selectedMonth == null,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && _selectedMonth != null && mounted) {
           setState(() => _selectedMonth = null);
-          return false;
         }
-        return true;
       },
       child: Scaffold(
         backgroundColor: context.uai.background,
@@ -1046,7 +1041,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
             decoration: BoxDecoration(
               gradient: t.primaryGradient,
               borderRadius: BorderRadius.circular(t.cardRadius + 6),
-              border: Border.all(color: onPrimary.withOpacity(0.13)),
+              border: Border.all(color: onPrimary.withAlpha(33)),
               boxShadow: t.cardShadow,
             ),
             child: Column(
@@ -1057,9 +1052,9 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                     Container(
                       padding: const EdgeInsets.all(11),
                       decoration: BoxDecoration(
-                        color: onPrimary.withOpacity(0.14),
+                        color: onPrimary.withAlpha(36),
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: onPrimary.withOpacity(0.12)),
+                        border: Border.all(color: onPrimary.withAlpha(31)),
                       ),
                       child: Icon(
                         Icons.cake_rounded,
@@ -1089,7 +1084,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                               'pt_BR',
                             ).format(_today),
                             style: TextStyle(
-                              color: onPrimary.withOpacity(0.82),
+                              color: onPrimary.withAlpha(209),
                               fontSize: _isDesktopDashboard ? 13 : 12,
                               fontWeight: FontWeight.w600,
                             ),
@@ -1106,9 +1101,9 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                           vertical: 8,
                         ),
                         decoration: BoxDecoration(
-                          color: onPrimary.withOpacity(0.12),
+                          color: onPrimary.withAlpha(31),
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: onPrimary.withOpacity(0.14)),
+                          border: Border.all(color: onPrimary.withAlpha(36)),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -1177,14 +1172,14 @@ class _AniversariantesPageState extends State<AniversariantesPage>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
       decoration: BoxDecoration(
-        color: onPrimary.withOpacity(0.12),
+        color: onPrimary.withAlpha(31),
         borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: onPrimary.withOpacity(0.13)),
+        border: Border.all(color: onPrimary.withAlpha(33)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: iconColor.withOpacity(0.92), size: 18),
+          Icon(icon, color: iconColor.withAlpha(235), size: 18),
           const SizedBox(height: 4),
           Text(
             value,
@@ -1201,7 +1196,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
           Text(
             label,
             style: TextStyle(
-              color: onPrimary.withOpacity(0.78),
+              color: onPrimary.withAlpha(199),
               fontSize: 10,
               fontWeight: FontWeight.w700,
             ),
@@ -1288,7 +1283,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
-                    borderSide: BorderSide(color: t.primary.withOpacity(0.55)),
+                    borderSide: BorderSide(color: t.primary.withAlpha(140)),
                   ),
                 ),
               ),
@@ -1310,7 +1305,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                     final bg = ativo
                         ? visibleAccent
                         : Color.alphaBlend(
-                      visibleAccent.withOpacity(0.08),
+                      visibleAccent.withAlpha(20),
                       t.cardAlt,
                     );
                     final fg = ativo ? _readableOn(visibleAccent) : visibleAccent;
@@ -1326,7 +1321,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                         backgroundColor: bg,
                         side: BorderSide(
                           color: ativo
-                              ? visibleAccent.withOpacity(0.38)
+                              ? visibleAccent.withAlpha(97)
                               : t.border,
                         ),
                         labelStyle: TextStyle(
@@ -1363,9 +1358,9 @@ class _AniversariantesPageState extends State<AniversariantesPage>
         Container(
           padding: EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: Color.alphaBlend(accent.withOpacity(0.10), t.card),
+            color: Color.alphaBlend(accent.withAlpha(26), t.card),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: accent.withOpacity(0.16)),
+            border: Border.all(color: accent.withAlpha(41)),
           ),
           child: Row(
             children: [
@@ -1433,9 +1428,9 @@ class _AniversariantesPageState extends State<AniversariantesPage>
               Container(
                 padding: const EdgeInsets.all(9),
                 decoration: BoxDecoration(
-                  color: visibleColor.withOpacity(0.16),
+                  color: visibleColor.withAlpha(41),
                   borderRadius: BorderRadius.circular(13),
-                  border: Border.all(color: visibleColor.withOpacity(0.28)),
+                  border: Border.all(color: visibleColor.withAlpha(71)),
                 ),
                 child: Icon(icon, color: visibleColor, size: 21),
               ),
@@ -1471,9 +1466,9 @@ class _AniversariantesPageState extends State<AniversariantesPage>
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                 decoration: BoxDecoration(
-                  color: visibleColor.withOpacity(0.16),
+                  color: visibleColor.withAlpha(41),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: visibleColor.withOpacity(0.32)),
+                  border: Border.all(color: visibleColor.withAlpha(82)),
                 ),
                 child: Text(
                   '$count',
@@ -1607,10 +1602,10 @@ class _AniversariantesPageState extends State<AniversariantesPage>
 
     final Color visibleAccent = _ensureVisible(accent, t.card);
     final Color cardBg = isHoje
-        ? Color.alphaBlend(visibleAccent.withOpacity(0.15), t.card)
+        ? Color.alphaBlend(visibleAccent.withAlpha(38), t.card)
         : t.card;
     final Color borderColor = isHoje
-        ? visibleAccent.withOpacity(0.72)
+        ? visibleAccent.withAlpha(184)
         : t.border;
 
     return Container(
@@ -1657,7 +1652,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                             color: visibleAccent,
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: _readableOn(visibleAccent).withOpacity(0.95),
+                              color: _readableOn(visibleAccent).withAlpha(242),
                               width: 2,
                             ),
                           ),
@@ -1691,7 +1686,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                           child: Text(
                             '"$apelido"',
                             style: TextStyle(
-                              color: _readableOn(cardBg).withOpacity(0.68),
+                              color: _readableOn(cardBg).withAlpha(173),
                               fontSize: 12,
                               fontStyle: FontStyle.italic,
                               fontWeight: FontWeight.w600,
@@ -1781,9 +1776,9 @@ class _AniversariantesPageState extends State<AniversariantesPage>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.10), t.cardAlt),
+        color: Color.alphaBlend(accent.withAlpha(26), t.cardAlt),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: accent.withOpacity(0.18)),
+        border: Border.all(color: accent.withAlpha(46)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1821,7 +1816,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
         border: Border.all(color: borderColor, width: 2.4),
         boxShadow: [
           BoxShadow(
-            color: borderColor.withOpacity(0.22),
+            color: borderColor.withAlpha(56),
             blurRadius: 8,
             offset: Offset(0, 2),
           ),
@@ -1857,7 +1852,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
           style: TextStyle(
             fontSize: 25,
             fontWeight: FontWeight.bold,
-            color: _readableOn(context.uai.cardAlt).withOpacity(0.72),
+            color: _readableOn(context.uai.cardAlt).withAlpha(184),
           ),
         ),
       ),
@@ -1892,7 +1887,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                 decoration: BoxDecoration(
                   gradient: t.primaryGradient,
                   borderRadius: BorderRadius.circular(t.cardRadius + 6),
-                  border: Border.all(color: onPrimary.withOpacity(0.14)),
+                  border: Border.all(color: onPrimary.withAlpha(36)),
                   boxShadow: t.cardShadow,
                 ),
                 child: Row(
@@ -1905,10 +1900,10 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                         child: Container(
                           padding: EdgeInsets.all(11),
                           decoration: BoxDecoration(
-                            color: onPrimary.withOpacity(0.15),
+                            color: onPrimary.withAlpha(38),
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
-                              color: onPrimary.withOpacity(0.14),
+                              color: onPrimary.withAlpha(36),
                             ),
                           ),
                           child: Icon(
@@ -1937,7 +1932,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                           Text(
                             '${monthlyBirthdays.length} aniversariante${monthlyBirthdays.length == 1 ? '' : 's'} encontrado${monthlyBirthdays.length == 1 ? '' : 's'}',
                             style: TextStyle(
-                              color: onPrimary.withOpacity(0.82),
+                              color: onPrimary.withAlpha(209),
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
                             ),
@@ -1950,9 +1945,9 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                     Container(
                       padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                       decoration: BoxDecoration(
-                        color: onPrimary.withOpacity(0.16),
+                        color: onPrimary.withAlpha(41),
                         borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: onPrimary.withOpacity(0.16)),
+                        border: Border.all(color: onPrimary.withAlpha(41)),
                       ),
                       child: Text(
                         '${monthlyBirthdays.length}',
@@ -2061,9 +2056,9 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                   Container(
                     padding: EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: t.primary.withOpacity(0.10),
+                      color: t.primary.withAlpha(26),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: t.primary.withOpacity(0.14)),
+                      border: Border.all(color: t.primary.withAlpha(36)),
                     ),
                     child: Icon(
                       Icons.calendar_view_month_rounded,
@@ -2156,7 +2151,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
     );
 
     final bg = isCurrentMonth || hasBirthdays
-        ? Color.alphaBlend(accent.withOpacity(0.12), t.cardAlt)
+        ? Color.alphaBlend(accent.withAlpha(31), t.cardAlt)
         : t.cardAlt;
     final onBg = _readableOn(bg);
 
@@ -2176,7 +2171,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
             borderRadius: BorderRadius.circular(radius),
             border: Border.all(
               color: isCurrentMonth || hasBirthdays
-                  ? accent.withOpacity(0.28)
+                  ? accent.withAlpha(71)
                   : t.border,
             ),
           ),
@@ -2192,7 +2187,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                       style: TextStyle(
                         color: hasBirthdays || isCurrentMonth
                             ? accent
-                            : onBg.withOpacity(0.70),
+                            : onBg.withAlpha(179),
                         fontWeight: FontWeight.w900,
                         fontSize: compact ? 13 : 15,
                         height: 1,
@@ -2205,7 +2200,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                     Text(
                       month.toString().padLeft(2, '0'),
                       style: TextStyle(
-                        color: onBg.withOpacity(0.62),
+                        color: onBg.withAlpha(158),
                         fontSize: compact ? 11 : 12,
                         height: 1,
                         fontWeight: FontWeight.w700,
@@ -2225,12 +2220,12 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                   ),
                   decoration: BoxDecoration(
                     color: hasBirthdays || isCurrentMonth
-                        ? accent.withOpacity(0.16)
+                        ? accent.withAlpha(41)
                         : t.card,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                       color: hasBirthdays || isCurrentMonth
-                          ? accent.withOpacity(0.22)
+                          ? accent.withAlpha(56)
                           : t.border,
                     ),
                   ),
@@ -2290,9 +2285,9 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                   width: 72,
                   height: 72,
                   decoration: BoxDecoration(
-                    color: accent.withOpacity(0.12),
+                    color: accent.withAlpha(31),
                     shape: BoxShape.circle,
-                    border: Border.all(color: accent.withOpacity(0.18)),
+                    border: Border.all(color: accent.withAlpha(46)),
                   ),
                   child: Icon(icon, size: 38, color: accent),
                 ),

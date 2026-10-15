@@ -22,7 +22,7 @@ class RelatorioFinanceiroScreen extends StatefulWidget {
   final String eventoId;
   final String eventoNome;
 
-  RelatorioFinanceiroScreen({
+  const RelatorioFinanceiroScreen({
     super.key,
     required this.eventoId,
     required this.eventoNome,
@@ -161,7 +161,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
 
   Color _shadowColor([double opacity = 0.08]) {
     final isDark = context.uai.background.computeLuminance() < 0.35;
-    return Color(0xFF000000).withOpacity(isDark ? opacity * 2.1 : opacity);
+    return Color(0xFF000000).withAlpha((255.0 * (isDark ? opacity * 2.1 : opacity)).round());
   }
 
   BoxShadow _softBoxShadow([double opacity = 0.06]) {
@@ -1735,7 +1735,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   DropdownButtonFormField<String>(
-                    value: campoSelecionado,
+                    initialValue: campoSelecionado,
                     decoration: InputDecoration(
                       labelText: 'Campo de ordenação',
                     ),
@@ -2250,7 +2250,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
 
     return Container(
       padding: EdgeInsets.all(14),
-      decoration: _relatorioCardDecoration(color.withOpacity(0.22)),
+      decoration: _relatorioCardDecoration(color.withAlpha(56)),
       child: Row(
         children: [
           Icon(
@@ -2302,7 +2302,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
               color: context.uai.card,
               borderRadius: BorderRadius.circular(26),
               border: material.Border.all(
-                color: context.uai.warning.withOpacity(0.16),
+                color: context.uai.warning.withAlpha(41),
               ),
               boxShadow: [
                 BoxShadow(
@@ -2350,7 +2350,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                       context.uai.card,
                     ),
                     side: BorderSide(
-                      color: context.uai.success.withOpacity(0.25),
+                      color: context.uai.success.withAlpha(64),
                     ),
                   ),
                 ),
@@ -2382,7 +2382,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                 color: context.uai.card,
                 borderRadius: BorderRadius.circular(26),
                 border: material.Border.all(
-                  color: context.uai.success.withOpacity(0.16),
+                  color: context.uai.success.withAlpha(41),
                 ),
                 boxShadow: [
                   BoxShadow(
@@ -2402,7 +2402,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                         width: 54,
                         height: 54,
                         decoration: BoxDecoration(
-                          color: context.uai.success.withOpacity(0.08),
+                          color: context.uai.success.withAlpha(20),
                           borderRadius: BorderRadius.circular(18),
                         ),
                         child: Center(
@@ -2524,7 +2524,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
         borderRadius: BorderRadius.circular(26),
         boxShadow: [
           BoxShadow(
-            color: context.uai.primary.withOpacity(0.18),
+            color: context.uai.primary.withAlpha(46),
             blurRadius: 10,
             offset: Offset(0, 4),
           ),
@@ -2538,10 +2538,10 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
             width: 62,
             height: 62,
             decoration: BoxDecoration(
-              color: _onPrimary().withOpacity(0.14),
+              color: _onPrimary().withAlpha(36),
               borderRadius: BorderRadius.circular(22),
               border: material.Border.all(
-                color: _onPrimary().withOpacity(0.16),
+                color: _onPrimary().withAlpha(41),
               ),
             ),
             child: Icon(
@@ -2573,7 +2573,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                 'Resumo financeiro, participantes, camisas, patrocínios e relatórios do evento.',
                 textAlign: narrow ? TextAlign.center : TextAlign.left,
                 style: TextStyle(
-                  color: _onPrimary().withOpacity(0.82),
+                  color: _onPrimary().withAlpha(209),
                   fontSize: 13,
                   height: 1.35,
                 ),
@@ -2623,9 +2623,9 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: _onPrimary().withOpacity(0.14),
+        color: _onPrimary().withAlpha(36),
         borderRadius: BorderRadius.circular(99),
-        border: material.Border.all(color: _onPrimary().withOpacity(0.16)),
+        border: material.Border.all(color: _onPrimary().withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -2683,7 +2683,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                 if (value == 'confeccao') _gerarPdfConfeccao();
                 if (value == 'confeccao_completo') _gerarPdfConfeccaoCompleto();
                 if (value == 'lista_entrega_camisas')
-                  _gerarPdfListaEntregaCamisas();
+                  { _gerarPdfListaEntregaCamisas(); }
                 if (value == 'geral') _gerarPdfGeral();
                 if (value == 'participantes') _gerarPdfParticipantes();
                 // 🔥 NOVOS PDFs
@@ -2795,30 +2795,24 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                                       gradient: LinearGradient(
                                         colors: [
                                           _saldoLiquido >= 0
-                                              ? context.uai.success.withOpacity(
-                                                  0.16,
-                                                )
-                                              : context.uai.error.withOpacity(
-                                                  0.16,
-                                                ),
+                                              ? context.uai.success.withAlpha((255.0 * (
+                                                  0.16)).round())
+                                              : context.uai.error.withAlpha((255.0 * (
+                                                  0.16)).round()),
                                           _saldoLiquido >= 0
-                                              ? context.uai.success.withOpacity(
-                                                  0.08,
-                                                )
-                                              : context.uai.error.withOpacity(
-                                                  0.08,
-                                                ),
+                                              ? context.uai.success.withAlpha((255.0 * (
+                                                  0.08)).round())
+                                              : context.uai.error.withAlpha((255.0 * (
+                                                  0.08)).round()),
                                         ],
                                       ),
                                       borderRadius: BorderRadius.circular(12),
                                       border: material.Border.all(
                                         color: _saldoLiquido >= 0
-                                            ? context.uai.success.withOpacity(
-                                                0.25,
-                                              )
-                                            : context.uai.error.withOpacity(
-                                                0.28,
-                                              ),
+                                            ? context.uai.success.withAlpha((255.0 * (
+                                                0.25)).round())
+                                            : context.uai.error.withAlpha((255.0 * (
+                                                0.28)).round()),
                                       ),
                                     ),
                                     child: Row(
@@ -3048,9 +3042,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                                           vertical: 4,
                                         ),
                                         decoration: BoxDecoration(
-                                          color: context.uai.info.withOpacity(
-                                            0.08,
-                                          ),
+                                          color: context.uai.info.withAlpha((255.0 * (
+                                            0.08)).round()),
                                           borderRadius: BorderRadius.circular(
                                             20,
                                           ),
@@ -3156,7 +3149,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                                               MainAxisAlignment.spaceBetween,
                                           children: [
                                             Text(
-                                              '${_quitados} quitados',
+                                              '$_quitados quitados',
                                               style: TextStyle(
                                                 fontSize: 10,
                                                 color: _ensureVisible(
@@ -3166,7 +3159,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                                               ),
                                             ),
                                             Text(
-                                              '${_cobertosPorPatrocinio} patrocínio',
+                                              '$_cobertosPorPatrocinio patrocínio',
                                               style: TextStyle(
                                                 fontSize: 10,
                                                 color: _ensureVisible(
@@ -3176,7 +3169,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                                               ),
                                             ),
                                             Text(
-                                              '${_inadimplentes} inadimplentes',
+                                              '$_inadimplentes inadimplentes',
                                               style: TextStyle(
                                                 fontSize: 10,
                                                 color: _ensureVisible(
@@ -3358,7 +3351,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                                               ),
                                               decoration: BoxDecoration(
                                                 color: context.uai.info
-                                                    .withOpacity(0.08),
+                                                    .withAlpha(20),
                                                 borderRadius:
                                                     BorderRadius.circular(20),
                                               ),
@@ -3477,7 +3470,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                                               ),
                                               decoration: BoxDecoration(
                                                 color: context.uai.warning
-                                                    .withOpacity(0.08),
+                                                    .withAlpha(20),
                                                 borderRadius:
                                                     BorderRadius.circular(20),
                                               ),
@@ -3597,7 +3590,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                                               ),
                                               decoration: BoxDecoration(
                                                 color: context.uai.associacao
-                                                    .withOpacity(0.08),
+                                                    .withAlpha(20),
                                                 borderRadius:
                                                     BorderRadius.circular(20),
                                               ),
@@ -3692,9 +3685,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                                   Container(
                                     padding: EdgeInsets.all(12),
                                     decoration: BoxDecoration(
-                                      color: context.uai.associacao.withOpacity(
-                                        0.08,
-                                      ),
+                                      color: context.uai.associacao.withAlpha((255.0 * (
+                                        0.08)).round()),
                                       borderRadius: BorderRadius.circular(12),
                                     ),
                                     child: Row(
@@ -3748,7 +3740,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                                           ),
                                           border: material.Border.all(
                                             color: context.uai.associacao
-                                                .withOpacity(0.25),
+                                                .withAlpha(64),
                                           ),
                                         ),
                                         child: Row(
@@ -3757,7 +3749,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                                               padding: EdgeInsets.all(8),
                                               decoration: BoxDecoration(
                                                 color: context.uai.associacao
-                                                    .withOpacity(0.16),
+                                                    .withAlpha(41),
                                                 borderRadius:
                                                     BorderRadius.circular(8),
                                               ),
@@ -3941,10 +3933,10 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                             Container(
                               padding: EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: context.uai.info.withOpacity(0.08),
+                                color: context.uai.info.withAlpha(20),
                                 borderRadius: BorderRadius.circular(12),
                                 border: material.Border.all(
-                                  color: context.uai.info.withOpacity(0.25),
+                                  color: context.uai.info.withAlpha(64),
                                 ),
                               ),
                               child: Row(
@@ -3987,12 +3979,12 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     return Container(
       padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: context.uai.info.withOpacity(0.08),
+        color: context.uai.info.withAlpha(20),
         borderRadius: BorderRadius.circular(16),
-        border: material.Border.all(color: context.uai.info.withOpacity(0.16)),
+        border: material.Border.all(color: context.uai.info.withAlpha(41)),
         boxShadow: [
           BoxShadow(
-            color: context.uai.info.withOpacity(0.16).withOpacity(0.35),
+            color: context.uai.info.withAlpha(41).withAlpha(89),
             blurRadius: 8,
             offset: Offset(0, 2),
           ),
@@ -4065,9 +4057,9 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: cor.withOpacity(0.08),
+        color: cor.withAlpha(20),
         borderRadius: BorderRadius.circular(99),
-        border: material.Border.all(color: cor.withOpacity(0.18)),
+        border: material.Border.all(color: cor.withAlpha(46)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -4102,7 +4094,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     return Container(
       padding: EdgeInsets.symmetric(vertical: 8, horizontal: 12),
       decoration: BoxDecoration(
-        color: cor.withOpacity(0.05),
+        color: cor.withAlpha(13),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -4110,7 +4102,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
           Container(
             padding: EdgeInsets.all(6),
             decoration: BoxDecoration(
-              color: cor.withOpacity(0.1),
+              color: cor.withAlpha(26),
               borderRadius: BorderRadius.circular(6),
             ),
             child: Icon(icon, color: cor, size: 16),
@@ -4146,9 +4138,9 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     return Container(
       padding: EdgeInsets.all(r.isPhone ? 12 : 16),
       decoration: BoxDecoration(
-        color: cor.withOpacity(0.1),
+        color: cor.withAlpha(26),
         borderRadius: BorderRadius.circular(12),
-        border: material.Border.all(color: cor.withOpacity(0.3)),
+        border: material.Border.all(color: cor.withAlpha(77)),
       ),
       child: Column(
         children: [
@@ -4182,7 +4174,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
         Container(
           padding: EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: cor.withOpacity(0.1),
+            color: cor.withAlpha(26),
             shape: BoxShape.circle,
           ),
           child: Icon(icon, color: cor, size: 20),
@@ -4208,9 +4200,9 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     return Container(
       padding: EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: cor.withOpacity(0.1),
+        color: cor.withAlpha(26),
         borderRadius: BorderRadius.circular(8),
-        border: material.Border.all(color: cor.withOpacity(0.3)),
+        border: material.Border.all(color: cor.withAlpha(77)),
       ),
       child: Column(
         children: [

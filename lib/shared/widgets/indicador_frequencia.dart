@@ -72,9 +72,9 @@ class IndicadorFrequencia extends StatelessWidget {
         vertical: (tamanho * 0.42).clamp(5.0, 8.0),
       ),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.10),
+        color: color.withAlpha(26),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: color.withOpacity(0.18)),
+        border: Border.all(color: color.withAlpha(46)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -108,7 +108,7 @@ class IndicadorFrequencia extends StatelessWidget {
         color: color,
         boxShadow: [
           BoxShadow(
-            color: color.withOpacity(0.34),
+            color: color.withAlpha(87),
             blurRadius: 5,
             spreadRadius: 1,
           ),

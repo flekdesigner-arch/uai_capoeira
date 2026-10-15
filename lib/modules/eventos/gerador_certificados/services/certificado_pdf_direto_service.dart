@@ -1,12 +1,11 @@
-import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 import 'package:uai_capoeira/modules/certificados/models/certificado_slot_model.dart';
+import 'package:uai_capoeira/modules/certificados/models/certificado_studio_model.dart';
 import 'package:uai_capoeira/modules/certificados/models/certificado_template_tipo.dart';
 import 'package:uai_capoeira/modules/certificados/services/certificado_svg_service.dart';
 import 'package:uai_capoeira/modules/eventos/gerador_certificados/models/certificado_evento_data.dart';
@@ -28,6 +27,8 @@ class CertificadoPdfDiretoService {
   final Map<CertificadoTemplateTipo, String> _svgCache = {};
   final Map<CertificadoTemplateTipo, Map<String, CertificadoSlotModel>>
   _slotsCache = {};
+  final Map<String, String> _studioSvgCache = {};
+  final Map<String, Uint8List> _studioRasterCache = {};
 
   pw.Font? _arial;
   pw.Font? _arialBold;
@@ -66,11 +67,11 @@ class CertificadoPdfDiretoService {
     for (var i = 0; i < participantes.length; i++) {
       final participante = participantes[i];
 
-      if (!participante.estaProntoParaGerar) {
+      if (!participante.estaProntoParaGerarNoEvento(evento)) {
         erros.add(
           CertificadoPacoteGraficaErro(
             alunoNome: participante.alunoNome,
-            mensagem: 'Participante sem graduação nova ou nome válido.',
+            mensagem: 'Participante sem os dados exigidos pelo template atual.',
           ),
         );
         continue;
@@ -147,18 +148,36 @@ class CertificadoPdfDiretoService {
   Future<Uint8List> gerarPdfParticipante({
     required CertificadoEventoData evento,
     required CertificadoParticipanteData participante,
+    String? qrData,
   }) async {
+    if (evento.exigePdfIndividual || participante.pdfImportado) {
+      throw StateError('Use o PDF individual vinculado; este participante não deve usar o modelo de graduação.');
+    }
     await _ensureFonts();
 
     final tipo = participante.tipoTemplate(evento);
     final data = participante.toPreviewData(evento);
-    final slots = await _slots(tipo);
-    final svg = await _svgColorido(tipo, participante);
+    final slotsBase = await _slots(tipo);
+    final slots = _svgService.aplicarLayoutsStudio(
+      slotsBase,
+      evento.configuracoes.studio,
+    );
+    final baseRaster = await _baseRasterStudio(evento);
+    final svg = baseRaster == null
+        ? await _svgColorido(tipo, participante, evento)
+        : _svgService.svgEmBranco(
+            widthMm: evento.configuracoes.studio.larguraDocumentoMm,
+            heightMm: evento.configuracoes.studio.alturaDocumentoMm,
+          );
+    final camadasStudio = await _camadasStudio(evento);
 
     final documento = pw.Document(compress: true);
-    final page = PdfPageFormat.a4.landscape;
-    final sx = page.width / _viewBoxWidth;
-    final sy = page.height / _viewBoxHeight;
+    final studio = evento.configuracoes.studio;
+    final page = studio.paginaRetrato ? PdfPageFormat.a4 : PdfPageFormat.a4.landscape;
+    final logicalW = studio.larguraDocumentoMm;
+    final logicalH = studio.alturaDocumentoMm;
+    final sx = page.width / logicalW;
+    final sy = page.height / logicalH;
 
     final textoPrincipal = _pdfColor(const Color(0xFF1A0202));
 
@@ -170,8 +189,36 @@ class CertificadoPdfDiretoService {
           return pw.Stack(
             children: [
               pw.Positioned.fill(
-                child: pw.SvgImage(svg: svg, fit: pw.BoxFit.fill),
+                child: baseRaster != null
+                    ? pw.Image(pw.MemoryImage(baseRaster), fit: pw.BoxFit.fill)
+                    : pw.SvgImage(svg: svg, fit: pw.BoxFit.fill),
               ),
+              ...camadasStudio.map((item) {
+                final layer = item.$1;
+                final layerSvg = item.$2;
+                final layerRaster = item.$3;
+                final child = layerRaster != null
+                    ? pw.Image(
+                        pw.MemoryImage(layerRaster),
+                        fit: pw.BoxFit.fill,
+                      )
+                    : pw.SvgImage(
+                        svg: layerSvg ?? _svgService.svgEmBranco(
+                          widthMm: layer.largura,
+                          heightMm: layer.altura,
+                        ),
+                        fit: pw.BoxFit.fill,
+                      );
+                return pw.Positioned(
+                  left: layer.x * sx,
+                  top: layer.y * sy,
+                  child: pw.SizedBox(
+                    width: layer.largura * sx,
+                    height: layer.altura * sy,
+                    child: child,
+                  ),
+                );
+              }),
               ..._textosDoCertificado(
                 evento: evento,
                 slots: slots,
@@ -181,6 +228,18 @@ class CertificadoPdfDiretoService {
                 data: data,
                 participante: participante,
                 textoPrincipal: textoPrincipal,
+              ),
+              ..._textosLivresStudio(
+                evento: evento,
+                data: data,
+                sx: sx,
+                sy: sy,
+              ),
+              ..._qrOficialStudio(
+                evento: evento,
+                qrData: qrData,
+                sx: sx,
+                sy: sy,
               ),
             ],
           );
@@ -484,15 +543,20 @@ class CertificadoPdfDiretoService {
       }
     }
 
-    addSingle(
+    bool blocoAtivo(String id) => evento.configuracoes.studio.blocoAtivo(id);
+
+    if (blocoAtivo('nome')) {
+      addSingle(
       id: CertificadoSlotIds.alunoNome,
       text: data.alunoNome,
       config: cfgNome,
     );
+    }
 
-    addCpf();
+    if (blocoAtivo('cpf')) addCpf();
 
-    addSingle(
+    if (blocoAtivo('graduacao')) {
+      addSingle(
       id: CertificadoSlotIds.graduacaoNova,
       text: _graduacaoExibidaComGenero(
         data.graduacaoNova,
@@ -501,8 +565,10 @@ class CertificadoPdfDiretoService {
       ),
       config: cfgGraduacao,
     );
+    }
 
-    addParagraph(
+    if (blocoAtivo('frase')) {
+      addParagraph(
       id: CertificadoSlotIds.frase,
       text: _fraseFinalComGenero(
         data: data,
@@ -511,46 +577,285 @@ class CertificadoPdfDiretoService {
       ),
       config: cfgFrase,
     );
+    }
 
-    addSingle(
+    if (blocoAtivo('local_data')) {
+      addSingle(
       id: CertificadoSlotIds.localData,
       text: data.localData,
       config: cfgLocalData,
     );
+    }
 
     final assinaturas = data.assinaturas;
-    for (var i = 0; i < 5; i++) {
+    if (blocoAtivo('assinatura_nome') || blocoAtivo('assinatura_apelido'))
+    { for (var i = 0; i < 5; i++) {
       if (i >= assinaturas.length) break;
 
       final a = assinaturas[i];
-      addSingle(
+      if (blocoAtivo('assinatura_nome')) {
+        addSingle(
         id: 'assinatura${i + 1}',
         text: a.nome,
         config: cfgAssinaturaNome,
       );
-      addSingle(
+      }
+      if (blocoAtivo('assinatura_apelido')) {
+        addSingle(
         id: 'apelido${i + 1}',
         text: a.apelido,
         config: cfgAssinaturaApelido,
       );
-    }
+      }
+    } }
 
     return widgets;
+  }
+
+  List<pw.Widget> _qrOficialStudio({
+    required CertificadoEventoData evento,
+    required String? qrData,
+    required double sx,
+    required double sy,
+  }) {
+    final qr = evento.configuracoes.studio.qrCode;
+    final data = qrData?.trim() ?? '';
+    if (!qr.ativo || data.isEmpty) return const <pw.Widget>[];
+
+    final fg = _pdfColor(_hexToColor(qr.corQrHex));
+    final bg = _pdfColor(_hexToColor(qr.corFundoHex));
+    final borderColor = _pdfColor(_hexToColor(qr.corBordaHex));
+    final labelColor = _pdfColor(_hexToColor(qr.corLegendaHex));
+    final sizeW = qr.tamanhoMm * sx;
+    final sizeH = qr.tamanhoMm * sy;
+    final paddingX = qr.margemMm * sx;
+    final paddingY = qr.margemMm * sy;
+    final labelHeight = qr.mostrarLegenda ? 5.8 * sy : 0.0;
+
+    final decoration = pw.BoxDecoration(
+      color: qr.fundoTransparente ? null : bg,
+      borderRadius: pw.BorderRadius.circular(qr.raioMm * sx),
+      border: qr.bordaMm > 0
+          ? pw.Border.all(color: borderColor, width: qr.bordaMm * sx)
+          : null,
+    );
+
+    return <pw.Widget>[
+      pw.Positioned(
+        left: qr.x * sx,
+        top: qr.y * sy,
+        child: pw.Column(
+          mainAxisSize: pw.MainAxisSize.min,
+          children: [
+            pw.Container(
+              width: sizeW,
+              height: sizeH,
+              padding: pw.EdgeInsets.symmetric(
+                horizontal: paddingX,
+                vertical: paddingY,
+              ),
+              decoration: decoration,
+              child: pw.BarcodeWidget(
+                barcode: pw.Barcode.qrCode(),
+                data: data,
+                drawText: false,
+                color: fg,
+              ),
+            ),
+            if (qr.mostrarLegenda)
+              pw.SizedBox(
+                width: sizeW,
+                height: labelHeight,
+                child: pw.Center(
+                  child: pw.Text(
+                    qr.legenda,
+                    maxLines: 1,
+                    textAlign: pw.TextAlign.center,
+                    style: pw.TextStyle(
+                      font: _arialBold ?? _arial,
+                      fontSize: qr.legendaPt,
+                      color: labelColor,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    ];
+  }
+
+  List<pw.Widget> _textosLivresStudio({
+    required CertificadoEventoData evento,
+    required dynamic data,
+    required double sx,
+    required double sy,
+  }) {
+    final widgets = <pw.Widget>[];
+    for (final item in evento.configuracoes.studio.textosLivres) {
+      if (!item.visivel || item.textoTemplate.trim().isEmpty) continue;
+      final text = _resolverTextoLivreStudio(item.textoTemplate, evento, data);
+      if (text.trim().isEmpty) continue;
+
+      final alinhamento = item.alinhamento.toLowerCase();
+      final isLeft = alinhamento == 'left' || alinhamento == 'esquerda' || alinhamento == 'start';
+      final isRight = alinhamento == 'right' || alinhamento == 'direita' || alinhamento == 'end';
+      final align = isLeft
+          ? pw.Alignment.topLeft
+          : isRight
+              ? pw.Alignment.topRight
+              : pw.Alignment.topCenter;
+      final textAlign = isLeft
+          ? pw.TextAlign.left
+          : isRight
+              ? pw.TextAlign.right
+              : pw.TextAlign.center;
+      final flutterColor = _hexToColor(item.corHex);
+      widgets.add(
+        pw.Positioned(
+          left: item.x * sx,
+          top: item.y * sy,
+          child: pw.Container(
+            width: item.largura * sx,
+            height: item.altura * sy,
+            alignment: align,
+            child: pw.Text(
+              text,
+              textAlign: textAlign,
+              maxLines: 10,
+              style: pw.TextStyle(
+                font: _fontByName(item.fonte, bold: item.negrito) ?? _arial,
+                fontSize: item.tamanho,
+                fontWeight: item.negrito ? pw.FontWeight.bold : null,
+                color: _pdfColor(flutterColor),
+                height: 1.05,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    return widgets;
+  }
+
+  String _resolverTextoLivreStudio(
+    String template,
+    CertificadoEventoData evento,
+    dynamic data,
+  ) {
+    var out = template;
+    final values = <String, String>{
+      '{nome}': data.alunoNome?.toString() ?? '',
+      '{cpf}': data.cpfFormatado?.toString() ?? '',
+      '{graduacao}': data.graduacaoNova?.toString() ?? '',
+      '{frase}': data.frase?.toString() ?? '',
+      '{local_data}': data.localData?.toString() ?? evento.localData,
+      '{evento}': evento.eventoNome,
+    };
+    values.forEach((key, value) => out = out.replaceAll(key, value));
+    return out;
+  }
+
+
+  Future<Uint8List?> _baseRasterStudio(CertificadoEventoData evento) async {
+    final studio = evento.configuracoes.studio;
+    if (studio.baseSvgStoragePath?.trim().isEmpty != false) return null;
+    final previewPath = studio.basePreviewStoragePath?.trim() ?? '';
+    if (previewPath.isEmpty) return null;
+
+    final cached = _studioRasterCache[previewPath];
+    if (cached != null) return cached;
+
+    final bytes = await _svgService.carregarBytesStorage(
+      previewPath,
+      maxBytes: 40 * 1024 * 1024,
+    );
+    _studioRasterCache[previewPath] = bytes;
+    return bytes;
   }
 
   Future<String> _svgColorido(
     CertificadoTemplateTipo tipo,
     CertificadoParticipanteData participante,
+    CertificadoEventoData evento,
   ) async {
-    final base = _svgCache[tipo] ?? await _svgService.carregarTemplate(tipo);
-    _svgCache[tipo] = base;
+    final studio = evento.configuracoes.studio;
+    String base;
+    if (studio.baseEmBranco) {
+      base = _svgService.svgEmBranco(widthMm: studio.larguraDocumentoMm, heightMm: studio.alturaDocumentoMm);
+    } else if (studio.baseSvgStoragePath?.trim().isNotEmpty == true) {
+      final path = studio.baseSvgStoragePath!;
+      base = _studioSvgCache[path] ?? await _svgService.carregarSvgStorage(path);
+      _studioSvgCache[path] = base;
+      base = _svgService.aplicarSubstituicoesCores(base, studio.substituicoesCor);
+    } else {
+      base = _svgCache[tipo] ?? await _svgService.carregarTemplate(tipo);
+      _svgCache[tipo] = base;
+    }
+
+    if (studio.baseSvgStoragePath?.trim().isNotEmpty == true) {
+      // Arte externa do Corel deve chegar ao PDF exatamente como foi importada.
+      // Só os remapeamentos explícitos do Inspector são aplicados.
+      return base;
+    }
+
+    final visual = evento.configuracoes.visual;
+    var result = _svgService.aplicarPaletaVisual(
+      base,
+      corFundo: _hexToColor(visual.corFundo),
+      corEstrutura: _hexToColor(visual.corEstrutura),
+      corDestaque: _hexToColor(visual.corDestaque),
+      corDetalhe: _hexToColor(visual.corDetalhe),
+    );
 
     return _svgService.colorirSvg(
-      base,
+      result,
       cor1: _hexToColor(participante.cor1),
       cor2: _hexToColor(participante.cor2),
-      corContorno: const Color(0xFF1A0202),
+      corContorno: _hexToColor(visual.corEstrutura),
     );
+  }
+
+  Future<List<(CertificadoStudioLayer, String?, Uint8List?)>> _camadasStudio(
+    CertificadoEventoData evento,
+  ) async {
+    final out = <(CertificadoStudioLayer, String?, Uint8List?)>[];
+
+    for (final layer in evento.configuracoes.studio.camadas) {
+      if (!layer.visivel || layer.storagePath.trim().isEmpty) continue;
+
+      // Camadas importadas do Corel/externas já possuem um PNG leve gerado
+      // pelo mesmo pipeline usado no Canvas. O pacote `pdf` possui um parser
+      // SVG diferente do flutter_svg e alguns SVGs perfeitamente válidos no
+      // Studio podem disparar erros internos (inclusive null-check) durante a
+      // exportação. Preferimos o raster cacheado quando ele existir para que
+      // Preview, Compartilhar e PDF final usem a mesma arte visual.
+      final previewPath = layer.previewStoragePath?.trim() ?? '';
+      if (previewPath.isNotEmpty) {
+        try {
+          final cached = _studioRasterCache[previewPath];
+          final bytes = cached ??
+              await _svgService.carregarBytesStorage(
+                previewPath,
+                maxBytes: 40 * 1024 * 1024,
+              );
+          _studioRasterCache[previewPath] = bytes;
+          out.add((layer, null, bytes));
+          continue;
+        } catch (_) {
+          // Compatibilidade/fallback: templates antigos ou previews removidos
+          // ainda podem tentar o SVG bruto abaixo.
+        }
+      }
+
+      var svg = _studioSvgCache[layer.storagePath] ??
+          await _svgService.carregarSvgStorage(layer.storagePath);
+      _studioSvgCache[layer.storagePath] = svg;
+      svg = _svgService.aplicarSubstituicoesCores(svg, layer.substituicoesCor);
+      out.add((layer, svg, null));
+    }
+
+    return out;
   }
 
   Future<Map<String, CertificadoSlotModel>> _slots(
@@ -700,9 +1005,9 @@ class CertificadoPdfDiretoService {
     );
 
     final raw = <String, dynamic>{
-      if (rawEvento != null) ...rawEvento,
+      ...?rawEvento,
       // Participante/graduação pode sobrescrever o evento futuramente.
-      if (rawParticipante != null) ...rawParticipante,
+      ...?rawParticipante,
     };
 
     final fonteNome = _readString(raw, const [
@@ -1224,7 +1529,7 @@ class CertificadoPdfDiretoService {
 
     for (final entry in substituicoes.entries) {
       out = out.replaceAll(
-        RegExp('(?<![A-ZÀ-Ú])' + RegExp.escape(entry.key) + '(?![A-ZÀ-Ú])'),
+        RegExp('(?<![A-ZÀ-Ú])${RegExp.escape(entry.key)}(?![A-ZÀ-Ú])'),
         entry.value,
       );
     }
@@ -1294,7 +1599,7 @@ class CertificadoPdfDiretoService {
 
     for (final entry in palavras.entries) {
       out = out.replaceAll(
-        RegExp('(?<![A-ZÀ-Ú])' + RegExp.escape(entry.key) + '(?![A-ZÀ-Ú])'),
+        RegExp('(?<![A-ZÀ-Ú])${RegExp.escape(entry.key)}(?![A-ZÀ-Ú])'),
         entry.value,
       );
     }
@@ -1397,7 +1702,6 @@ class CertificadoPdfDiretoService {
     final texto = hex('#111827');
     final textoSuave = hex('#4B5563');
     final textoMuted = hex('#6B7280');
-    final borda = hex('#D1D5DB');
     final bordaSuave = hex('#E5E7EB');
     final fundo = hex('#F9FAFB');
     final branco = PdfColors.white;
@@ -1910,7 +2214,6 @@ class CertificadoPdfDiretoService {
         return pw.Alignment.centerRight;
       case pw.TextAlign.center:
       case pw.TextAlign.justify:
-      default:
         return pw.Alignment.center;
     }
   }
@@ -2063,10 +2366,10 @@ class CertificadoPdfDiretoService {
 
   PdfColor _pdfColor(Color color) {
     return PdfColor(
-      color.red / 255,
-      color.green / 255,
-      color.blue / 255,
-      color.alpha / 255,
+      ((color.toARGB32() >> 16) & 0xff) / 255,
+      ((color.toARGB32() >> 8) & 0xff) / 255,
+      (color.toARGB32() & 0xff) / 255,
+      ((color.toARGB32() >> 24) & 0xff) / 255,
     );
   }
 

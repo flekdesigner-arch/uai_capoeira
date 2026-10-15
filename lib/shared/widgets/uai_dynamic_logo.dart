@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:path_drawing/path_drawing.dart';
@@ -57,10 +58,30 @@ class _UaiDynamicLogoState extends State<UaiDynamicLogo> {
   }
 
   Future<String> _loadSvg() {
-    _cachedSvgFuture ??= rootBundle.loadString(
-      'assets/images/logo_uai_tema.svg',
-    );
+    _cachedSvgFuture ??= rootBundle
+        .loadString('assets/images/logo_uai_tema.svg')
+        .then(_sanitizeSvgForFlutter);
     return _cachedSvgFuture!;
+  }
+
+  // Metadados de editores vetoriais (Corel/Inkscape etc.) não participam
+  // do desenho e o flutter_svg avisa "unhandled element <metadata/>".
+  // No Windows isso polui bastante o console. Removemos somente elementos
+  // não visuais, preservando paths, defs, gradients, ids e estilos.
+  String _sanitizeSvgForFlutter(String svg) {
+    final isWindowsDesktop =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+    if (!isWindowsDesktop || !svg.contains('<metadata')) return svg;
+
+    return svg
+        .replaceAll(
+          RegExp(r'<metadata\b[^>]*>[\s\S]*?</metadata\s*>', caseSensitive: false),
+          '',
+        )
+        .replaceAll(
+          RegExp(r'<metadata\b[^>]*/\s*>', caseSensitive: false),
+          '',
+        );
   }
 
   void _syncConfigFuture() {

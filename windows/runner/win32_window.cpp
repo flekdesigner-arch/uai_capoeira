@@ -16,6 +16,19 @@ namespace {
 #define DWMWA_USE_IMMERSIVE_DARK_MODE 20
 #endif
 
+// Windows 11/Windows 10 recentes. Redefinidos para manter compatibilidade
+// com SDKs de compilação mais antigos. Em sistemas que não suportam esses
+// atributos, DwmSetWindowAttribute simplesmente falha sem bloquear o app.
+#ifndef DWMWA_BORDER_COLOR
+#define DWMWA_BORDER_COLOR 34
+#endif
+#ifndef DWMWA_CAPTION_COLOR
+#define DWMWA_CAPTION_COLOR 35
+#endif
+#ifndef DWMWA_TEXT_COLOR
+#define DWMWA_TEXT_COLOR 36
+#endif
+
 constexpr const wchar_t kWindowClassName[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
 
 /// Registry key for app theme preference.
@@ -150,7 +163,10 @@ bool Win32Window::Create(const std::wstring& title,
 }
 
 bool Win32Window::Show() {
-  return ShowWindow(window_handle_, SW_SHOWNORMAL);
+  // O UAI Capoeira Desktop sempre inicia maximizado no Windows.
+  // Mantemos a barra nativa para preservar Snap Layouts, resize, minimizar,
+  // maximizar e o comportamento padrão do sistema operacional.
+  return ShowWindow(window_handle_, SW_MAXIMIZE);
 }
 
 // static
@@ -270,6 +286,42 @@ bool Win32Window::OnCreate() {
 
 void Win32Window::OnDestroy() {
   // No-op; provided for subclasses.
+}
+
+void Win32Window::SetTitleBarTheme(uint32_t caption_argb,
+                                      uint32_t text_argb,
+                                      uint32_t border_argb,
+                                      bool dark_icons) {
+  if (window_handle_ == nullptr) return;
+
+  auto argb_to_colorref = [](uint32_t argb) -> COLORREF {
+    const BYTE r = static_cast<BYTE>((argb >> 16) & 0xFF);
+    const BYTE g = static_cast<BYTE>((argb >> 8) & 0xFF);
+    const BYTE b = static_cast<BYTE>(argb & 0xFF);
+    return RGB(r, g, b);
+  };
+
+  const COLORREF caption = argb_to_colorref(caption_argb);
+  const COLORREF text = argb_to_colorref(text_argb);
+  const COLORREF border = argb_to_colorref(border_argb);
+
+  DwmSetWindowAttribute(window_handle_, DWMWA_CAPTION_COLOR,
+                        &caption, sizeof(caption));
+  DwmSetWindowAttribute(window_handle_, DWMWA_TEXT_COLOR,
+                        &text, sizeof(text));
+  DwmSetWindowAttribute(window_handle_, DWMWA_BORDER_COLOR,
+                        &border, sizeof(border));
+
+  // O atributo controla também o tratamento visual dos botões nativos.
+  // true = decoração escura; false = decoração clara.
+  BOOL enable_dark_mode = dark_icons ? FALSE : TRUE;
+  DwmSetWindowAttribute(window_handle_, DWMWA_USE_IMMERSIVE_DARK_MODE,
+                        &enable_dark_mode, sizeof(enable_dark_mode));
+
+  // Força o Windows a redesenhar imediatamente a non-client area.
+  SetWindowPos(window_handle_, nullptr, 0, 0, 0, 0,
+               SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
+               SWP_NOACTIVATE | SWP_FRAMECHANGED);
 }
 
 void Win32Window::UpdateTheme(HWND const window) {

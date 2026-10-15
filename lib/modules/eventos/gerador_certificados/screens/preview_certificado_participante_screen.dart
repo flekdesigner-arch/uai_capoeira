@@ -1,9 +1,15 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'certificado_pdf_importado_screen.dart';
 import 'package:printing/printing.dart';
 
 import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'package:uai_capoeira/modules/certificados/models/certificado_emissao_v2_model.dart';
+import 'package:uai_capoeira/modules/certificados/models/certificado_qr_config.dart';
+import 'package:uai_capoeira/modules/certificados/services/certificado_emissao_v2_service.dart';
+import 'package:uai_capoeira/modules/certificados/services/certificado_permission_guard.dart';
+import 'package:uai_capoeira/modules/certificados/services/certificado_qr_config_repository.dart';
 import 'package:uai_capoeira/modules/certificados/services/certificado_svg_service.dart';
 import 'package:uai_capoeira/modules/certificados/widgets/certificado_preview_widget.dart';
 import 'package:uai_capoeira/modules/eventos/gerador_certificados/models/certificado_evento_data.dart';
@@ -37,6 +43,16 @@ class _PreviewCertificadoParticipanteScreenState
       const CertificadoFileShareService();
   final CertificadoPdfDiretoService _pdfDiretoService =
       CertificadoPdfDiretoService();
+  final CertificadoQrConfigRepository _qrConfigRepository =
+      CertificadoQrConfigRepository();
+  final CertificadoEmissaoV2Service _emissaoV2Service =
+      CertificadoEmissaoV2Service();
+  final CertificadoPermissionGuard _certificadoPermissionGuard =
+      CertificadoPermissionGuard();
+
+  CertificadoQrConfig? _qrGlobal;
+  CertificadoEmissaoV2? _emissaoV2Atual;
+  bool _carregandoQrGlobal = true;
 
   bool _processando = false;
   String? _acaoAtual;
@@ -44,6 +60,41 @@ class _PreviewCertificadoParticipanteScreenState
 
   CertificadoParticipanteData get participante => widget.participante;
   CertificadoEventoData get evento => widget.evento;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!evento.exigePdfIndividual && !participante.pdfImportado) _carregarMotorQr();
+  }
+
+  Future<void> _carregarMotorQr() async {
+    try {
+      final config = await _qrConfigRepository.carregar();
+      if (!mounted) return;
+      setState(() {
+        _qrGlobal = config;
+        _carregandoQrGlobal = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _qrGlobal = null;
+        _carregandoQrGlobal = false;
+      });
+    }
+  }
+
+  bool get _motorV2Ativo =>
+      _qrGlobal?.ativo == true && evento.configuracoes.studio.qrCode.ativo;
+
+  String get _urlAutenticidadeAtual {
+    final daTela = _emissaoV2Atual?.urlPublica.trim() ?? '';
+    if (daTela.isNotEmpty) return daTela;
+    return participante.urlAutenticidadeNoEvento(widget.evento);
+  }
+
+  bool get _temEmissaoV2Atual =>
+      _emissaoV2Atual != null || participante.temEmissaoOficialV2NoEvento(widget.evento);
 
   Color _readableOn(Color background) {
     return background.computeLuminance() > 0.48
@@ -133,10 +184,21 @@ class _PreviewCertificadoParticipanteScreenState
     );
   }
 
-  Future<Uint8List> _gerarPdfDireto() {
+  Future<Uint8List> _gerarPdfDireto({bool exigirQrOficial = true}) async {
+    final qrData = _urlAutenticidadeAtual;
+
+    if (_motorV2Ativo && exigirQrOficial && qrData.isEmpty) {
+      throw Exception(
+        'Este template usa QR de autenticidade, mas este certificado ainda não '
+        'foi emitido oficialmente. Toque em EMITIR CERTIFICADO OFICIAL primeiro para '
+        'gerar o código real e então baixar/imprimir/compartilhar o PDF final.',
+      );
+    }
+
     return _pdfDiretoService.gerarPdfParticipante(
       evento: evento,
       participante: participante,
+      qrData: qrData.isEmpty ? null : qrData,
     );
   }
 
@@ -171,12 +233,12 @@ class _PreviewCertificadoParticipanteScreenState
         ),
       );
     } finally {
-      if (!mounted) return;
-
-      setState(() {
-        _processando = false;
-        _acaoAtual = null;
-      });
+      if (mounted) {
+        setState(() {
+          _processando = false;
+          _acaoAtual = null;
+        });
+      }
     }
   }
 
@@ -227,33 +289,133 @@ class _PreviewCertificadoParticipanteScreenState
   }
 
   Future<void> _salvarVinculo() async {
-    _addLogProcessamento('Gerando PDF direto de ${participante.alunoNome}...');
+    // Recarrega a configuração no momento da ação para não emitir usando um
+    // estado global antigo que tenha sido alterado em outra tela/dispositivo.
+    final qrGlobal = await _qrConfigRepository.carregar();
+    final usarV2 = qrGlobal.ativo && evento.configuracoes.studio.qrCode.ativo;
 
-    final pdfBytes = await _gerarPdfDireto();
+    if (!usarV2) {
+      _addLogProcessamento('Motor legado: gerando PDF direto de ${participante.alunoNome}...');
+      final pdfBytes = await _pdfDiretoService.gerarPdfParticipante(
+        evento: evento,
+        participante: participante,
+      );
+
+      _addLogProcessamento(
+        'PDF gerado. Iniciando upload e substituição inteligente...',
+      );
+
+      final link = await _geradorService.uploadPdfDiretoERegistrar(
+        pdfBytes: pdfBytes,
+        evento: evento,
+        participante: participante,
+        onLog: _addLogProcessamento,
+      );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Certificado vinculado: $link'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    // A permissao nao deve utilizar um contexto apos a desmontagem da previa.
+    if (!mounted ||
+        !await _certificadoPermissionGuard.revalidarEmissao(context)) {
+      return;
+    }
 
     _addLogProcessamento(
-      'PDF gerado. Iniciando upload e substituição inteligente...',
+      'Preparando identidade do Certificado Oficial de ${participante.alunoNome}...',
     );
 
-    final link = await _geradorService.uploadPdfDiretoERegistrar(
-      pdfBytes: pdfBytes,
+    final emissao = await _emissaoV2Service.prepararOuReusar(
       evento: evento,
       participante: participante,
-      onLog: _addLogProcessamento,
+      qrGlobal: qrGlobal,
     );
 
-    if (!mounted) return;
+    try {
+      _addLogProcessamento(
+        '${emissao.existente ? 'Reemissão' : 'Nova emissão'}: ${emissao.codigoHumano}',
+      );
+      await _emissaoV2Service.marcarEtapa(
+        emissao: emissao,
+        participante: participante,
+        etapa: 'gerando',
+      );
+      _addLogProcessamento('Gerando PDF oficial com QR de autenticidade...');
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Certificado vinculado: $link'),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+      final pdfBytes = await _pdfDiretoService.gerarPdfParticipante(
+        evento: evento,
+        participante: participante,
+        qrData: emissao.urlPublica,
+      );
+
+      final link = await _geradorService.uploadPdfDiretoERegistrar(
+        pdfBytes: pdfBytes,
+        evento: evento,
+        participante: participante,
+        emissaoV2Id: emissao.id,
+        emissaoKey: emissao.emissaoKey,
+        codigoPublico: emissao.codigoPublico,
+        codigoHumano: emissao.codigoHumano,
+        urlAutenticidade: emissao.urlPublica,
+        onLog: _addLogProcessamento,
+      );
+
+      await _emissaoV2Service.marcarEtapa(
+        emissao: emissao,
+        participante: participante,
+        etapa: 'publicando',
+      );
+      _addLogProcessamento('Publicando identidade oficial e snapshot público...');
+
+      await _emissaoV2Service.finalizar(
+        emissao: emissao,
+        evento: evento,
+        participante: participante,
+        qrGlobal: qrGlobal,
+        pdfUrl: link,
+        storagePath: _geradorService.storagePathParticipante(
+          evento: evento,
+          participante: participante,
+        ),
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _qrGlobal = qrGlobal;
+        _emissaoV2Atual = emissao;
+      });
+      _addLogProcessamento('✅ Emissão oficial válida: ${emissao.codigoHumano}');
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Certificado oficial emitido: ${emissao.codigoHumano}'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      try {
+        await _emissaoV2Service.registrarFalha(
+          emissao: emissao,
+          participante: participante,
+          erro: e,
+        );
+      } catch (_) {}
+      rethrow;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (evento.exigePdfIndividual || participante.pdfImportado) {
+      return CertificadoPdfImportadoScreen(evento: evento, participante: participante);
+    }
     final t = context.uai;
 
     final tipo = participante.tipoTemplate(evento);
@@ -385,9 +547,9 @@ class _PreviewCertificadoParticipanteScreenState
             width: 56,
             height: 56,
             decoration: BoxDecoration(
-              color: onPrimary.withOpacity(0.14),
+              color: onPrimary.withAlpha(36),
               borderRadius: BorderRadius.circular(t.buttonRadius),
-              border: Border.all(color: onPrimary.withOpacity(0.16)),
+              border: Border.all(color: onPrimary.withAlpha(41)),
             ),
             child: Icon(
               Icons.workspace_premium_rounded,
@@ -420,7 +582,7 @@ class _PreviewCertificadoParticipanteScreenState
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: onPrimary.withOpacity(0.82),
+                  color: onPrimary.withAlpha(209),
                   fontSize: 12.5,
                   fontWeight: FontWeight.w700,
                   height: 1.3,
@@ -472,17 +634,31 @@ class _PreviewCertificadoParticipanteScreenState
           _infoLine('Cidade/Data', evento.localData),
           _infoLine(
             'Assinaturas',
-            '${evento.assinaturas.length} configurada(s)',
+            '${evento.quantidadeAssinaturasValidas} configurada(s)',
           ),
           _infoLine(
             'Textos 2.0',
             '${evento.configuracoes.textos.length} campo(s) configurado(s)',
           ),
           _infoLine(
+            'Motor',
+            _carregandoQrGlobal
+                ? 'Verificando autenticação...'
+                : _motorV2Ativo
+                    ? 'Certificado Oficial • QR de autenticidade'
+                    : 'Legado',
+          ),
+          _infoLine(
             'Status',
-            participante.temCertificadoGerado
-                ? 'Já possui certificado vinculado'
-                : 'Ainda não vinculado',
+            _temEmissaoV2Atual
+                ? 'CERTIFICADO OFICIAL • QR real no PDF'
+                : participante.temCertificadoGerado
+                    ? (_motorV2Ativo
+                        ? 'PDF vinculado • falta emitir como certificado oficial'
+                        : 'Já possui certificado vinculado')
+                    : _motorV2Ativo
+                        ? 'Pronto para emissão como Certificado Oficial'
+                        : 'Ainda não vinculado',
           ),
         ],
       ),
@@ -497,7 +673,11 @@ class _PreviewCertificadoParticipanteScreenState
       title: 'Ações',
       subtitle: _processando
           ? 'Processando: ${_acaoAtual ?? 'aguarde...'}'
-          : 'Gere, imprima, compartilhe ou vincule o PDF.',
+          : _motorV2Ativo
+              ? (_temEmissaoV2Atual
+                  ? 'PDF oficial: exportações usam o QR real desta emissão.'
+                  : 'Para o PDF final ter QR real, emita oficialmente antes de exportar.')
+              : 'Gere, imprima, compartilhe ou vincule o PDF.',
       color: t.success,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -531,10 +711,17 @@ class _PreviewCertificadoParticipanteScreenState
           ),
           const SizedBox(height: 9),
           _actionButton(
-            icon: Icons.cloud_upload_rounded,
-            label: 'SALVAR E VINCULAR',
+            icon: _motorV2Ativo
+                ? Icons.verified_rounded
+                : Icons.cloud_upload_rounded,
+            label: _motorV2Ativo
+                ? (_temEmissaoV2Atual ? 'REEMITIR CERTIFICADO OFICIAL' : 'EMITIR CERTIFICADO OFICIAL')
+                : 'SALVAR E VINCULAR',
             color: t.success,
-            onTap: () => _executar('Salvar e vincular', _salvarVinculo),
+            onTap: () => _executar(
+              _motorV2Ativo ? 'Emitir certificado oficial' : 'Salvar e vincular',
+              _salvarVinculo,
+            ),
             filled: true,
           ),
           if (_processando || _logsProcessamento.isNotEmpty) ...[
@@ -615,6 +802,8 @@ class _PreviewCertificadoParticipanteScreenState
       corContorno: contorno,
       data: data,
       textosConfig: evento.configuracoes.textos,
+      visualConfig: evento.configuracoes.visual,
+      studioConfig: evento.configuracoes.studio,
       exportKey: null,
       showHeader: true,
       showDebugInfo: false,
@@ -647,6 +836,8 @@ class _PreviewCertificadoParticipanteScreenState
                 corContorno: contorno,
                 data: data,
                 textosConfig: evento.configuracoes.textos,
+                visualConfig: evento.configuracoes.visual,
+                studioConfig: evento.configuracoes.studio,
                 exportKey: _exportKey,
                 showHeader: false,
                 showDebugInfo: false,
@@ -691,9 +882,9 @@ class _PreviewCertificadoParticipanteScreenState
                   width: 42,
                   height: 42,
                   decoration: BoxDecoration(
-                    color: accent.withOpacity(0.11),
+                    color: accent.withAlpha(28),
                     borderRadius: BorderRadius.circular(t.buttonRadius),
-                    border: Border.all(color: accent.withOpacity(0.14)),
+                    border: Border.all(color: accent.withAlpha(36)),
                   ),
                   child: Icon(icon, color: accent),
                 ),
@@ -809,7 +1000,7 @@ class _PreviewCertificadoParticipanteScreenState
       style: OutlinedButton.styleFrom(
         foregroundColor: accent,
         disabledForegroundColor: t.textMuted,
-        side: BorderSide(color: accent.withOpacity(0.26)),
+        side: BorderSide(color: accent.withAlpha(66)),
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(t.buttonRadius),

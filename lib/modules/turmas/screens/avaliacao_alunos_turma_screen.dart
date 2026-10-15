@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'package:uai_capoeira/core/image_cache/uai_student_photo.dart';
 
 Color _readableOn(Color background) {
   return background.computeLuminance() > 0.48
@@ -11,7 +12,7 @@ Color _readableOn(Color background) {
 }
 
 Color _onCard(BuildContext context) => _readableOn(context.uai.card);
-Color _onCardMuted(BuildContext context) => _onCard(context).withOpacity(0.68);
+Color _onCardMuted(BuildContext context) => _onCard(context).withAlpha(173);
 Color _onPrimary(BuildContext context) => _readableOn(context.uai.primary);
 
 String _mensagemErroAmigavelAvaliacao(Object erro, {String contexto = 'ação'}) {
@@ -53,23 +54,11 @@ class _AvaliacaoAlunosTurmaScreenState
         : const Color(0xFFFFFFFF);
   }
 
-  Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance())
-        .abs();
-    if (diff >= 0.26) return color;
 
-    final bgIsDark = background.computeLuminance() < 0.45;
-    final hsl = HSLColor.fromColor(color);
-
-    return hsl
-        .withLightness(bgIsDark ? 0.72 : 0.32)
-        .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
-        .toColor();
-  }
 
   Color _onCard([BuildContext? c]) => _readableOn((c ?? context).uai.card);
   Color _onCardMuted([BuildContext? c]) =>
-      _onCard(c ?? context).withOpacity(0.68);
+      _onCard(c ?? context).withAlpha(173);
   Color _onPrimary([BuildContext? c]) =>
       _readableOn((c ?? context).uai.primary);
 
@@ -316,8 +305,9 @@ class _AvaliacaoAlunosTurmaScreenState
     if (value == null) return 0;
     if (value is int) return value.toDouble();
     if (value is double) return value;
-    if (value is String)
+    if (value is String) {
       return double.tryParse(value.replaceAll(',', '.')) ?? 0;
+    }
     return 0;
   }
 
@@ -593,6 +583,7 @@ class _AvaliacaoAlunosTurmaScreenState
       await _carregarAvaliacoesDoCicloAtual();
     } catch (e) {
       debugPrint('Erro ao trocar ciclo: $e');
+      if (!mounted) return;
       _mostrarSnack(
         _mensagemErroAmigavelAvaliacao(e, contexto: 'troca de ciclo'),
         context.uai.error,
@@ -633,7 +624,7 @@ class _AvaliacaoAlunosTurmaScreenState
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   DropdownButtonFormField<int>(
-                    value: mesSelecionado,
+                    initialValue: mesSelecionado,
                     decoration: const InputDecoration(
                       labelText: 'Mês',
                       border: OutlineInputBorder(),
@@ -653,7 +644,7 @@ class _AvaliacaoAlunosTurmaScreenState
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<int>(
-                    value: anoSelecionado,
+                    initialValue: anoSelecionado,
                     decoration: const InputDecoration(
                       labelText: 'Ano',
                       border: OutlineInputBorder(),
@@ -735,8 +726,10 @@ class _AvaliacaoAlunosTurmaScreenState
           'cache_versao': 1,
         });
 
+        if (!mounted) return;
         _mostrarSnack('Ciclo criado com sucesso!', context.uai.success);
       } else {
+        if (!mounted) return;
         _mostrarSnack('Ciclo já existia, abrindo avaliação.', context.uai.info);
       }
 
@@ -808,7 +801,7 @@ class _AvaliacaoAlunosTurmaScreenState
                 Row(
                   children: [
                     CircleAvatar(
-                      backgroundColor: context.uai.associacao.withOpacity(0.10),
+                      backgroundColor: context.uai.associacao.withAlpha(26),
                       child: Icon(
                         Icons.calendar_month_rounded,
                         color: context.uai.associacao,
@@ -840,7 +833,7 @@ class _AvaliacaoAlunosTurmaScreenState
                           borderRadius: BorderRadius.circular(14),
                         ),
                         tileColor: ativo
-                            ? context.uai.associacao.withOpacity(0.10)
+                            ? context.uai.associacao.withAlpha(26)
                             : null,
                         leading: Icon(
                           ativo
@@ -934,6 +927,7 @@ class _AvaliacaoAlunosTurmaScreenState
       );
     } catch (e) {
       debugPrint('Erro ao alterar status do ciclo: $e');
+      if (!mounted) return;
       _mostrarSnack(
         _mensagemErroAmigavelAvaliacao(e, contexto: 'alteração do ciclo'),
         context.uai.error,
@@ -1239,7 +1233,7 @@ class _AvaliacaoAlunosTurmaScreenState
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: context.uai.associacao.withOpacity(0.22),
+            color: context.uai.associacao.withAlpha(56),
             blurRadius: 14,
             offset: const Offset(0, 7),
           ),
@@ -1252,7 +1246,7 @@ class _AvaliacaoAlunosTurmaScreenState
               Container(
                 padding: const EdgeInsets.all(11),
                 decoration: BoxDecoration(
-                  color: context.uai.card.withOpacity(0.15),
+                  color: context.uai.card.withAlpha(38),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Icon(
@@ -1278,7 +1272,7 @@ class _AvaliacaoAlunosTurmaScreenState
                     Text(
                       widget.turmaNome,
                       style: TextStyle(
-                        color: context.uai.card.withOpacity(0.82),
+                        color: context.uai.card.withAlpha(209),
                         fontSize: 12,
                       ),
                       overflow: TextOverflow.ellipsis,
@@ -1304,9 +1298,9 @@ class _AvaliacaoAlunosTurmaScreenState
             child: Container(
               padding: const EdgeInsets.all(11),
               decoration: BoxDecoration(
-                color: context.uai.card.withOpacity(0.13),
+                color: context.uai.card.withAlpha(33),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: context.uai.card.withOpacity(0.13)),
+                border: Border.all(color: context.uai.card.withAlpha(33)),
               ),
               child: Row(
                 children: [
@@ -1335,8 +1329,8 @@ class _AvaliacaoAlunosTurmaScreenState
                     ),
                     decoration: BoxDecoration(
                       color: status == 'aberto'
-                          ? context.uai.success.withOpacity(0.20)
-                          : context.uai.warning.withOpacity(0.24),
+                          ? context.uai.success.withAlpha(51)
+                          : context.uai.warning.withAlpha(61),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
@@ -1411,7 +1405,7 @@ class _AvaliacaoAlunosTurmaScreenState
                                 context.uai.primary,
                           ),
                       side: BorderSide(
-                        color: context.uai.card.withOpacity(0.45),
+                        color: context.uai.card.withAlpha(115),
                       ),
                     ),
                   ),
@@ -1430,7 +1424,7 @@ class _AvaliacaoAlunosTurmaScreenState
                                 context.uai.primary,
                           ),
                       side: BorderSide(
-                        color: context.uai.card.withOpacity(0.45),
+                        color: context.uai.card.withAlpha(115),
                       ),
                     ),
                   ),
@@ -1455,9 +1449,9 @@ class _AvaliacaoAlunosTurmaScreenState
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
-                color: context.uai.card.withOpacity(0.13),
+                color: context.uai.card.withAlpha(33),
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: context.uai.card.withOpacity(0.12)),
+                border: Border.all(color: context.uai.card.withAlpha(31)),
               ),
               child: Row(
                 children: [
@@ -1471,7 +1465,7 @@ class _AvaliacaoAlunosTurmaScreenState
                     child: Text(
                       'Modo professor: permitido apenas avaliar o ciclo aberto',
                       style: TextStyle(
-                        color: context.uai.card.withOpacity(0.88),
+                        color: context.uai.card.withAlpha(224),
                         fontSize: 11.5,
                         fontWeight: FontWeight.w700,
                       ),
@@ -1489,9 +1483,9 @@ class _AvaliacaoAlunosTurmaScreenState
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
       decoration: BoxDecoration(
-        color: context.uai.card.withOpacity(0.13),
+        color: context.uai.card.withAlpha(33),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: context.uai.card.withOpacity(0.12)),
+        border: Border.all(color: context.uai.card.withAlpha(31)),
       ),
       child: Column(
         children: [
@@ -1510,7 +1504,7 @@ class _AvaliacaoAlunosTurmaScreenState
           Text(
             label,
             style: TextStyle(
-              color: context.uai.card.withOpacity(0.78),
+              color: context.uai.card.withAlpha(199),
               fontSize: 9,
             ),
             maxLines: 1,
@@ -1573,13 +1567,13 @@ class _AvaliacaoAlunosTurmaScreenState
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: temAvaliacao
-              ? _corNota(nota).withOpacity(0.26)
+              ? _corNota(nota).withAlpha(66)
               : context.uai.border,
           width: temAvaliacao ? 1.4 : 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.055),
+            color: Colors.black.withAlpha(14),
             blurRadius: 8,
             offset: const Offset(0, 3),
           ),
@@ -1592,7 +1586,7 @@ class _AvaliacaoAlunosTurmaScreenState
           padding: const EdgeInsets.all(11),
           child: Row(
             children: [
-              _avatar(foto, nome),
+              _avatar(alunoId, foto, nome),
               SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -1631,7 +1625,7 @@ class _AvaliacaoAlunosTurmaScreenState
                           child: Text(
                             _formatarData(avaliacao?['atualizado_em']),
                             style: TextStyle(
-                              color: _onCardMuted(context).withOpacity(0.78),
+                              color: _onCardMuted(context).withAlpha(199),
                               fontSize: 10.5,
                             ),
                             overflow: TextOverflow.ellipsis,
@@ -1650,7 +1644,7 @@ class _AvaliacaoAlunosTurmaScreenState
                     padding: const EdgeInsets.symmetric(vertical: 7),
                     decoration: BoxDecoration(
                       color: temAvaliacao
-                          ? _corNota(nota).withOpacity(0.10)
+                          ? _corNota(nota).withAlpha(26)
                           : context.uai.cardAlt,
                       borderRadius: BorderRadius.circular(14),
                     ),
@@ -1698,22 +1692,19 @@ class _AvaliacaoAlunosTurmaScreenState
     );
   }
 
-  Widget _avatar(String foto, String nome) {
+  Widget _avatar(String alunoId, String foto, String nome) {
     final letra = nome.trim().isNotEmpty ? nome.trim()[0].toUpperCase() : '?';
 
     if (foto.startsWith('http')) {
       return ClipOval(
-        child: Image.network(
-          foto,
+        child: UaiStudentPhoto(
+          studentId: alunoId,
+          imageUrl: foto,
+          profile: UaiStudentPhotoProfile.compact,
           width: 54,
           height: 54,
           fit: BoxFit.cover,
-          cacheWidth: 140,
-          errorBuilder: (_, __, ___) => _avatarFallback(letra),
-          loadingBuilder: (context, child, progress) {
-            if (progress == null) return child;
-            return _avatarFallback(letra);
-          },
+          fallback: _avatarFallback(letra),
         ),
       );
     }
@@ -1724,7 +1715,7 @@ class _AvaliacaoAlunosTurmaScreenState
   Widget _avatarFallback(String letra) {
     return CircleAvatar(
       radius: 27,
-      backgroundColor: context.uai.associacao.withOpacity(0.10),
+      backgroundColor: context.uai.associacao.withAlpha(26),
       child: Text(
         letra,
         style: TextStyle(
@@ -1740,9 +1731,9 @@ class _AvaliacaoAlunosTurmaScreenState
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: cor.withOpacity(0.10),
+        color: cor.withAlpha(26),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: cor.withOpacity(0.18)),
+        border: Border.all(color: cor.withAlpha(46)),
       ),
       child: Text(
         texto,
@@ -1880,7 +1871,7 @@ class _AvaliacaoAlunosTurmaScreenState
                 if (_isSaving)
                   LinearProgressIndicator(
                     color: context.uai.associacao,
-                    backgroundColor: context.uai.associacao.withOpacity(0.10),
+                    backgroundColor: context.uai.associacao.withAlpha(26),
                   ),
                 Expanded(
                   child: RefreshIndicator(
@@ -1952,8 +1943,9 @@ class _AvaliacaoAlunoSheetState extends State<_AvaliacaoAlunoSheet> {
         final value = notasAtuais[criterio.chave];
         if (value is int) nota = value.toDouble();
         if (value is double) nota = value;
-        if (value is String)
+        if (value is String) {
           nota = double.tryParse(value.replaceAll(',', '.')) ?? 7;
+        }
       }
       _notas[criterio.chave] = nota.clamp(0, 10);
     }
@@ -2062,7 +2054,7 @@ class _AvaliacaoAlunoSheetState extends State<_AvaliacaoAlunoSheet> {
       decoration: BoxDecoration(
         color: context.uai.card,
         borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: cor.withOpacity(0.18)),
+        border: Border.all(color: cor.withAlpha(46)),
       ),
       child: Column(
         children: [
@@ -2097,7 +2089,7 @@ class _AvaliacaoAlunoSheetState extends State<_AvaliacaoAlunoSheet> {
                 width: 43,
                 padding: const EdgeInsets.symmetric(vertical: 5),
                 decoration: BoxDecoration(
-                  color: cor.withOpacity(0.10),
+                  color: cor.withAlpha(26),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
@@ -2175,7 +2167,7 @@ class _AvaliacaoAlunoSheetState extends State<_AvaliacaoAlunoSheet> {
               child: Row(
                 children: [
                   CircleAvatar(
-                    backgroundColor: context.uai.card.withOpacity(0.16),
+                    backgroundColor: context.uai.card.withAlpha(41),
                     child: Icon(
                       Icons.star_rate_rounded,
                       color: context.uai.card,
@@ -2197,7 +2189,7 @@ class _AvaliacaoAlunoSheetState extends State<_AvaliacaoAlunoSheet> {
                         Text(
                           '$nome • ${widget.cicloNome}',
                           style: TextStyle(
-                            color: context.uai.card.withOpacity(0.82),
+                            color: context.uai.card.withAlpha(209),
                             fontSize: 12,
                           ),
                           maxLines: 1,
@@ -2236,7 +2228,7 @@ class _AvaliacaoAlunoSheetState extends State<_AvaliacaoAlunoSheet> {
                               Text(
                                 graduacao,
                                 style: TextStyle(
-                                  color: context.uai.card.withOpacity(0.82),
+                                  color: context.uai.card.withAlpha(209),
                                   fontSize: 12,
                                 ),
                                 overflow: TextOverflow.ellipsis,
@@ -2259,7 +2251,7 @@ class _AvaliacaoAlunoSheetState extends State<_AvaliacaoAlunoSheet> {
                             vertical: 10,
                           ),
                           decoration: BoxDecoration(
-                            color: context.uai.card.withOpacity(0.16),
+                            color: context.uai.card.withAlpha(41),
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: Column(
@@ -2275,7 +2267,7 @@ class _AvaliacaoAlunoSheetState extends State<_AvaliacaoAlunoSheet> {
                               Text(
                                 'nota final',
                                 style: TextStyle(
-                                  color: context.uai.card.withOpacity(0.78),
+                                  color: context.uai.card.withAlpha(199),
                                   fontSize: 10,
                                 ),
                               ),

@@ -46,9 +46,7 @@ class _ListaCompetidoresScreenState extends State<ListaCompetidoresScreen> {
       if (mounted) {
         setState(() {
           // 👇 CORREÇÃO: garantir que é List<InscricaoCampeonatoModel> e não é nula
-          _competidores = competidores != null
-              ? List<InscricaoCampeonatoModel>.from(competidores)
-              : [];
+          _competidores = List<InscricaoCampeonatoModel>.from(competidores);
           _isLoading = false;
         });
       }

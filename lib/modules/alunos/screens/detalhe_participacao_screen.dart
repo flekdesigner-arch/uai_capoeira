@@ -1,5 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'package:uai_capoeira/core/caca_bug/caca_bug_actions.dart';
+import 'package:uai_capoeira/core/caca_bug/caca_bug_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -38,6 +41,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
   bool _isLoading = true;
 
   final Map<String, Map<String, dynamic>> _cacheCoresPorNome = {};
+  String? _cacaBugUltimoHashCarregamento;
 
   Color _readableOn(Color background) {
     return background.computeLuminance() > 0.48
@@ -60,14 +64,14 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
   }
 
   Color _onCard() => _readableOn(context.uai.card);
-  Color _onCardMuted() => _onCard().withOpacity(0.68);
+  Color _onCardMuted() => _onCard().withAlpha(173);
   Color _onPrimary() => _readableOn(context.uai.primary);
 
   @override
   void initState() {
     super.initState();
     _carregarSvg();
-    _carregarDados();
+    _carregarDados(fonteDados: 'initState');
   }
 
   String? _stringLimpa(dynamic value) {
@@ -177,6 +181,216 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
     }
 
     return finalUrl;
+  }
+
+  String _cacaBugTextoSeguro(dynamic value, {String fallback = ''}) {
+    if (value == null) return fallback;
+    final text = value.toString().trim();
+    if (text.isEmpty || text.toLowerCase() == 'null') return fallback;
+    return text;
+  }
+
+  String _cacaBugErroResumo(Object erro) {
+    var texto = erro.toString();
+    texto = texto
+        .replaceAll(RegExp(r'https?:\/\/\S+'), '[url_redigida]')
+        .replaceAll(RegExp(r'wa\.me\/\S+'), '[whatsapp_redigido]')
+        .replaceAll(RegExp(r'api\.whatsapp\.com\/\S+'), '[whatsapp_redigido]')
+        .replaceAll(RegExp(r'tel:\S+'), '[telefone_redigido]')
+        .replaceAll(RegExp(r'\+?\d[\d\s\-\(\)]{7,}\d'), '[numero_redigido]')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (texto.length <= 180) return texto;
+    return '${texto.substring(0, 180)}...';
+  }
+
+  String _cacaBugEventoId() {
+    return _cacaBugTextoSeguro(_eventoDocId ?? _getEventoId());
+  }
+
+  String _cacaBugEventoNome() {
+    return _cacaBugTextoSeguro(_nomeEvento(), fallback: 'Evento sem nome');
+  }
+
+  String _cacaBugAlunoId() {
+    return _cacaBugTextoSeguro(_getAlunoId());
+  }
+
+  String _cacaBugAlunoNome() {
+    return _cacaBugTextoSeguro(_alunoNome(), fallback: 'Aluno sem nome');
+  }
+
+  Map<String, dynamic> _cacaBugPayloadBase({Map<String, dynamic>? extra}) {
+    final certificado = _certificadoUrl();
+    return {
+      'participacaoId': widget.participacaoId,
+      'eventoId': _cacaBugEventoId(),
+      'eventoNome': _cacaBugEventoNome(),
+      'alunoId': _cacaBugAlunoId(),
+      'alunoNome': _cacaBugAlunoNome(),
+      'tipoEvento': _cacaBugTextoSeguro(_tipoEvento()),
+      'temCertificado': certificado != null && certificado.trim().isNotEmpty,
+      if (certificado != null && certificado.trim().isNotEmpty)
+        'certificadoOrigem': _tipoLinkCertificado(certificado),
+      'origem': 'detalhe_participacao',
+      'modoAcesso': 'gestao',
+      ...?extra,
+    };
+  }
+
+  void _registrarCacaBugCarregouDetalheParticipacao({
+    required String fonteDados,
+    bool force = false,
+  }) {
+    final certificado = _certificadoUrl();
+    final hash = [
+      widget.participacaoId,
+      _cacaBugEventoId(),
+      _cacaBugAlunoId(),
+      fonteDados,
+      certificado != null && certificado.trim().isNotEmpty,
+    ].join('|');
+    if (!force && _cacaBugUltimoHashCarregamento == hash) return;
+    _cacaBugUltimoHashCarregamento = hash;
+
+    unawaited(
+      CacaBugService.instance.registrarEvento(
+        tipo: 'sistema',
+        acao: CacaBugActions.carregouDetalheParticipacaoAluno,
+        descricao:
+            'Usuário carregou o detalhe da participação no evento ${_cacaBugEventoNome()} do aluno ${_cacaBugAlunoNome()}',
+        tela: 'DetalheParticipacaoScreen',
+        arquivo: 'lib/modules/alunos/screens/detalhe_participacao_screen.dart',
+        rota: '/alunos/participacao',
+        status: 'success',
+        dados: _cacaBugPayloadBase(
+          extra: {
+            'fonteDados': fonteDados,
+            'status': 'sucesso',
+          },
+        ),
+        force: force,
+      ),
+    );
+  }
+
+  void _registrarCacaBugErroDetalheParticipacao({
+    required Object erro,
+    required String erroEtapa,
+    required String fonteDados,
+  }) {
+    final erroResumo = _cacaBugErroResumo(erro);
+    unawaited(
+      CacaBugService.instance.registrarErro(
+        acao: CacaBugActions.erroCarregarDetalheParticipacaoAluno,
+        descricao:
+            'Erro ao carregar detalhe da participação no evento ${_cacaBugEventoNome()} do aluno ${_cacaBugAlunoNome()}',
+        tela: 'DetalheParticipacaoScreen',
+        arquivo: 'lib/modules/alunos/screens/detalhe_participacao_screen.dart',
+        rota: '/alunos/participacao',
+        erro: Exception(erroResumo),
+        dados: _cacaBugPayloadBase(
+          extra: {
+            'fonteDados': fonteDados,
+            'erroEtapa': erroEtapa,
+            'erroTipo': erro.runtimeType.toString(),
+            'erroResumo': erroResumo,
+            'status': 'erro',
+          },
+        ),
+      ),
+    );
+  }
+
+  void _registrarCacaBugAtualizouDetalheParticipacao() {
+    unawaited(
+      CacaBugService.instance.registrarEvento(
+        tipo: 'acao_usuario',
+        acao: CacaBugActions.atualizouDetalheParticipacaoAluno,
+        descricao:
+            'Usuário atualizou o detalhe da participação no evento ${_cacaBugEventoNome()}',
+        tela: 'DetalheParticipacaoScreen',
+        arquivo: 'lib/modules/alunos/screens/detalhe_participacao_screen.dart',
+        rota: '/alunos/participacao',
+        status: 'success',
+        dados: _cacaBugPayloadBase(
+          extra: {
+            'origemAtualizacao': 'pull_to_refresh',
+          },
+        ),
+        force: true,
+      ),
+    );
+  }
+
+  void _registrarCacaBugAbriuCertificado({required String origemLink}) {
+    unawaited(
+      CacaBugService.instance.registrarEvento(
+        tipo: 'acao_usuario',
+        acao: CacaBugActions.abriuCertificadoParticipacao,
+        descricao:
+            'Usuário abriu certificado da participação no evento ${_cacaBugEventoNome()} do aluno ${_cacaBugAlunoNome()}',
+        tela: 'DetalheParticipacaoScreen',
+        arquivo: 'lib/modules/alunos/screens/detalhe_participacao_screen.dart',
+        rota: '/alunos/participacao',
+        status: 'success',
+        dados: _cacaBugPayloadBase(
+          extra: {
+            'certificadoOrigem': origemLink,
+          },
+        ),
+        force: true,
+      ),
+    );
+  }
+
+  void _registrarCacaBugErroCertificado({
+    required Object erro,
+    required String acao,
+    required String descricao,
+    required String erroEtapa,
+  }) {
+    final erroResumo = _cacaBugErroResumo(erro);
+    unawaited(
+      CacaBugService.instance.registrarErro(
+        acao: acao,
+        descricao: descricao,
+        tela: 'DetalheParticipacaoScreen',
+        arquivo: 'lib/modules/alunos/screens/detalhe_participacao_screen.dart',
+        rota: '/alunos/participacao',
+        erro: Exception(erroResumo),
+        dados: _cacaBugPayloadBase(
+          extra: {
+            'erroEtapa': erroEtapa,
+            'erroTipo': erro.runtimeType.toString(),
+            'erroResumo': erroResumo,
+          },
+        ),
+      ),
+    );
+  }
+
+  void _registrarCacaBugIniciouCompartilharCertificado({
+    required String origemLink,
+  }) {
+    unawaited(
+      CacaBugService.instance.registrarEvento(
+        tipo: 'acao_usuario',
+        acao: CacaBugActions.iniciouCompartilharCertificadoParticipacao,
+        descricao:
+            'Usuário iniciou compartilhamento do certificado da participação no evento ${_cacaBugEventoNome()}',
+        tela: 'DetalheParticipacaoScreen',
+        arquivo: 'lib/modules/alunos/screens/detalhe_participacao_screen.dart',
+        rota: '/alunos/participacao',
+        status: 'success',
+        dados: _cacaBugPayloadBase(
+          extra: {
+            'certificadoOrigem': origemLink,
+          },
+        ),
+        force: true,
+      ),
+    );
   }
 
   Future<void> _buscarCertificadoServidor() async {
@@ -358,7 +572,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
     }
   }
 
-  Future<void> _carregarDados() async {
+  Future<void> _carregarDados({String fonteDados = 'manual'}) async {
     try {
       final eventoId = _getEventoId();
       final alunoId = _getAlunoId();
@@ -412,8 +626,17 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       }
 
       if (mounted) setState(() => _isLoading = false);
+      _registrarCacaBugCarregouDetalheParticipacao(
+        fonteDados: fonteDados,
+        force: fonteDados == 'refresh',
+      );
     } catch (e) {
       debugPrint('❌ Erro ao carregar detalhes da participação: $e');
+      _registrarCacaBugErroDetalheParticipacao(
+        erro: e,
+        erroEtapa: 'carregar_dados',
+        fonteDados: fonteDados,
+      );
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -606,7 +829,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
 
       void changeColor(String id, Color color) {
         final hex =
-            '#${color.value.toRadixString(16).padLeft(8, '0').substring(2).toLowerCase()}';
+            '#${color.toARGB32().toRadixString(16).padLeft(8, '0').substring(2).toLowerCase()}';
 
         final element = document.rootElement.descendants
             .whereType<xml.XmlElement>()
@@ -643,6 +866,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
     final cleaned = _stringLimpa(url);
     if (cleaned == null) return;
 
+    final origemLink = _tipoLinkCertificado(cleaned);
+    _registrarCacaBugAbriuCertificado(origemLink: origemLink);
+
     try {
       final uri = Uri.parse(_normalizarLinkVisualizacao(cleaned));
 
@@ -661,10 +887,26 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       );
 
       if (!openedDefault) {
+        _registrarCacaBugErroCertificado(
+          erro: Exception('launchUrl retornou false'),
+          acao: CacaBugActions.erroAbrirCertificadoParticipacao,
+          descricao:
+              'Erro ao abrir certificado da participação no evento ${_cacaBugEventoNome()}',
+          erroEtapa: 'launchUrl_false',
+        );
+        if (!mounted) return;
         _showSnack('Não foi possível abrir o link', context.uai.error);
       }
     } catch (e) {
       debugPrint('Erro ao abrir link: $e');
+      _registrarCacaBugErroCertificado(
+        erro: e,
+        acao: CacaBugActions.erroAbrirCertificadoParticipacao,
+        descricao:
+            'Erro ao abrir certificado da participação no evento ${_cacaBugEventoNome()}',
+        erroEtapa: 'abrir_link',
+      );
+      if (!mounted) return;
       _showSnack('Não foi possível abrir o link', context.uai.error);
     }
   }
@@ -677,6 +919,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
     final cleaned = _stringLimpa(url);
     if (cleaned == null) return;
 
+    final origemLink = _tipoLinkCertificado(cleaned);
+    _registrarCacaBugIniciouCompartilharCertificado(origemLink: origemLink);
+
     try {
       await Share.share(
         'Certificado de ${_alunoNome()} - ${_nomeEvento()}\n\n$cleaned',
@@ -684,6 +929,14 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       );
     } catch (e) {
       debugPrint('Erro ao compartilhar certificado: $e');
+      _registrarCacaBugErroCertificado(
+        erro: e,
+        acao: CacaBugActions.erroCompartilharCertificadoParticipacao,
+        descricao:
+            'Erro ao compartilhar certificado da participação no evento ${_cacaBugEventoNome()}',
+        erroEtapa: 'compartilhar_certificado',
+      );
+      if (!mounted) return;
       _showSnack(
         'Não foi possível compartilhar o certificado',
         context.uai.error,
@@ -798,8 +1051,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
           : RefreshIndicator(
               color: context.uai.primary,
               onRefresh: () async {
+                _registrarCacaBugAtualizouDetalheParticipacao();
                 setState(() => _isLoading = true);
-                await _carregarDados();
+                await _carregarDados(fonteDados: 'refresh');
               },
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
@@ -884,9 +1138,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
-                        Colors.black.withOpacity(0.62),
+                        Colors.black.withAlpha(158),
                         Colors.transparent,
-                        Colors.black.withOpacity(0.78),
+                        Colors.black.withAlpha(199),
                       ],
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
@@ -932,7 +1186,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
                         children: [
                           Icon(
                             Icons.location_on_rounded,
-                            color: onGradient.withOpacity(0.84),
+                            color: onGradient.withAlpha(214),
                             size: 17,
                           ),
                           const SizedBox(width: 6),
@@ -942,7 +1196,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                color: onGradient.withOpacity(0.84),
+                                color: onGradient.withAlpha(214),
                                 fontSize: 12.5,
                                 fontWeight: FontWeight.w700,
                               ),
@@ -955,10 +1209,10 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
                               vertical: 6,
                             ),
                             decoration: BoxDecoration(
-                              color: context.uai.primary.withOpacity(0.86),
+                              color: context.uai.primary.withAlpha(219),
                               borderRadius: BorderRadius.circular(99),
                               border: Border.all(
-                                color: onGradient.withOpacity(0.20),
+                                color: onGradient.withAlpha(51),
                               ),
                             ),
                             child: Text(
@@ -1037,7 +1291,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            Color.alphaBlend(accent.withOpacity(0.12), context.uai.cardAlt),
+            Color.alphaBlend(accent.withAlpha(31), context.uai.cardAlt),
             context.uai.card,
           ],
           begin: Alignment.topLeft,
@@ -1082,19 +1336,19 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.34),
+        color: Colors.black.withAlpha(87),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: Colors.white.withOpacity(0.18)),
+        border: Border.all(color: Colors.white.withAlpha(46)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: Colors.white.withOpacity(0.94), size: 14),
+          Icon(icon, color: Colors.white.withAlpha(240), size: 14),
           const SizedBox(width: 5),
           Text(
             label,
             style: TextStyle(
-              color: Colors.white.withOpacity(0.94),
+              color: Colors.white.withAlpha(240),
               fontSize: 10,
               fontWeight: FontWeight.w900,
             ),
@@ -1279,9 +1533,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
     return Container(
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withOpacity(0.08), context.uai.card),
+        color: Color.alphaBlend(accent.withAlpha(20), context.uai.card),
         borderRadius: BorderRadius.circular(context.uai.cardRadius),
-        border: Border.all(color: accent.withOpacity(0.22)),
+        border: Border.all(color: accent.withAlpha(56)),
         boxShadow: context.uai.softShadow,
       ),
       child: Column(
@@ -1339,11 +1593,11 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               color: Color.alphaBlend(
-                accent.withOpacity(0.09),
+                accent.withAlpha(23),
                 context.uai.cardAlt,
               ),
               borderRadius: BorderRadius.circular(context.uai.buttonRadius),
-              border: Border.all(color: accent.withOpacity(0.18)),
+              border: Border.all(color: accent.withAlpha(46)),
             ),
             child: Row(
               children: [
@@ -1351,9 +1605,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
                   width: 62,
                   height: 78,
                   decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.10),
+                    color: Colors.red.withAlpha(26),
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: Colors.red.withOpacity(0.18)),
+                    border: Border.all(color: Colors.red.withAlpha(46)),
                   ),
                   child: Icon(
                     origem == 'Google Drive'
@@ -1453,7 +1707,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
                 label: const Text('COMPARTILHAR'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: accent,
-                  side: BorderSide(color: accent.withOpacity(0.48)),
+                  side: BorderSide(color: accent.withAlpha(122)),
                   minimumSize: const Size(double.infinity, 46),
                   textStyle: const TextStyle(fontWeight: FontWeight.w900),
                   shape: RoundedRectangleBorder(
@@ -1515,7 +1769,7 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       decoration: BoxDecoration(
         color: context.uai.card,
         borderRadius: BorderRadius.circular(context.uai.cardRadius),
-        border: Border.all(color: accent.withOpacity(0.18)),
+        border: Border.all(color: accent.withAlpha(46)),
         boxShadow: context.uai.softShadow,
       ),
       child: Column(
@@ -1565,9 +1819,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
       width: 42,
       height: 42,
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.12),
+        color: accent.withAlpha(31),
         borderRadius: BorderRadius.circular(context.uai.buttonRadius),
-        border: Border.all(color: accent.withOpacity(0.22)),
+        border: Border.all(color: accent.withAlpha(56)),
       ),
       child: Icon(icon, color: accent, size: 22),
     );
@@ -1590,9 +1844,9 @@ class _DetalheParticipacaoScreenState extends State<DetalheParticipacaoScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
       decoration: BoxDecoration(
-        color: accent.withOpacity(0.10),
+        color: accent.withAlpha(26),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: accent.withOpacity(0.18)),
+        border: Border.all(color: accent.withAlpha(46)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

@@ -580,6 +580,8 @@ class _MigracaoTriagemScreenState extends State<MigracaoTriagemScreen> {
         return;
       }
 
+      if (!mounted) return;
+
       final confirm = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
@@ -865,6 +867,8 @@ class _MigracaoTriagemScreenState extends State<MigracaoTriagemScreen> {
         setState(() => _isMigrandoNovos = false);
         return;
       }
+
+      if (!mounted) return;
 
       final confirm = await showDialog<bool>(
         context: context,
@@ -1410,6 +1414,8 @@ class _MigracaoTriagemScreenState extends State<MigracaoTriagemScreen> {
       final graduacoes = await _migracaoService.buscarGraduacoes();
       final turmasCache = <String, Map<String, Map<String, dynamic>>>{};
 
+      if (!mounted) return;
+
       final confirm = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
@@ -1836,7 +1842,7 @@ class _MigracaoTriagemScreenState extends State<MigracaoTriagemScreen> {
             borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
-                color: Colors.grey.withOpacity(0.1),
+                color: Colors.grey.withAlpha(26),
                 blurRadius: 4,
                 offset: const Offset(0, 2),
               ),
@@ -1885,7 +1891,7 @@ class _MigracaoTriagemScreenState extends State<MigracaoTriagemScreen> {
         backgroundColor: Colors.red[800],
         foregroundColor: Colors.white,
         elevation: 3,
-        shadowColor: Colors.red[900]!.withOpacity(0.3),
+        shadowColor: Colors.red[900]!.withAlpha(77),
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(bottom: Radius.circular(16)),
         ),
@@ -2115,9 +2121,9 @@ class _MigracaoTriagemScreenState extends State<MigracaoTriagemScreen> {
               future: _alunosData,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting)
-                  return _buildShimmerLoading();
+                  { return _buildShimmerLoading(); }
                 if (snapshot.hasError)
-                  return _buildErrorWidget(snapshot.error.toString());
+                  { return _buildErrorWidget(snapshot.error.toString()); }
                 if (!snapshot.hasData || snapshot.data!.isEmpty) {
                   return Center(
                     child: Column(
@@ -2204,7 +2210,7 @@ class _MigracaoTriagemScreenState extends State<MigracaoTriagemScreen> {
                           width: 50,
                           height: 50,
                           decoration: BoxDecoration(
-                            color: _getStatusColor(status).withOpacity(0.1),
+                            color: _getStatusColor(status).withAlpha(26),
                             borderRadius: BorderRadius.circular(25),
                           ),
                           child: Icon(
@@ -2274,7 +2280,7 @@ class _MigracaoTriagemScreenState extends State<MigracaoTriagemScreen> {
                             vertical: 6,
                           ),
                           decoration: BoxDecoration(
-                            color: _getStatusColor(status).withOpacity(0.1),
+                            color: _getStatusColor(status).withAlpha(26),
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: Text(

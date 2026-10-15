@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/uniformes/dialogs/selecionar_item_dialog.dart';
+import 'package:uai_capoeira/modules/uniformes/services/uniformes_service.dart';
 
 class EditarVendaScreen extends StatefulWidget {
   final String vendaId;
@@ -20,6 +20,7 @@ class EditarVendaScreen extends StatefulWidget {
 }
 
 class _EditarVendaScreenState extends State<EditarVendaScreen> {
+  final UniformesService _uniformesService = UniformesService();
   final NumberFormat _realFormat = NumberFormat.currency(
     locale: 'pt_BR',
     symbol: 'R\$',
@@ -29,6 +30,8 @@ class _EditarVendaScreenState extends State<EditarVendaScreen> {
   late String _statusPagamento;
   late double _valorPago;
   late double _valorTotal;
+  late String _statusEntrega;
+  late String _statusEntregaOriginal;
   bool _isLoading = false;
 
   List<Map<String, dynamic>> _itens = [];
@@ -41,19 +44,7 @@ class _EditarVendaScreenState extends State<EditarVendaScreen> {
         : const Color(0xFFFFFFFF);
   }
 
-  Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance())
-        .abs();
-    if (diff >= 0.26) return color;
 
-    final bgIsDark = background.computeLuminance() < 0.45;
-    final hsl = HSLColor.fromColor(color);
-
-    return hsl
-        .withLightness(bgIsDark ? 0.72 : 0.32)
-        .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
-        .toColor();
-  }
 
   @override
   void initState() {
@@ -64,6 +55,9 @@ class _EditarVendaScreenState extends State<EditarVendaScreen> {
     _statusPagamento = widget.vendaData['status_pagamento'] ?? 'pendente';
     _valorPago = (widget.vendaData['valor_pago'] ?? 0).toDouble();
     _valorTotal = (widget.vendaData['valor_total'] ?? 0).toDouble();
+    _statusEntregaOriginal =
+        (widget.vendaData['status_entrega'] ?? 'aguardando').toString();
+    _statusEntrega = _statusEntregaOriginal;
 
     _itens = List<Map<String, dynamic>>.from(widget.vendaData['itens'] ?? []);
 
@@ -178,20 +172,20 @@ class _EditarVendaScreenState extends State<EditarVendaScreen> {
     setState(() => _isLoading = true);
 
     try {
-      Map<String, dynamic> dadosAtualizados = {
-        'itens': _itens,
-        'observacoes': _observacoesController.text,
-        'status_pagamento': _statusPagamento,
-        'valor_total': _valorTotal,
-        'valor_pago': _statusPagamento == 'pago' ? _valorTotal : _valorPago,
-        'ultima_edicao': FieldValue.serverTimestamp(),
-        'editado_por': FirebaseAuth.instance.currentUser?.uid,
-      };
+      await _uniformesService.atualizarVenda(
+        vendaId: widget.vendaId,
+        itens: _itens,
+        observacoes: _observacoesController.text,
+      );
 
-      await FirebaseFirestore.instance
-          .collection('vendas_uniformes')
-          .doc(widget.vendaId)
-          .update(dadosAtualizados);
+      if (_statusEntrega != _statusEntregaOriginal &&
+          (_statusEntrega == 'aguardando' || _statusEntrega == 'entregue')) {
+        await _uniformesService.atualizarStatusEntregaVenda(
+          vendaId: widget.vendaId,
+          statusEntrega: _statusEntrega,
+        );
+        _statusEntregaOriginal = _statusEntrega;
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -210,7 +204,7 @@ class _EditarVendaScreenState extends State<EditarVendaScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '❌ Erro ao atualizar: $e',
+              'Não foi possível atualizar a venda. Se já houver pagamento, o total não pode ficar abaixo do valor recebido.',
               style: TextStyle(color: _readableOn(context.uai.error)),
             ),
             backgroundColor: context.uai.error,
@@ -455,7 +449,7 @@ class _EditarVendaScreenState extends State<EditarVendaScreen> {
                                       child: Container(
                                         padding: const EdgeInsets.all(8),
                                         decoration: BoxDecoration(
-                                          color: success.withOpacity(0.1),
+                                          color: success.withAlpha(26),
                                           borderRadius: BorderRadius.circular(
                                             8,
                                           ),
@@ -594,7 +588,7 @@ class _EditarVendaScreenState extends State<EditarVendaScreen> {
                               states,
                             ) {
                               if (states.contains(WidgetState.selected)) {
-                                return primary.withOpacity(0.1);
+                                return primary.withAlpha(26);
                               }
                               return cardAlt;
                             }),
@@ -648,6 +642,65 @@ class _EditarVendaScreenState extends State<EditarVendaScreen> {
                             },
                           ),
                         ],
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: cardBg,
+                      borderRadius: BorderRadius.circular(context.uai.cardRadius),
+                      border: Border.all(color: border),
+                      boxShadow: context.uai.softShadow,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.local_shipping_rounded, color: success),
+                            const SizedBox(width: 8),
+                            Text(
+                              'STATUS DA ENTREGA',
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textPrimary),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        SegmentedButton<String>(
+                          segments: [
+                            const ButtonSegment(
+                              value: 'aguardando',
+                              icon: Icon(Icons.schedule_rounded),
+                              label: Text('Aguardando'),
+                            ),
+                            if (_statusEntrega == 'parcial')
+                              const ButtonSegment(
+                                value: 'parcial',
+                                enabled: false,
+                                icon: Icon(Icons.inventory_2_outlined),
+                                label: Text('Parcial'),
+                              ),
+                            const ButtonSegment(
+                              value: 'entregue',
+                              icon: Icon(Icons.check_circle_rounded),
+                              label: Text('Entregue'),
+                            ),
+                          ],
+                          selected: {_statusEntrega},
+                          onSelectionChanged: _isLoading
+                              ? null
+                              : (selected) => setState(() => _statusEntrega = selected.first),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'A entrega pode ser atualizada mesmo depois da venda finalizada.',
+                          style: TextStyle(fontSize: 12, color: textSecondary),
+                        ),
                       ],
                     ),
                   ),

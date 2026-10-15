@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
 import 'package:uai_capoeira/core/permissions/permissao_service.dart';
+import 'package:uai_capoeira/modules/associacao/services/associacao_financeiro_service.dart';
 
 class GastosEventoScreen extends StatefulWidget {
   final String eventoId;
@@ -41,7 +42,7 @@ class _GastosEventoScreenState extends State<GastosEventoScreen> {
   }
 
   Color _onCard() => _readableOn(context.uai.card);
-  Color _onCardMuted() => _onCard().withOpacity(0.68);
+  Color _onCardMuted() => _onCard().withAlpha(173);
   Color _appBarBg() =>
       Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
   Color _appBarFg() =>
@@ -84,6 +85,7 @@ class _GastosEventoScreenState extends State<GastosEventoScreen> {
   final TextEditingController _categoriaController = TextEditingController();
 
   final PermissaoService _permissaoService = PermissaoService();
+  final AssociacaoFinanceiroService _financeiroAssociacao = AssociacaoFinanceiroService();
 
   bool _podeGerenciarGastos = false;
   bool _carregandoPermissoes = true;
@@ -147,6 +149,7 @@ class _GastosEventoScreenState extends State<GastosEventoScreen> {
       return;
     }
 
+    if (!mounted) return;
     final descricao = _descricaoController.text.trim();
     final categoria = _categoriaController.text.trim();
     final valor = _parseValor(_valorController.text);
@@ -165,7 +168,7 @@ class _GastosEventoScreenState extends State<GastosEventoScreen> {
     setState(() => _salvando = true);
 
     try {
-      await FirebaseFirestore.instance.collection('gastos_eventos').add({
+      final gastoRef = await FirebaseFirestore.instance.collection('gastos_eventos').add({
         'evento_id': widget.eventoId,
         'evento_nome': widget.eventoNome,
         'descricao': descricao,
@@ -174,6 +177,22 @@ class _GastosEventoScreenState extends State<GastosEventoScreen> {
         'data': FieldValue.serverTimestamp(),
         'criado_em': FieldValue.serverTimestamp(),
       });
+
+      try {
+        await _financeiroAssociacao.registrarMovimentacaoAutomatica(
+          tipo: 'saida',
+          valor: valor,
+          descricao: descricao,
+          categoria: 'Eventos',
+          subcategoria: categoria.isEmpty ? 'Gasto do evento' : categoria,
+          origemModulo: 'eventos_gastos',
+          origemId: '${widget.eventoId}::${gastoRef.id}',
+          origemDescricao: widget.eventoNome,
+          eventoId: widget.eventoId,
+        );
+      } catch (e) {
+        debugPrint('⚠️ Gasto salvo, mas falhou sincronização com Associação: $e');
+      }
 
       _descricaoController.clear();
       _valorController.clear();
@@ -210,6 +229,7 @@ class _GastosEventoScreenState extends State<GastosEventoScreen> {
       return;
     }
 
+    if (!mounted) return;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -244,6 +264,16 @@ class _GastosEventoScreenState extends State<GastosEventoScreen> {
           .collection('gastos_eventos')
           .doc(gastoId)
           .delete();
+
+      try {
+        await _financeiroAssociacao.estornarPorOrigem(
+          origemModulo: 'eventos_gastos',
+          origemId: '${widget.eventoId}::$gastoId',
+          motivo: 'Gasto removido no módulo de Eventos.',
+        );
+      } catch (e) {
+        debugPrint('⚠️ Falhou estorno automático do gasto na Associação: $e');
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -430,9 +460,9 @@ class _GastosEventoScreenState extends State<GastosEventoScreen> {
       margin: EdgeInsets.fromLTRB(14, 14, 14, 0),
       padding: EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withAlpha(20),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: color.withOpacity(0.14)),
+        border: Border.all(color: color.withAlpha(36)),
       ),
       child: Row(
         children: [
@@ -474,7 +504,7 @@ class _GastosEventoScreenState extends State<GastosEventoScreen> {
         border: Border.all(color: context.uai.cardAlt),
         boxShadow: [
           BoxShadow(
-            color: context.uai.textPrimary.withOpacity(0.025),
+            color: context.uai.textPrimary.withAlpha(6),
             blurRadius: 8,
             offset: const Offset(0, 3),
           ),
@@ -589,7 +619,7 @@ class _GastosEventoScreenState extends State<GastosEventoScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: context.uai.success,
                 foregroundColor: _appBarFg(),
-                disabledBackgroundColor: context.uai.success.withOpacity(0.24),
+                disabledBackgroundColor: context.uai.success.withAlpha(61),
                 textStyle: const TextStyle(fontWeight: FontWeight.w900),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(15),
@@ -615,7 +645,7 @@ class _GastosEventoScreenState extends State<GastosEventoScreen> {
         borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: context.uai.success.withOpacity(0.15),
+            color: context.uai.success.withAlpha(38),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -627,7 +657,7 @@ class _GastosEventoScreenState extends State<GastosEventoScreen> {
             width: 48,
             height: 48,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.16),
+              color: Colors.white.withAlpha(41),
               borderRadius: BorderRadius.circular(17),
             ),
             child: Icon(Icons.payments_rounded, color: Colors.white),
@@ -637,7 +667,7 @@ class _GastosEventoScreenState extends State<GastosEventoScreen> {
             child: Text(
               'Total de gastos\n$quantidade lançamento(s)',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.88),
+                color: Colors.white.withAlpha(224),
                 height: 1.25,
                 fontWeight: FontWeight.w700,
               ),
@@ -675,7 +705,7 @@ class _GastosEventoScreenState extends State<GastosEventoScreen> {
           width: 44,
           height: 44,
           decoration: BoxDecoration(
-            color: context.uai.success.withOpacity(0.08),
+            color: context.uai.success.withAlpha(20),
             borderRadius: BorderRadius.circular(15),
           ),
           child: Icon(Icons.receipt_rounded, color: context.uai.success),

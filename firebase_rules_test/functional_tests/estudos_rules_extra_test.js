@@ -834,17 +834,56 @@ async function main() {
   await assertSucceeds(getDocs(query(collection(alunoDb, "versoes_app"), where("publicada", "==", true), orderBy("publicadoEm", "desc"), limit(50))));
   await assertFails(getDoc(doc(anonDb, "versoes_app/v1_0_3")));
 
+  console.log("Teste extra 79: admin gerencia predefinicoes de permissoes...");
+  await assertSucceeds(setDoc(doc(adminDb, "permissoes_predefinidas/preset_admin"), {
+    nome: "Professor",
+    descricao: "Permissoes para professor",
+    ativo: true,
+    ordem: 1,
+    permissoes: { pode_visualizar_alunos: true, pode_fazer_chamada: true },
+    criado_em: new Date("2026-07-30T10:00:00.000Z"),
+    atualizado_em: new Date("2026-07-30T10:00:00.000Z"),
+    criado_por: "admin_uid",
+    atualizado_por: "admin_uid",
+  }));
+  await assertSucceeds(getDoc(doc(adminDb, "permissoes_predefinidas/preset_admin")));
+  await assertSucceeds(getDocs(query(collection(adminDb, "permissoes_predefinidas"), orderBy("ordem"), orderBy("nome"))));
+  await assertSucceeds(updateDoc(doc(adminDb, "permissoes_predefinidas/preset_admin"), {
+    ativo: false,
+    atualizado_por: "admin_uid",
+  }));
+
+  console.log("Teste extra 80: usuario comum nao le nem gerencia predefinicoes...");
+  await assertFails(getDoc(doc(alunoDb, "permissoes_predefinidas/preset_admin")));
+  await assertFails(getDocs(collection(alunoDb, "permissoes_predefinidas")));
+  await assertFails(setDoc(doc(alunoDb, "permissoes_predefinidas/preset_aluno"), {
+    nome: "Tentativa",
+    ativo: true,
+    permissoes: { pode_gerenciar_usuarios: true },
+  }));
+  await assertFails(updateDoc(doc(alunoDb, "permissoes_predefinidas/preset_admin"), {
+    ativo: true,
+  }));
+  await assertFails(deleteDoc(doc(alunoDb, "permissoes_predefinidas/preset_admin")));
+
+  console.log("Teste extra 81: anonimo nao le predefinicoes...");
+  await assertFails(getDoc(doc(anonDb, "permissoes_predefinidas/preset_admin")));
+  await assertFails(getDocs(collection(anonDb, "permissoes_predefinidas")));
+
+  console.log("Teste extra 82: admin exclui predefinicao...");
+  await assertSucceeds(deleteDoc(doc(adminDb, "permissoes_predefinidas/preset_admin")));
+
   await testEnv.cleanup();
 
   console.log("");
-  console.log("TODOS OS TESTES EXTRAS DAS RULES PASSARAM ✅");
+  console.log("TODOS OS TESTES EXTRAS DAS RULES PASSARAM âœ…");
   console.log("Nenhum deploy foi feito.");
   console.log("Perguntas continuam sem resposta correta no documento publico.");
 }
 
 main().catch((error) => {
   console.error("");
-  console.error("TESTE EXTRA FALHOU ❌");
+  console.error("TESTE EXTRA FALHOU âŒ");
   console.error(error);
   process.exit(1);
 });

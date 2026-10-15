@@ -56,6 +56,11 @@ class CertificadoEventoToolbar extends StatelessWidget {
   final int selecionados;
   final bool todosSelecionados;
   final bool carregando;
+  final bool qrGlobalAtivo;
+  final bool qrGlobalCarregado;
+  final bool qrTemplateAtivo;
+  final bool modoV2Ativo;
+  final bool pdfIndividual;
   final VoidCallback? onRecarregar;
   final VoidCallback? onSelecionarTodos;
   final VoidCallback? onLimparSelecao;
@@ -66,6 +71,7 @@ class CertificadoEventoToolbar extends StatelessWidget {
 
   const CertificadoEventoToolbar({
     super.key,
+    this.pdfIndividual = false,
     required this.filtro,
     required this.onFiltroChanged,
     required this.busca,
@@ -74,6 +80,10 @@ class CertificadoEventoToolbar extends StatelessWidget {
     required this.selecionados,
     required this.todosSelecionados,
     this.carregando = false,
+    this.qrGlobalAtivo = false,
+    this.qrGlobalCarregado = false,
+    this.qrTemplateAtivo = false,
+    this.modoV2Ativo = false,
     this.onRecarregar,
     this.onSelecionarTodos,
     this.onLimparSelecao,
@@ -124,6 +134,8 @@ class CertificadoEventoToolbar extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _buildHeader(context),
+            const SizedBox(height: 10),
+            _buildModoEmissao(context),
             const SizedBox(height: 12),
             _buildSearch(context),
             const SizedBox(height: 12),
@@ -150,9 +162,9 @@ class CertificadoEventoToolbar extends StatelessWidget {
               width: 42,
               height: 42,
               decoration: BoxDecoration(
-                color: primary.withOpacity(0.11),
+                color: primary.withAlpha(28),
                 borderRadius: BorderRadius.circular(t.buttonRadius),
-                border: Border.all(color: primary.withOpacity(0.14)),
+                border: Border.all(color: primary.withAlpha(36)),
               ),
               child: carregando
                   ? Padding(
@@ -203,7 +215,7 @@ class CertificadoEventoToolbar extends StatelessWidget {
           style: OutlinedButton.styleFrom(
             foregroundColor: primary,
             disabledForegroundColor: t.textMuted,
-            side: BorderSide(color: primary.withOpacity(0.22)),
+            side: BorderSide(color: primary.withAlpha(56)),
             visualDensity: VisualDensity.compact,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(t.buttonRadius),
@@ -226,6 +238,78 @@ class CertificadoEventoToolbar extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+
+  Widget _buildModoEmissao(BuildContext context) {
+    final t = context.uai;
+    final ativo = modoV2Ativo;
+    final accent = ativo ? t.success : t.info;
+
+    String titulo;
+    String descricao;
+    IconData icon;
+
+    if (pdfIndividual) {
+      titulo = 'PDF individual por participante';
+      descricao = 'Use Enviar PDF no cartão do aluno para conferir e vincular seu certificado pronto.';
+      icon = Icons.upload_file_rounded;
+    } else if (!qrGlobalCarregado) {
+      titulo = 'Detectando modo de emissão...';
+      descricao = 'Conferindo a configuração global de autenticidade.';
+      icon = Icons.sync_rounded;
+    } else if (ativo) {
+      titulo = 'Modo automático: CERTIFICADO OFICIAL';
+      descricao = 'Este template possui QR ativo. Gerar selecionados emitirá códigos únicos e QR real para todo o lote.';
+      icon = Icons.verified_rounded;
+    } else if (!qrTemplateAtivo) {
+      titulo = 'Modo automático: PDF NORMAL';
+      descricao = 'Este template não usa QR. O gerador mantém o fluxo clássico, sem criar emissão oficial ou validação pública.';
+      icon = Icons.picture_as_pdf_rounded;
+    } else {
+      titulo = 'Modo automático: PDF NORMAL';
+      descricao = 'O template possui QR, mas a autenticação global está desligada. Ative-a na Central para usar o V2.';
+      icon = Icons.qr_code_2_rounded;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: accent.withAlpha(18),
+        borderRadius: BorderRadius.circular(t.inputRadius),
+        border: Border.all(color: accent.withAlpha(51)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: accent, size: 21),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  titulo,
+                  style: TextStyle(
+                    color: t.textPrimary,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 12.4,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  descricao,
+                  style: TextStyle(
+                    color: t.textSecondary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 10.8,
+                    height: 1.25,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -294,7 +378,7 @@ class CertificadoEventoToolbar extends StatelessWidget {
             fontSize: 11.5,
           ),
           side: BorderSide(
-            color: selected ? primary.withOpacity(0.28) : t.border,
+            color: selected ? primary.withAlpha(71) : t.border,
           ),
           onSelected: (_) => onFiltroChanged(item),
           visualDensity: VisualDensity.compact,
@@ -341,8 +425,8 @@ class CertificadoEventoToolbar extends StatelessWidget {
               width: buttonWidth,
               child: _actionButton(
                 context,
-                icon: Icons.workspace_premium_rounded,
-                label: 'Gerar selecionados',
+                icon: modoV2Ativo ? Icons.verified_rounded : Icons.workspace_premium_rounded,
+                label: modoV2Ativo ? 'Emitir selecionados V2' : 'Gerar selecionados',
                 color: t.success,
                 onTap: selecionados <= 0 || carregando
                     ? null
@@ -437,7 +521,7 @@ class CertificadoEventoToolbar extends StatelessWidget {
         foregroundColor: accent,
         disabledForegroundColor: t.textMuted,
         side: BorderSide(
-          color: onTap == null ? t.border : accent.withOpacity(0.28),
+          color: onTap == null ? t.border : accent.withAlpha(71),
         ),
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
         shape: RoundedRectangleBorder(

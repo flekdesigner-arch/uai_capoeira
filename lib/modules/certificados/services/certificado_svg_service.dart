@@ -1,11 +1,14 @@
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:xml/xml.dart' as xml;
 
 import 'package:uai_capoeira/modules/certificados/data/certificado_template_assets.dart';
 import 'package:uai_capoeira/modules/certificados/models/certificado_slot_model.dart';
+import 'package:uai_capoeira/modules/certificados/models/certificado_studio_model.dart';
 import 'package:uai_capoeira/modules/certificados/models/certificado_template_tipo.dart';
 
 /// Serviço responsável por carregar e manipular os SVGs de certificado.
@@ -36,15 +39,175 @@ class CertificadoSvgService {
     required Color cor1,
     required Color cor2,
     Color? corContorno,
+    Color? corFundo,
+    Color? corEstrutura,
+    Color? corDestaque,
+    Color? corDetalhe,
+    CertificadoStudioConfig? studioConfig,
   }) async {
-    final svg = await carregarTemplate(tipo);
+    final svg = studioConfig?.baseEmBranco == true
+        ? svgEmBranco(
+            widthMm: studioConfig?.larguraDocumentoMm ?? 297,
+            heightMm: studioConfig?.alturaDocumentoMm ?? 210,
+          )
+        : studioConfig?.baseSvgStoragePath?.trim().isNotEmpty == true
+            ? await carregarSvgStorage(studioConfig!.baseSvgStoragePath!)
+            : await carregarTemplate(tipo);
+
+    var result = aplicarSubstituicoesCores(
+      svg,
+      studioConfig?.substituicoesCor ?? const {},
+    );
+
+    final externalBase = studioConfig?.baseSvgStoragePath?.trim().isNotEmpty == true;
+    if (externalBase) {
+      // SVG importado do Corel: preservar a arte original.
+      // Recoloração só acontece quando o usuário mandar pelo Inspector.
+      return result;
+    }
+
+    result = aplicarPaletaVisual(
+      result,
+      corFundo: corFundo,
+      corEstrutura: corEstrutura,
+      corDestaque: corDestaque,
+      corDetalhe: corDetalhe,
+    );
 
     return colorirSvg(
-      svg,
+      result,
       cor1: cor1,
       cor2: cor2,
       corContorno: corContorno ?? const Color(0xFF373435),
     );
+  }
+
+
+  String svgEmBranco({double widthMm = 297, double heightMm = 210}) {
+    return '<svg xmlns="http://www.w3.org/2000/svg" width="${widthMm}mm" height="${heightMm}mm" viewBox="0 0 $widthMm $heightMm"><rect x="0" y="0" width="$widthMm" height="$heightMm" fill="#EBECEC"/></svg>';
+  }
+
+  Future<String> carregarSvgStorage(String storagePath) async {
+    final bytes = await FirebaseStorage.instance.ref(storagePath).getData(12 * 1024 * 1024);
+    if (bytes == null || bytes.isEmpty) {
+      throw Exception('SVG do Studio não encontrado no Storage: $storagePath');
+    }
+    return utf8.decode(bytes, allowMalformed: true);
+  }
+
+
+  Future<Uint8List> carregarBytesStorage(
+    String storagePath, {
+    int maxBytes = 12 * 1024 * 1024,
+  }) async {
+    final bytes = await FirebaseStorage.instance.ref(storagePath).getData(maxBytes);
+    if (bytes == null || bytes.isEmpty) {
+      throw Exception('Arquivo do Studio não encontrado no Storage: $storagePath');
+    }
+    return bytes;
+  }
+
+  String aplicarSubstituicoesCores(String svg, Map<String, String> substituicoes) {
+    if (substituicoes.isEmpty) return svg;
+    var result = svg;
+    final tokens = <String, String>{};
+    var index = 0;
+
+    // Duas passagens evitam cascata: #AAAAAA -> #BBBBBB e #BBBBBB -> #CCCCCC
+    // não transforma a primeira cor duas vezes por acidente.
+    substituicoes.forEach((origem, destino) {
+      final o = origem.trim();
+      final d = destino.trim();
+      if (o.isEmpty || d.isEmpty) return;
+      final token = '__UAI_STUDIO_COLOR_${index++}__';
+      result = result.replaceAll(
+        RegExp(RegExp.escape(o), caseSensitive: false),
+        token,
+      );
+      tokens[token] = d;
+    });
+
+    tokens.forEach((token, destino) {
+      result = result.replaceAll(token, destino);
+    });
+    return result;
+  }
+
+  Future<List<String>> carregarCamadasSvg(CertificadoStudioConfig? studio) async {
+    if (studio == null || studio.camadas.isEmpty) return const [];
+    final out = <String>[];
+    for (final layer in studio.camadas.where((e) => e.visivel && e.storagePath.trim().isNotEmpty)) {
+      var svg = await carregarSvgStorage(layer.storagePath);
+      svg = aplicarSubstituicoesCores(svg, layer.substituicoesCor);
+      out.add(svg);
+    }
+    return out;
+  }
+
+  Map<String, CertificadoSlotModel> aplicarLayoutsStudio(
+    Map<String, CertificadoSlotModel> slots,
+    CertificadoStudioConfig? studio,
+  ) {
+    if (studio == null || studio.blocosLayout.isEmpty) return slots;
+    final out = Map<String, CertificadoSlotModel>.from(slots);
+    studio.blocosLayout.forEach((id, rect) {
+      if (rect.largura <= 0 || rect.altura <= 0) return;
+      out[id] = CertificadoSlotModel(
+        id: id,
+        x: rect.x,
+        y: rect.y,
+        width: rect.largura,
+        height: rect.altura,
+      );
+    });
+    return out;
+  }
+
+  /// Recolore a arte fixa do certificado sem reserializar o XML.
+  /// Isso preserva os paths do Corel e troca apenas a paleta conhecida
+  /// dos templates oficiais. `cor1` e `cor2` continuam reservadas para
+  /// as cores dinâmicas da corda/graduação e são aplicadas depois.
+  String aplicarPaletaVisual(
+    String svg, {
+    Color? corFundo,
+    Color? corEstrutura,
+    Color? corDestaque,
+    Color? corDetalhe,
+  }) {
+    if (svg.trim().isEmpty) return svg;
+
+    var result = svg;
+
+    void replaceHexes(List<String> originais, Color? novaCor) {
+      if (novaCor == null) return;
+      final hex = _colorToHex(novaCor);
+      for (final original in originais) {
+        result = result.replaceAll(
+          RegExp(RegExp.escape(original), caseSensitive: false),
+          hex,
+        );
+      }
+    }
+
+    // Fundo principal do papel/arte.
+    replaceHexes(const ['#EBECEC'], corFundo);
+
+    // Estrutura escura: molduras, blocos e tons escuros dos gradientes.
+    replaceHexes(
+      const ['#373435', '#392C2D', '#502E2D'],
+      corEstrutura,
+    );
+
+    // Destaques vinho/vermelhos/rosa usados pela identidade visual fixa.
+    replaceHexes(
+      const ['#ED3237', '#B83336', '#ED2884', '#B71C1C'],
+      corDestaque,
+    );
+
+    // Cinza de ornamentos e pequenos detalhes.
+    replaceHexes(const ['#BDBFC1'], corDetalhe);
+
+    return result;
   }
 
   String colorirSvg(
@@ -71,10 +234,10 @@ class CertificadoSvgService {
   /// Troca o fill apenas do elemento que tem o id informado.
   ///
   /// Exemplo:
-  /// <path id="cor1" ... fill="#FFF212"/>
+  /// `<path id="cor1" ... fill="#FFF212"/>`
   ///
   /// vira:
-  /// <path id="cor1" ... fill="#0000FF"/>
+  /// `<path id="cor1" ... fill="#0000FF"/>`
   ///
   /// O restante do SVG fica intacto.
   String _replaceFillById(String svg, String id, String hex) {
@@ -354,7 +517,7 @@ class CertificadoSvgService {
   }
 
   String _colorToHex(Color color) {
-    final value = color.value.toRadixString(16).padLeft(8, '0');
+    final value = color.toARGB32().toRadixString(16).padLeft(8, '0');
     return '#${value.substring(2).toUpperCase()}';
   }
 

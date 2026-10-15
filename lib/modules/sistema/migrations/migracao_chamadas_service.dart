@@ -82,14 +82,11 @@ class MigracaoChamadasService {
         final alunoId = registro['aluno_id']?.toString();
         final alunoNome = registro['aluno_nome']?.toString() ?? '';
         final turmaId = registro['turma_id']?.toString() ?? '';
-        final turmaNome = registro['turma_nome']?.toString() ?? '';
         final academiaId = registro['academia_id']?.toString() ?? '';
         final academiaNome = registro['academia_nome']?.toString() ?? '';
         final dataFormatada = registro['data_formatada']?.toString() ?? '';
-        final diaSemana = registro['dia_semana']?.toString() ?? '';
         final diaSemanaAbrev =
             registro['dia_semana_abrev']?.toString().toLowerCase() ?? '';
-        final tipoAula = registro['tipo_aula']?.toString() ?? 'OBJETIVA';
 
         if (alunoId == null || alunoId.isEmpty) {
           erros.add('❌ Aluno sem ID: $alunoNome');
@@ -399,7 +396,7 @@ class MigracaoChamadasService {
     // ============================================
     // RELATÓRIO FINAL (CORRIGIDO - SEM repeat!)
     // ============================================
-    debugPrint('\n' + ('=' * 60)); // 🔥 CORRIGIDO: usa * em vez de repeat()
+    debugPrint('\n${'=' * 60}'); // 🔥 CORRIGIDO: usa * em vez de repeat()
     debugPrint('📊 RELATÓRIO FINAL DA MIGRAÇÃO');
     debugPrint('=' * 60); // 🔥 CORRIGIDO
     debugPrint('📝 Logs criados: $logsCriados/${dados.length}');

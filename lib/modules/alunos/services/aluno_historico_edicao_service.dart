@@ -206,6 +206,105 @@ class AlunoHistoricoEdicaoService {
     );
   }
 
+  Future<void> sincronizarHistoricoInscricaoVinculada(String alunoId) async {
+    final alunoDoc = await _firestore.collection('alunos').doc(alunoId).get();
+    if (!alunoDoc.exists) return;
+    final aluno = alunoDoc.data() ?? <String, dynamic>{};
+    final inscricaoId = aluno['inscricao_id']?.toString().trim() ?? '';
+    if (inscricaoId.isEmpty) return;
+
+    final aprovadoDoc = await _firestore
+        .collection('inscricoes_aprovadas')
+        .doc(inscricaoId)
+        .get();
+    if (!aprovadoDoc.exists) return;
+    final aprovado = aprovadoDoc.data() ?? <String, dynamic>{};
+    final timeline = aprovado['timeline'];
+    if (timeline is! List || timeline.isEmpty) return;
+
+    await registrarProcessoInscricao(
+      alunoId: alunoId,
+      inscricaoId: inscricaoId,
+      timeline: timeline,
+      alunoNome: aluno['nome']?.toString(),
+    );
+  }
+
+  Future<void> registrarProcessoInscricao({
+    required String alunoId,
+    required String inscricaoId,
+    required List<dynamic> timeline,
+    String? alunoNome,
+  }) async {
+    if (timeline.isEmpty) return;
+
+    final alunoRef = _firestore.collection('alunos').doc(alunoId);
+    final batch = _firestore.batch();
+
+    for (var i = 0; i < timeline.length; i++) {
+      final raw = timeline[i];
+      if (raw is! Map) continue;
+      final evento = Map<String, dynamic>.from(raw);
+      final tipo = evento['tipo']?.toString().trim() ?? 'evento_inscricao';
+      final titulo = evento['titulo']?.toString().trim();
+      final descricao = evento['descricao']?.toString().trim();
+      final data = evento['data'];
+      final safeTipo = tipo.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+      final historicoId = 'inscricao_${inscricaoId}_${i}_$safeTipo';
+      final ref = alunoRef.collection('historico_edicoes').doc(historicoId);
+
+      batch.set(ref, {
+        'tipo_edicao': 'processo_inscricao',
+        'subtipo_edicao': tipo,
+        'origem': evento['origem']?.toString() ?? 'processo_inscricao',
+        'resumo': titulo?.isNotEmpty == true ? titulo : 'Etapa da inscrição',
+        if (descricao?.isNotEmpty == true) 'descricao_evento': descricao,
+        'pode_reverter': false,
+        'revertido': false,
+        'inscricao_id': inscricaoId,
+        if (alunoNome != null && alunoNome.trim().isNotEmpty)
+          'aluno_nome_snapshot': alunoNome.trim(),
+        'evento_inscricao': evento,
+        if ((evento['metodo']?.toString().trim().isNotEmpty ?? false))
+          'metodo_vinculo': evento['metodo'].toString().trim(),
+        if ((evento['metodo']?.toString().trim().isNotEmpty ?? false))
+          'metodo_vinculo_label': _metodoVinculoLabel(
+            evento['metodo'].toString(),
+          ),
+        'criado_em': data is Timestamp ? data : Timestamp.now(),
+        'criado_por_nome': 'Jornada de inscrição',
+        'criado_por_email': '',
+      }, SetOptions(merge: true));
+    }
+
+    batch.set(alunoRef, {
+      'inscricao_id': inscricaoId,
+      'historico_inscricao_migrado': true,
+      'historico_inscricao_migrado_em': FieldValue.serverTimestamp(),
+      'historico_inscricao_eventos': timeline.length,
+    }, SetOptions(merge: true));
+
+    await batch.commit();
+  }
+
+  static String _metodoVinculoLabel(String metodoRaw) {
+    switch (metodoRaw.trim().toLowerCase()) {
+      case 'google':
+      case 'google.com':
+        return 'Google';
+      case 'codigo_email':
+        return 'E-mail + código';
+      case 'link_email':
+        return 'E-mail + link seguro';
+      case 'sessao_existente':
+        return 'Conta UAI já confirmada';
+      case 'email':
+        return 'E-mail confirmado';
+      default:
+        return metodoRaw.trim().replaceAll('_', ' ');
+    }
+  }
+
   Future<void> reverterEdicao({
     required String alunoId,
     required String historicoId,

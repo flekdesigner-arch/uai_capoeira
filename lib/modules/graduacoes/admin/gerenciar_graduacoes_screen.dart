@@ -131,7 +131,7 @@ class _GerenciarGraduacoesScreenState extends State<GerenciarGraduacoesScreen> {
       }
 
       String colorToHex(Color color) {
-        return '#${color.value.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
+        return '#${color.toARGB32().toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
       }
 
       void changeColor(String id, Color color) {
@@ -454,9 +454,9 @@ class _GerenciarGraduacoesScreenState extends State<GerenciarGraduacoesScreen> {
             width: 62,
             height: 62,
             decoration: BoxDecoration(
-              color: onPrimary.withOpacity(0.14),
+              color: onPrimary.withAlpha(36),
               borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: onPrimary.withOpacity(0.16)),
+              border: Border.all(color: onPrimary.withAlpha(41)),
             ),
             child: Icon(
               Icons.workspace_premium_rounded,
@@ -485,7 +485,7 @@ class _GerenciarGraduacoesScreenState extends State<GerenciarGraduacoesScreen> {
                 'Cadastre cordas, cores, títulos e descrições exibidas no site.',
                 textAlign: narrow ? TextAlign.center : TextAlign.left,
                 style: TextStyle(
-                  color: onPrimary.withOpacity(0.82),
+                  color: onPrimary.withAlpha(209),
                   fontSize: 13,
                   height: 1.35,
                 ),
@@ -535,9 +535,9 @@ class _GerenciarGraduacoesScreenState extends State<GerenciarGraduacoesScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: onPrimary.withOpacity(0.14),
+        color: onPrimary.withAlpha(36),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: onPrimary.withOpacity(0.16)),
+        border: Border.all(color: onPrimary.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -619,13 +619,13 @@ class _GerenciarGraduacoesScreenState extends State<GerenciarGraduacoesScreen> {
       child: InkWell(
         onTap: () => _abrirDetalhe(doc.id),
         borderRadius: BorderRadius.circular(t.cardRadius),
-        splashColor: color1.withOpacity(0.12),
-        highlightColor: color1.withOpacity(0.06),
+        splashColor: color1.withAlpha(31),
+        highlightColor: color1.withAlpha(15),
         child: Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(t.cardRadius),
-            border: Border.all(color: color1.withOpacity(0.14)),
+            border: Border.all(color: color1.withAlpha(36)),
             boxShadow: t.softShadow,
           ),
           child: compact
@@ -826,7 +826,7 @@ class _GerenciarGraduacoesScreenState extends State<GerenciarGraduacoesScreen> {
             label: const Text('VER'),
             style: OutlinedButton.styleFrom(
               foregroundColor: t.info,
-              side: BorderSide(color: t.info.withOpacity(0.28)),
+              side: BorderSide(color: t.info.withAlpha(71)),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(t.buttonRadius),
               ),
@@ -915,7 +915,7 @@ class _GerenciarGraduacoesScreenState extends State<GerenciarGraduacoesScreen> {
           decoration: BoxDecoration(
             color: t.card,
             borderRadius: BorderRadius.circular(t.cardRadius),
-            border: Border.all(color: t.error.withOpacity(0.18)),
+            border: Border.all(color: t.error.withAlpha(46)),
             boxShadow: t.softShadow,
           ),
           child: Column(

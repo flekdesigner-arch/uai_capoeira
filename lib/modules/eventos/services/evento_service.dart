@@ -1,3 +1,6 @@
+import 'dart:developer' as developer;
+import 'dart:async';
+import '../../../core/session_log/session_log_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/evento_model.dart';
@@ -8,6 +11,15 @@ class EventoService {
 
   final String _collection = 'eventos';
 
+  // O registro é secundário: nunca altera o resultado da operação principal.
+  void _audit(String id, String operation, String result) {
+    unawaited(SessionLogService.instance.recordEntityOperation(
+      module: 'eventos', entityType: 'evento', entityId: id,
+      operation: operation, result: result,
+    ).catchError((Object _) {}));
+  }
+
+
   Future<String?> salvarEvento(EventoModel evento) async {
     try {
       final user = _auth.currentUser;
@@ -17,16 +29,18 @@ class EventoService {
         final docRef = await _firestore
             .collection(_collection)
             .add(evento.toMap());
+        _audit(docRef.id, 'criou', 'sucesso');
         return docRef.id;
       } else {
         await _firestore
             .collection(_collection)
             .doc(evento.id)
             .update(evento.toMap());
+        _audit(evento.id!, 'atualizou', 'sucesso');
         return evento.id;
       }
     } catch (e) {
-      print('❌ Erro ao salvar evento: $e');
+      developer.log('❌ Erro ao salvar evento: $e');
       rethrow;
     }
   }
@@ -38,8 +52,9 @@ class EventoService {
         'link_banner': bannerUrl,
         'atualizado_em': FieldValue.serverTimestamp(),
       });
+      _audit(eventoId, 'atualizou', 'sucesso');
     } catch (e) {
-      print('❌ Erro ao atualizar banner: $e');
+      developer.log('❌ Erro ao atualizar banner: $e');
       rethrow;
     }
   }
@@ -57,7 +72,7 @@ class EventoService {
         'atualizado_em': FieldValue.serverTimestamp(),
       });
     } catch (e) {
-      print('❌ Erro ao atualizar configurações do certificado: $e');
+      developer.log('❌ Erro ao atualizar configurações do certificado: $e');
       rethrow;
     }
   }
@@ -70,7 +85,7 @@ class EventoService {
 
       return EventoModel.fromFirestore(doc);
     } catch (e) {
-      print('❌ Erro ao buscar evento: $e');
+      developer.log('❌ Erro ao buscar evento: $e');
       return null;
     }
   }
@@ -116,8 +131,9 @@ class EventoService {
   Future<void> deletarEvento(String eventoId) async {
     try {
       await _firestore.collection(_collection).doc(eventoId).delete();
+      _audit(eventoId, 'excluiu', 'sucesso');
     } catch (e) {
-      print('❌ Erro ao deletar evento: $e');
+      developer.log('❌ Erro ao deletar evento: $e');
       rethrow;
     }
   }
@@ -128,8 +144,9 @@ class EventoService {
         'status': 'finalizado',
         'atualizado_em': FieldValue.serverTimestamp(),
       });
+      _audit(eventoId, 'atualizou', 'sucesso');
     } catch (e) {
-      print('❌ Erro ao finalizar evento: $e');
+      developer.log('❌ Erro ao finalizar evento: $e');
       rethrow;
     }
   }
@@ -144,7 +161,7 @@ class EventoService {
 
       return snapshot.docs.isNotEmpty;
     } catch (e) {
-      print('❌ Erro ao verificar eventos em andamento: $e');
+      developer.log('❌ Erro ao verificar eventos em andamento: $e');
       return false;
     }
   }
@@ -211,7 +228,7 @@ class EventoService {
         'finalizados': finalizados.count ?? 0,
       };
     } catch (e) {
-      print('❌ Erro ao buscar estatísticas: $e');
+      developer.log('❌ Erro ao buscar estatísticas: $e');
       return {'andamento': 0, 'finalizados': 0};
     }
   }

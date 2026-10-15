@@ -288,6 +288,11 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
+    match /permissoes_predefinidas/{presetId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
     match /alunos/{alunoId}/contadores/{document=**} {
       allow read, write: if isSignedIn();
     }

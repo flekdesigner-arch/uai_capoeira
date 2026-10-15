@@ -89,7 +89,7 @@ class _GraduacaoDetalheScreenState extends State<GraduacaoDetalheScreen> {
       }
 
       String colorToHex(Color color) {
-        return '#${color.value.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
+        return '#${color.toARGB32().toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
       }
 
       void changeColor(String id, Color color) {
@@ -296,9 +296,9 @@ class _GraduacaoDetalheScreenState extends State<GraduacaoDetalheScreen> {
             width: 58,
             height: 58,
             decoration: BoxDecoration(
-              color: onPrimary.withOpacity(0.13),
+              color: onPrimary.withAlpha(33),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: onPrimary.withOpacity(0.16)),
+              border: Border.all(color: onPrimary.withAlpha(41)),
             ),
             child: Icon(
               Icons.workspace_premium_rounded,
@@ -326,7 +326,7 @@ class _GraduacaoDetalheScreenState extends State<GraduacaoDetalheScreen> {
               ].join(' • '),
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: onPrimary.withOpacity(0.78),
+                color: onPrimary.withAlpha(199),
                 fontSize: 12.5,
                 height: 1.25,
                 fontWeight: FontWeight.w700,
@@ -341,7 +341,7 @@ class _GraduacaoDetalheScreenState extends State<GraduacaoDetalheScreen> {
             decoration: BoxDecoration(
               color: t.card,
               borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: onPrimary.withOpacity(0.14)),
+              border: Border.all(color: onPrimary.withAlpha(36)),
             ),
             child: modifiedSvg.isNotEmpty
                 ? SvgPicture.string(modifiedSvg, fit: BoxFit.contain)
@@ -360,7 +360,7 @@ class _GraduacaoDetalheScreenState extends State<GraduacaoDetalheScreen> {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(99),
               gradient: LinearGradient(colors: [visibleColor1, visibleColor2]),
-              border: Border.all(color: onPrimary.withOpacity(0.12)),
+              border: Border.all(color: onPrimary.withAlpha(31)),
             ),
           ),
           const SizedBox(height: 14),
@@ -391,9 +391,9 @@ class _GraduacaoDetalheScreenState extends State<GraduacaoDetalheScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: onPrimary.withOpacity(0.14),
+        color: onPrimary.withAlpha(36),
         borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: onPrimary.withOpacity(0.16)),
+        border: Border.all(color: onPrimary.withAlpha(41)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -510,7 +510,7 @@ class _GraduacaoDetalheScreenState extends State<GraduacaoDetalheScreen> {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(t.cardRadius),
-          border: Border.all(color: accent.withOpacity(0.14)),
+          border: Border.all(color: accent.withAlpha(36)),
           boxShadow: t.softShadow,
         ),
         child: Column(
@@ -542,7 +542,7 @@ class _GraduacaoDetalheScreenState extends State<GraduacaoDetalheScreen> {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(t.cardRadius),
-          border: Border.all(color: accent.withOpacity(0.14)),
+          border: Border.all(color: accent.withAlpha(36)),
           boxShadow: t.softShadow,
         ),
         child: Column(
@@ -587,9 +587,9 @@ class _GraduacaoDetalheScreenState extends State<GraduacaoDetalheScreen> {
           width: 42,
           height: 42,
           decoration: BoxDecoration(
-            color: color.withOpacity(0.12),
+            color: color.withAlpha(31),
             borderRadius: BorderRadius.circular(t.buttonRadius),
-            border: Border.all(color: color.withOpacity(0.16)),
+            border: Border.all(color: color.withAlpha(41)),
           ),
           child: Icon(icon, color: color),
         ),
@@ -673,7 +673,7 @@ class _GraduacaoDetalheScreenState extends State<GraduacaoDetalheScreen> {
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(t.cardRadius),
-              border: Border.all(color: accent.withOpacity(0.18)),
+              border: Border.all(color: accent.withAlpha(46)),
               boxShadow: t.softShadow,
             ),
             child: Column(

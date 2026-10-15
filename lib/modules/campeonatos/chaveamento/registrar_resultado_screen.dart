@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:uai_capoeira/modules/campeonatos/services/campeonato_service.dart';
-import 'package:uai_capoeira/modules/campeonatos/models/campeonato_model.dart';
 
 class RegistrarResultadoScreen extends StatefulWidget {
   final String categoriaId;

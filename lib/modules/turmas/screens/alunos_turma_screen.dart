@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:uai_capoeira/core/emergency_offline/offline_readonly_views.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:xml/xml.dart' as xml;
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'cadastro_aluno_turma_screen.dart';
@@ -11,10 +11,15 @@ import 'package:uai_capoeira/core/services/sync_service.dart';
 import 'package:uai_capoeira/shared/widgets/sync_indicator.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:uai_capoeira/core/caca_bug/caca_bug_actions.dart';
+import 'package:uai_capoeira/core/caca_bug/caca_bug_service.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'package:uai_capoeira/modules/turmas/timeline/turma_timeline_screen.dart';
+import 'package:uai_capoeira/modules/turmas/timeline/turma_timeline_service.dart';
+import 'package:uai_capoeira/core/image_cache/uai_student_photo.dart';
 
 // ============================================
-// 🔥 SERVIÇO DE CACHE INTELIGENTE (30 MINUTOS)
+// SERVIÇO DE CACHE INTELIGENTE (30 MINUTOS)
 // ============================================
 class CacheService {
   static final CacheService _instance = CacheService._internal();
@@ -36,7 +41,7 @@ class CacheService {
 
   dynamic loadFromCache(String key) {
     if (_memoryCache.containsKey(key) && isCacheValid(key)) {
-      debugPrint('✅ Cache válido encontrado para $key');
+      debugPrint('Cache válido encontrado para $key');
       return _memoryCache[key]!.data;
     }
     return null;
@@ -51,7 +56,7 @@ class CacheService {
 
   void limparTodoCache() {
     _memoryCache.clear();
-    debugPrint('🗑️ Cache de dados limpo completamente');
+    debugPrint('Cache de dados limpo completamente');
   }
 }
 
@@ -66,6 +71,7 @@ class AlunosTurmaScreen extends StatefulWidget {
   final String turmaNome;
   final String academiaId;
   final String academiaNome;
+  final bool offlineOnly;
 
   const AlunosTurmaScreen({
     super.key,
@@ -73,6 +79,7 @@ class AlunosTurmaScreen extends StatefulWidget {
     required this.turmaNome,
     required this.academiaId,
     required this.academiaNome,
+    this.offlineOnly = false,
   });
 
   @override
@@ -117,6 +124,8 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
   final Connectivity _connectivity = Connectivity();
   final CacheService _cache = CacheService();
   final SyncService _syncService = SyncService();
+  final TurmaTimelineService _timelineService = TurmaTimelineService();
+  String? _timelineRosterFingerprint;
 
   bool _isOnline = true;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
@@ -124,7 +133,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
 
   String? _svgContent;
   String _searchQuery = '';
-  Timer? _searchDebounce; // 🔥 Debounce para busca avançada
+  Timer? _searchDebounce; // Debounce para busca avançada
   int _viewMode = 0;
   final List<IconData> _viewModeIcons = [
     Icons.view_list_rounded,
@@ -152,6 +161,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _alunosCache = [];
   int _capacidadeMaximaTurma = 0;
 
+  int _diasNovato = 45;
   bool _indicadoresAusenciaAtivos = true;
   bool _mostrarTextoUltimaPresenca = true;
   List<Map<String, dynamic>> _faixasIndicadoresAusencia = const [
@@ -166,11 +176,22 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
   bool _isLoading = true;
   bool _hasError = false;
 
+  bool _cacaBugRegistrouAbertura = false;
+  int? _cacaBugUltimoTotalAlunos;
+  bool? _cacaBugUltimoFromCache;
+  DateTime? _cacaBugUltimoRegistroListaEm;
+  int? _cacaBugUltimoViewMode;
+  Timer? _cacaBugPesquisaDebounce;
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _alunosSubscription;
 
   @override
   void initState() {
     super.initState();
+    if (widget.offlineOnly) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _registrarCacaBugAberturaLista(origem: 'initState_post_frame');
+    });
     _carregarPermissoes();
     _loadSvg();
     _preloadGraduacoes();
@@ -189,11 +210,251 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     _alunosSubscription?.cancel();
     _connectivitySubscription?.cancel();
     _searchDebounce?.cancel();
+    _cacaBugPesquisaDebounce?.cancel();
     _syncService.dispose();
     super.dispose();
   }
 
-  // ======================== NORMALIZAÇÃO E BUSCA AVANÇADA ========================
+  String _cacaBugNomeTurma() {
+    final nome = widget.turmaNome.trim();
+    return nome.isEmpty ? 'Turma sem nome' : nome;
+  }
+
+  String _cacaBugViewModeLabel(int mode) {
+    if (mode >= 0 && mode < _viewModeTooltips.length) {
+      return _viewModeTooltips[mode];
+    }
+    return 'Visualização desconhecida';
+  }
+
+  Map<String, dynamic> _cacaBugDadosBase() {
+    return {
+      'turmaId': widget.turmaId,
+      'turmaNome': _cacaBugNomeTurma(),
+      'academiaId': widget.academiaId,
+      'academiaNome': widget.academiaNome,
+      'modoAcesso': 'gestao',
+    };
+  }
+
+  String _cacaBugErroResumo(Object erro) {
+    final texto = erro.toString().replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (texto.length <= 180) return texto;
+    return '${texto.substring(0, 180)}...';
+  }
+
+  void _registrarCacaBugAberturaLista({String origem = 'initState'}) {
+    if (_cacaBugRegistrouAbertura) return;
+    _cacaBugRegistrouAbertura = true;
+    final nomeTurma = _cacaBugNomeTurma();
+    unawaited(
+      CacaBugService.instance
+          .registrarEvento(
+            tipo: 'navegacao',
+            acao: CacaBugActions.abriuListaAlunosTurma,
+            descricao: 'Usuário abriu a lista de alunos da turma $nomeTurma',
+            tela: 'AlunosTurmaScreen',
+            arquivo: 'lib/modules/turmas/screens/alunos_turma_screen.dart',
+            rota: '/turmas/alunos',
+            status: 'success',
+            dados: {
+              ..._cacaBugDadosBase(),
+              'viewMode': _viewMode,
+              'viewModeLabel': _cacaBugViewModeLabel(_viewMode),
+              'origem': origem,
+            },
+          )
+          .then((_) => CacaBugService.instance.flush(force: true)),
+    );
+  }
+
+  void _registrarCacaBugCarregouLista({
+    required int totalAlunos,
+    required bool fromCache,
+    required bool hasPendingWrites,
+    required String origem,
+    bool refreshManual = false,
+  }) {
+    final agora = DateTime.now();
+    final mudouTotal = _cacaBugUltimoTotalAlunos != totalAlunos;
+    final saiuCacheParaServidor =
+        _cacaBugUltimoFromCache == true && fromCache == false;
+    final primeiroRegistro = _cacaBugUltimoRegistroListaEm == null;
+
+    if (!refreshManual &&
+        !primeiroRegistro &&
+        !mudouTotal &&
+        !saiuCacheParaServidor) {
+      return;
+    }
+
+    _cacaBugUltimoTotalAlunos = totalAlunos;
+    _cacaBugUltimoFromCache = fromCache;
+    _cacaBugUltimoRegistroListaEm = agora;
+    _registrarCacaBugAberturaLista(origem: 'antes_primeiro_carregamento');
+
+    final nomeTurma = _cacaBugNomeTurma();
+    unawaited(
+      CacaBugService.instance.registrarEvento(
+        tipo: refreshManual ? 'acao_usuario' : 'sistema',
+        acao: refreshManual
+            ? CacaBugActions.atualizouListaAlunosTurma
+            : CacaBugActions.carregouListaAlunosTurma,
+        descricao: refreshManual
+            ? 'Usuário atualizou a lista de alunos da turma $nomeTurma'
+            : 'Usuário carregou $totalAlunos aluno(s) ativos da turma $nomeTurma',
+        tela: 'AlunosTurmaScreen',
+        arquivo: 'lib/modules/turmas/screens/alunos_turma_screen.dart',
+        rota: '/turmas/alunos',
+        status: 'success',
+        dados: {
+          ..._cacaBugDadosBase(),
+          'totalAlunos': totalAlunos,
+          'ativosCount': totalAlunos,
+          'origem': origem,
+          'fromCache': fromCache,
+          'hasPendingWrites': hasPendingWrites,
+          'forcarServidor': refreshManual,
+        },
+      ),
+    );
+  }
+
+  void _registrarCacaBugErroLista(Object erro, {required String origem}) {
+    unawaited(
+      CacaBugService.instance.registrarErro(
+        acao: CacaBugActions.erroCarregarListaAlunosTurma,
+        descricao: 'Erro ao carregar alunos da turma ${_cacaBugNomeTurma()}',
+        tela: 'AlunosTurmaScreen',
+        arquivo: 'lib/modules/turmas/screens/alunos_turma_screen.dart',
+        rota: '/turmas/alunos',
+        erro: erro,
+        dados: {
+          ..._cacaBugDadosBase(),
+          'origem': origem,
+          'erroTipo': erro.runtimeType.toString(),
+          'erroResumo': _cacaBugErroResumo(erro),
+        },
+      ),
+    );
+  }
+
+  void _registrarCacaBugPesquisa() {
+    final termo = _searchQuery.trim();
+    final resultadosCount = _getAlunosFiltrados().length;
+    unawaited(
+      CacaBugService.instance.registrarEvento(
+        tipo: 'acao_usuario',
+        acao: CacaBugActions.pesquisouAlunoTurma,
+        descricao: 'Usuário pesquisou alunos na turma ${_cacaBugNomeTurma()}',
+        tela: 'AlunosTurmaScreen',
+        arquivo: 'lib/modules/turmas/screens/alunos_turma_screen.dart',
+        rota: '/turmas/alunos',
+        status: 'success',
+        dados: {
+          ..._cacaBugDadosBase(),
+          'buscaAtiva': termo.isNotEmpty,
+          'tamanhoTermo': termo.length,
+          'resultadosCount': resultadosCount,
+        },
+      ),
+    );
+  }
+
+  void _registrarCacaBugMudouVisualizacao(int viewMode) {
+    if (_cacaBugUltimoViewMode == viewMode) return;
+    _cacaBugUltimoViewMode = viewMode;
+    final label = _cacaBugViewModeLabel(viewMode);
+    unawaited(
+      CacaBugService.instance.registrarEvento(
+        tipo: 'acao_usuario',
+        acao: CacaBugActions.mudouVisualizacaoAlunosTurma,
+        descricao:
+            'Usuário mudou a visualização de alunos para $label na turma ${_cacaBugNomeTurma()}',
+        tela: 'AlunosTurmaScreen',
+        arquivo: 'lib/modules/turmas/screens/alunos_turma_screen.dart',
+        rota: '/turmas/alunos',
+        status: 'success',
+        dados: {
+          ..._cacaBugDadosBase(),
+          'viewMode': viewMode,
+          'viewModeLabel': label,
+        },
+      ),
+    );
+  }
+
+  Map<String, dynamic>? _dadosAlunoPorId(String alunoId) {
+    for (final aluno in _alunosCache) {
+      if (aluno.id == alunoId) return aluno.data();
+    }
+    return null;
+  }
+
+  String _nomeAlunoSeguro(String alunoId) {
+    final data = _dadosAlunoPorId(alunoId);
+    final nome = data?['nome']?.toString().trim() ?? '';
+    return nome.isEmpty ? 'Nome não informado' : nome;
+  }
+
+  void _registrarCacaBugAbriuDetalhe(String alunoId) {
+    final nomeAluno = _nomeAlunoSeguro(alunoId);
+    unawaited(
+      CacaBugService.instance
+          .registrarEvento(
+            tipo: 'navegacao',
+            acao: CacaBugActions.abriuDetalheAluno,
+            descricao: 'Usuário abriu o detalhe do aluno $nomeAluno',
+            tela: 'AlunosTurmaScreen',
+            arquivo: 'lib/modules/turmas/screens/alunos_turma_screen.dart',
+            rota: '/alunos/detalhe',
+            status: 'success',
+            dados: {
+              ..._cacaBugDadosBase(),
+              'alunoId': alunoId,
+              'alunoNome': nomeAluno,
+              'origem': 'lista_alunos_turma',
+            },
+          )
+          .then((_) => CacaBugService.instance.flush(force: true)),
+    );
+  }
+
+  void _registrarCacaBugVoltouLista() {
+    unawaited(
+      CacaBugService.instance.registrarEvento(
+        tipo: 'navegacao',
+        acao: CacaBugActions.voltouParaListaAlunosTurma,
+        descricao:
+            'Usuário voltou para a lista de alunos da turma ${_cacaBugNomeTurma()}',
+        tela: 'AlunosTurmaScreen',
+        arquivo: 'lib/modules/turmas/screens/alunos_turma_screen.dart',
+        rota: '/turmas/alunos',
+        status: 'success',
+        dados: {..._cacaBugDadosBase(), 'origem': 'retorno_detalhe_aluno'},
+      ),
+    );
+  }
+
+  void _atualizarBuscaAlunos(String value) {
+    setState(() => _searchQuery = value);
+    _cacaBugPesquisaDebounce?.cancel();
+    _cacaBugPesquisaDebounce = Timer(
+      const Duration(milliseconds: 800),
+      _registrarCacaBugPesquisa,
+    );
+  }
+
+  void _limparBuscaAlunos() {
+    _atualizarBuscaAlunos('');
+  }
+
+  void _alterarViewMode() {
+    final novoModo = (_viewMode + 1) % 4;
+    setState(() => _viewMode = novoModo);
+    _registrarCacaBugMudouVisualizacao(novoModo);
+  } // ======================== NORMALIZAÇÃO E BUSCA AVANÇADA ========================
+
   String _normalizeString(String text) {
     if (text.isEmpty) return '';
     const withAccents = 'áàâãäéèêëíìîïóòôõöúùûüçÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇñÑ';
@@ -226,8 +487,9 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
 
     final palavras = termoNormalizado.split(RegExp(r'\s+'));
     return palavras.every((palavra) {
-      if (palavra.length <= 2 && !RegExp(r'^\d+$').hasMatch(palavra))
+      if (palavra.length <= 2 && !RegExp(r'^\d+$').hasMatch(palavra)) {
         return true;
+      }
       return campos.any((c) => c.contains(palavra));
     });
   }
@@ -240,6 +502,75 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
   }
   // =====================================================================
 
+  String _timelineFingerprint(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
+  ) {
+    final partes = alunos.map((doc) {
+      final data = doc.data();
+      final nome = data['nome']?.toString() ?? '';
+      final apelido = data['apelido']?.toString() ?? '';
+      final graduacaoId = data['graduacao_id']?.toString() ?? '';
+      final graduacaoNome = data['graduacao_nome']?.toString() ?? '';
+      final contatoAluno = data['contato_aluno']?.toString() ?? '';
+      final contatoResponsavel = data['contato_responsavel']?.toString() ?? '';
+      final responsavel = data['nome_responsavel']?.toString() ?? '';
+      final foto = data['foto_perfil_aluno']?.toString() ?? '';
+      final endereco = data['endereco']?.toString() ?? '';
+      final sexo = data['sexo']?.toString() ?? '';
+      final nascimento = data['data_nascimento']?.toString() ?? '';
+      final status = data['status_atividade']?.toString() ?? '';
+      final turmaId = data['turma_id']?.toString() ?? '';
+      final google = data['vinculado_google']?.toString() ?? data['google_uid']?.toString() ?? '';
+      final email = data['email_verificado']?.toString() ?? data['conta_email_verificada']?.toString() ?? '';
+      return '${doc.id}|$nome|$apelido|$graduacaoId|$graduacaoNome|$contatoAluno|$contatoResponsavel|$responsavel|$foto|$endereco|$sexo|$nascimento|$status|$turmaId|$google|$email';
+    }).toList()..sort();
+    return partes.join('§');
+  }
+
+  void _sincronizarTimelineSeNecessario(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos,
+  ) {
+    final fingerprint = _timelineFingerprint(alunos);
+    if (_timelineRosterFingerprint == fingerprint) return;
+    _timelineRosterFingerprint = fingerprint;
+
+    unawaited(
+      _timelineService
+          .syncRosterFromActiveStudents(
+            turmaId: widget.turmaId,
+            turmaNome: widget.turmaNome,
+            alunos: alunos,
+          )
+          .catchError((error) {
+            debugPrint('Timeline da turma: sincronização silenciosa falhou: $error');
+          }),
+    );
+  }
+
+  Future<void> _abrirLinhaDoTempo() async {
+    if (_alunosCache.isNotEmpty) {
+      try {
+        await _timelineService.syncRosterFromActiveStudents(
+          turmaId: widget.turmaId,
+          turmaNome: widget.turmaNome,
+          alunos: _alunosCache,
+        );
+      } catch (e) {
+        debugPrint('Timeline da turma: falha no sync antes de abrir: $e');
+      }
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        settings: const RouteSettings(name: '/turmas/linha_tempo'),
+        builder: (_) => TurmaTimelineScreen(
+          turmaId: widget.turmaId,
+          turmaNome: widget.turmaNome,
+        ),
+      ),
+    );
+  }
+
   void _monitorarConectividade() {
     _connectivitySubscription = _connectivity.onConnectivityChanged.listen((
       List<ConnectivityResult> results,
@@ -248,7 +579,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
       final isOnline =
           results.isNotEmpty && results.first != ConnectivityResult.none;
       setState(() => _isOnline = isOnline);
-      debugPrint('📡 Status de conexão: ${isOnline ? 'ONLINE' : 'OFFLINE'}');
+      debugPrint('Status de conexão: ${isOnline ? 'ONLINE' : 'OFFLINE'}');
     });
     _verificarConectividadeInicial();
   }
@@ -272,9 +603,9 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     try {
       final cacheManager = DefaultCacheManager();
       await cacheManager.emptyCache();
-      debugPrint('✅ Cache de imagens limpo');
+      debugPrint('Cache de imagens limpo');
     } catch (e) {
-      debugPrint('⚠️ Erro ao limpar cache de imagens: $e');
+      debugPrint('Erro ao limpar cache de imagens: $e');
     }
   }
 
@@ -283,7 +614,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '🌐 Você precisa estar conectado à internet para recarregar.',
+            'Você precisa estar conectado à internet para recarregar.',
           ),
           backgroundColor: context.uai.warning,
         ),
@@ -325,7 +656,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
         );
       }
     } catch (e) {
-      debugPrint('❌ Erro ao recarregar: $e');
+      debugPrint('Erro ao recarregar: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -335,11 +666,12 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
         );
       }
     } finally {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _isRefreshing = false;
           _isLoading = false;
         });
+      }
     }
   }
 
@@ -358,7 +690,15 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
         return nomeA.compareTo(nomeB);
       });
       setState(() => _alunosCache = alunos);
-      debugPrint('✅ ${_alunosCache.length} alunos carregados do SERVIDOR');
+      _sincronizarTimelineSeNecessario(alunos);
+      debugPrint('Alunos carregados do servidor: ${_alunosCache.length}');
+      _registrarCacaBugCarregouLista(
+        totalAlunos: alunos.length,
+        fromCache: snapshot.metadata.isFromCache,
+        hasPendingWrites: snapshot.metadata.hasPendingWrites,
+        origem: 'servidor',
+        refreshManual: true,
+      );
 
       _alunosSubscription = _firestore
           .collection('alunos')
@@ -376,14 +716,26 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
               });
               _syncService.updatePendingCount(snapshot);
               setState(() => _alunosCache = alunos);
+              _sincronizarTimelineSeNecessario(alunos);
+              _registrarCacaBugCarregouLista(
+                totalAlunos: alunos.length,
+                fromCache: snapshot.metadata.isFromCache,
+                hasPendingWrites: snapshot.metadata.hasPendingWrites,
+                origem: 'snapshot_pos_atualizacao_manual',
+              );
             },
             onError: (error) {
-              debugPrint('❌ ERRO no snapshot: $error');
+              debugPrint('ERRO no snapshot: $error');
+              _registrarCacaBugErroLista(
+                error,
+                origem: 'snapshot_pos_atualizacao_manual',
+              );
               if (mounted) setState(() => _hasError = true);
             },
           );
     } catch (e) {
-      debugPrint('❌ Erro ao carregar alunos do servidor: $e');
+      debugPrint('Erro ao carregar alunos do servidor: $e');
+      _registrarCacaBugErroLista(e, origem: 'atualizacao_manual');
       rethrow;
     }
   }
@@ -436,7 +788,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
         }
       }
     } catch (e) {
-      debugPrint('❌ Erro ao carregar permissões: $e');
+      debugPrint('Erro ao carregar permissões: $e');
       setState(() {
         _permissoes = {};
         _carregandoPermissoes = false;
@@ -451,7 +803,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
       ).loadString('assets/images/corda.svg');
       if (mounted) setState(() => _svgContent = content);
     } catch (e) {
-      debugPrint('⚠️ Erro ao carregar SVG: $e');
+      debugPrint('Erro ao carregar SVG: $e');
     }
   }
 
@@ -469,7 +821,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
       try {
         snapshot = await buscar(Source.cache);
 
-        // No web/PWA é comum o cache responder sem erro, mas vazio.
+        // No web/PWA ? comum o cache responder sem erro, mas vazio.
         // Se vier vazio, busca no servidor para realmente popular as cordas.
         if (snapshot.docs.isEmpty && _isOnline) {
           snapshot = await buscar(Source.server);
@@ -487,10 +839,10 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
       if (mounted) setState(() {});
 
       debugPrint(
-        '✅ ${snapshot.docs.length} graduações carregadas para corda.svg',
+        '${snapshot.docs.length} graduações carregadas para corda.svg',
       );
     } catch (e) {
-      debugPrint('⚠️ Erro ao carregar graduações: $e');
+      debugPrint('Erro ao carregar graduações: $e');
     }
   }
 
@@ -524,7 +876,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
         _capacidadeMaximaTurma = _parseInt(data['capacidade_maxima'], 0);
       });
     } catch (e) {
-      debugPrint('⚠️ Erro ao carregar capacidade da turma: $e');
+      debugPrint('Erro ao carregar capacidade da turma: $e');
     }
   }
 
@@ -551,6 +903,17 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
             .get(const GetOptions(source: Source.server));
       }
 
+      try {
+        final robo = await _firestore.collection('configuracoes_sistema')
+            .doc('robo_inatividade').get();
+        if (mounted) {
+          final valor = robo.data()?['dias_novato'];
+          final dias = valor is num ? valor.toInt() : int.tryParse('$valor');
+          if (dias != null && dias > 0 && dias <= 3650) {
+            setState(() => _diasNovato = dias);
+          }
+        }
+      } catch (_) { /* configuração opcional */ }
       if (!mounted || !doc.exists) return;
 
       final data = doc.data() ?? {};
@@ -592,20 +955,21 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
       });
 
       debugPrint(
-        '✅ Configuração de indicadores carregada na tela de alunos: '
+        'Configuração de indicadores carregada na tela de alunos: '
         '${_faixasIndicadoresAusencia.length} faixas',
       );
     } catch (e) {
-      debugPrint('⚠️ Erro ao carregar indicadores de ausência: $e');
+      debugPrint('Erro ao carregar indicadores de ausência: $e');
     }
   }
 
   Future<void> _carregarAlunos() async {
-    if (mounted)
+    if (mounted) {
       setState(() {
         _isLoading = true;
         _hasError = false;
       });
+    }
     try {
       _alunosSubscription?.cancel();
       _alunosSubscription = _firestore
@@ -627,24 +991,35 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                 _alunosCache = alunos;
                 _isLoading = false;
               });
-              debugPrint('✅ ${_alunosCache.length} alunos carregados');
+              _sincronizarTimelineSeNecessario(alunos);
+              _registrarCacaBugCarregouLista(
+                totalAlunos: alunos.length,
+                fromCache: snapshot.metadata.isFromCache,
+                hasPendingWrites: snapshot.metadata.hasPendingWrites,
+                origem: 'snapshot',
+              );
+              debugPrint('Alunos carregados: ${_alunosCache.length}');
             },
             onError: (error) {
-              debugPrint('❌ ERRO no snapshot: $error');
-              if (mounted)
+              debugPrint('ERRO no snapshot: $error');
+              _registrarCacaBugErroLista(error, origem: 'snapshot');
+              if (mounted) {
                 setState(() {
                   _hasError = true;
                   _isLoading = false;
                 });
+              }
             },
           );
     } catch (e) {
-      debugPrint('❌ ERRO ao configurar snapshot: $e');
-      if (mounted)
+      debugPrint('ERRO ao configurar snapshot: $e');
+      _registrarCacaBugErroLista(e, origem: 'configurar_snapshot');
+      if (mounted) {
         setState(() {
           _hasError = true;
           _isLoading = false;
         });
+      }
     }
   }
 
@@ -654,8 +1029,9 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     final birth = birthDate.toDate();
     int age = today.year - birth.year;
     if (today.month < birth.month ||
-        (today.month == birth.month && today.day < birth.day))
+        (today.month == birth.month && today.day < birth.day)) {
       age--;
+    }
     return age;
   }
 
@@ -813,13 +1189,13 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
       width: tamanho,
       height: tamanho,
       decoration: BoxDecoration(
-        color: cor.withOpacity(0.92),
+        color: cor.withAlpha(235),
         borderRadius: cantoCard
             ? const BorderRadius.only(bottomLeft: Radius.circular(999))
             : BorderRadius.circular(999),
         boxShadow: [
           BoxShadow(
-            color: cor.withOpacity(0.28),
+            color: cor.withAlpha(71),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -828,6 +1204,16 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     );
 
     return Tooltip(message: _descricaoAusenciaPorDias(dias), child: badge);
+  }
+
+  bool _ehNovato(Map<String, dynamic> data) {
+    final ingresso = _normalizarDataUltimaPresenca(
+      data['data_entrada_turma'] ?? data['aprovado_em'] ?? data['criado_em']);
+    if (ingresso == null || data['status_atividade'] != 'ATIVO(A)') return false;
+    final hoje = DateTime.now();
+    final dias = DateTime(hoje.year, hoje.month, hoje.day).difference(
+      DateTime(ingresso.year, ingresso.month, ingresso.day)).inDays;
+    return dias >= 0 && dias <= _diasNovato;
   }
 
   Widget _buildLinhaUltimaPresenca(Map<String, dynamic> data) {
@@ -840,6 +1226,14 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
 
     return Row(
       children: [
+        if (_ehNovato(data)) ...[
+          const Tooltip(
+            message: 'Aluno novato: período inicial após ingresso',
+            child: Chip(label: Text('NOVATO', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+              visualDensity: VisualDensity.compact, padding: EdgeInsets.zero),
+          ),
+          const SizedBox(width: 5),
+        ],
         Icon(Icons.event_available_rounded, size: 13, color: cor),
         const SizedBox(width: 4),
         Expanded(
@@ -976,7 +1370,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
             coresGraduacao = _graduacoesCache[doc.id];
           }
         } catch (e) {
-          debugPrint('⚠️ Erro ao buscar graduação por id "$graduacaoId": $e');
+          debugPrint('Erro ao buscar graduação por id "$graduacaoId": $e');
         }
       }
     }
@@ -1022,20 +1416,21 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
           coresGraduacao = _graduacoesCache[_graduacaoKey(nomeGraduacao)];
         }
       } catch (e) {
-        debugPrint('⚠️ Erro ao buscar graduação por nome "$nomeGraduacao": $e');
+        debugPrint('Erro ao buscar graduação por nome "$nomeGraduacao": $e');
       }
     }
 
     if (coresGraduacao == null) {
-      debugPrint('⚠️ Sem cores cadastradas para graduação: $nomeGraduacao');
+      debugPrint('Sem cores cadastradas para graduação: $nomeGraduacao');
       return null;
     }
 
     final document = xml.XmlDocument.parse(_svgContent!);
 
     Color colorFromHex(String? hexColor) {
-      if (hexColor == null || hexColor.trim().isEmpty)
+      if (hexColor == null || hexColor.trim().isEmpty) {
         return context.uai.textMuted;
+      }
 
       try {
         final cleaned = hexColor.replaceAll('#', '').trim();
@@ -1064,7 +1459,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
       if (element.name.local.isEmpty) return;
 
       final hex =
-          '#${color.value.toRadixString(16).substring(2).toLowerCase()}';
+          '#${color.toARGB32().toRadixString(16).substring(2).toLowerCase()}';
       final oldStyle = element.getAttribute('style') ?? '';
 
       if (oldStyle.contains('fill:')) {
@@ -1104,13 +1499,16 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
   String _getGraduacaoNome(Map<String, dynamic> data) =>
       _obterNomeGraduacaoAluno(data);
 
-  void _abrirDetalhesAluno(String alunoId) {
-    Navigator.push(
+  Future<void> _abrirDetalhesAluno(String alunoId) async {
+    _registrarCacaBugAbriuDetalhe(alunoId);
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => AlunoDetalheScreen(alunoId: alunoId),
       ),
     );
+    if (!mounted) return;
+    _registrarCacaBugVoltouLista();
   }
 
   bool _podeAdicionarAluno() =>
@@ -1118,15 +1516,15 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
 
   Future<void> _abrirCadastroAluno() async {
     debugPrint(
-      '🔑 Verificando permissão: pode_adicionar_aluno = ${_permissoes['pode_adicionar_aluno']}',
+      'Verificando permissão: pode_adicionar_aluno = ${_permissoes['pode_adicionar_aluno']}',
     );
-    debugPrint('📡 Status online: $_isOnline');
+    debugPrint('Status online: $_isOnline');
 
     if (!_isOnline) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '🌐 Você precisa estar conectado à internet para cadastrar um novo aluno.',
+            'Você precisa estar conectado à internet para cadastrar um novo aluno.',
           ),
           backgroundColor: context.uai.warning,
         ),
@@ -1136,7 +1534,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     if (_permissoes['pode_adicionar_aluno'] != true) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('⛔ Você não tem permissão para cadastrar alunos.'),
+          content: Text('Você não tem permissão para cadastrar alunos.'),
           backgroundColor: context.uai.error,
         ),
       );
@@ -1303,7 +1701,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
               ),
               SizedBox(height: 14),
               OutlinedButton.icon(
-                onPressed: () => setState(() => _searchQuery = ''),
+                onPressed: _limparBuscaAlunos,
                 icon: Icon(Icons.close_rounded),
                 label: Text('LIMPAR BUSCA'),
               ),
@@ -1316,14 +1714,38 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.offlineOnly) {
+      return Scaffold(appBar: AppBar(title: Text(widget.turmaNome)),
+        body: OfflineReadonlyViews.loading(OfflineReadonlyViews.snapshot(), (snapshot) {
+          final alunos = OfflineReadonlyViews.rows(snapshot, 'alunos')
+            .where((e) => e['turmaId'] == widget.turmaId).toList()
+            ..sort((a, b) => '${a['nome']}'.compareTo('${b['nome']}'));
+          return ListView(children: [OfflineReadonlyViews.banner(snapshot),
+            for (final aluno in alunos) Card(child: ListTile(
+              leading: const Icon(Icons.person_outline),
+              title: Text('${aluno['nome'] ?? 'Aluno'}'),
+              subtitle: Text('${aluno['graduacao'] ?? ''}'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                OfflineReadonlyViews.record('abriu_ficha_aluno_offline', 'alunos');
+                Navigator.push(context, MaterialPageRoute(builder: (_) => AlunoDetalheScreen(
+                  alunoId: '${aluno['id']}', offlineOnly: true,
+                )));
+              },
+            )),
+            if (alunos.isEmpty) OfflineReadonlyViews.notFound('Alunos'),
+          ]);
+        }));
+    }
+
     final alunosFiltrados = _getAlunosFiltrados();
     final podeAdicionar = _podeAdicionarAluno();
     final t = context.uai;
     final appBarBg = Theme.of(context).appBarTheme.backgroundColor ?? t.primary;
     final appBarFg =
         Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(appBarBg);
-    final searchBg = appBarFg.withOpacity(0.13);
-    final searchBorder = appBarFg.withOpacity(0.18);
+    final searchBg = appBarFg.withAlpha(33);
+    final searchBorder = appBarFg.withAlpha(46);
 
     return Scaffold(
       backgroundColor: t.background,
@@ -1333,14 +1755,19 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
         foregroundColor: appBarFg,
         actions: [
           IconButton(
+            icon: Icon(Icons.timeline_rounded, color: appBarFg),
+            tooltip: 'Linha do tempo da turma',
+            onPressed: _abrirLinhaDoTempo,
+          ),
+          IconButton(
             icon: Icon(_viewModeIcons[_viewMode], color: appBarFg),
             tooltip: _viewModeTooltips[_viewMode],
-            onPressed: () => setState(() => _viewMode = (_viewMode + 1) % 4),
+            onPressed: _alterarViewMode,
           ),
           IconButton(
             icon: Icon(
               Icons.person_add,
-              color: podeAdicionar ? appBarFg : appBarFg.withOpacity(0.35),
+              color: podeAdicionar ? appBarFg : appBarFg.withAlpha(89),
             ),
             tooltip: podeAdicionar
                 ? 'Cadastrar Novo Aluno'
@@ -1388,7 +1815,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                       ),
                       decoration: InputDecoration(
                         hintText: 'Buscar aluno por nome...',
-                        hintStyle: TextStyle(color: appBarFg.withOpacity(0.72)),
+                        hintStyle: TextStyle(color: appBarFg.withAlpha(184)),
                         prefixIcon: Icon(Icons.search_rounded, color: appBarFg),
                         suffixIcon: _searchQuery.isNotEmpty
                             ? IconButton(
@@ -1417,7 +1844,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(t.buttonRadius),
                           borderSide: BorderSide(
-                            color: appBarFg.withOpacity(0.75),
+                            color: appBarFg.withAlpha(191),
                             width: 1.2,
                           ),
                         ),
@@ -1429,7 +1856,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                         _searchDebounce = Timer(
                           const Duration(milliseconds: 300),
                           () {
-                            setState(() => _searchQuery = value);
+                            _atualizarBuscaAlunos(value);
                           },
                         );
                       },
@@ -1473,7 +1900,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
         : 0.0;
     final porcentagem = temCapacidade ? value : 0.0;
     final barColor = _capacidadeColor(porcentagem);
-    final barraFundo = appBarFg.withOpacity(0.22);
+    final barraFundo = appBarFg.withAlpha(56);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1500,7 +1927,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: _isOnline ? t.success : t.error,
-                border: Border.all(color: appBarFg.withOpacity(0.20)),
+                border: Border.all(color: appBarFg.withAlpha(51)),
               ),
             ),
           ],
@@ -1525,7 +1952,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                   ? '$alunosAtivos/$capacidade'
                   : '$alunosAtivos ativos',
               style: TextStyle(
-                color: appBarFg.withOpacity(0.88),
+                color: appBarFg.withAlpha(224),
                 fontSize: 10.8,
                 fontWeight: FontWeight.w900,
               ),
@@ -1555,7 +1982,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
             width: 43,
             height: 43,
             decoration: BoxDecoration(
-              color: t.primary.withOpacity(0.10),
+              color: t.primary.withAlpha(26),
               borderRadius: BorderRadius.circular(t.buttonRadius),
             ),
             child: Icon(Icons.groups_rounded, color: t.primary),
@@ -1591,9 +2018,9 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
               decoration: BoxDecoration(
-                color: t.warning.withOpacity(0.12),
+                color: t.warning.withAlpha(31),
                 borderRadius: BorderRadius.circular(99),
-                border: Border.all(color: t.warning.withOpacity(0.20)),
+                border: Border.all(color: t.warning.withAlpha(51)),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -1844,7 +2271,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
       decoration: BoxDecoration(
         color: t.card,
         borderRadius: BorderRadius.circular(t.cardRadius - 4),
-        border: Border.all(color: cor.withOpacity(0.20)),
+        border: Border.all(color: cor.withAlpha(51)),
         boxShadow: t.softShadow,
       ),
       child: Column(
@@ -1871,9 +2298,9 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                       decoration: BoxDecoration(
                         color: isSemGraduacao
                             ? t.cardAlt
-                            : cor.withOpacity(0.08),
+                            : cor.withAlpha(20),
                         borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: cor.withOpacity(0.22)),
+                        border: Border.all(color: cor.withAlpha(56)),
                       ),
                       child: isSemGraduacao
                           ? Icon(
@@ -2078,9 +2505,9 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(cor.withOpacity(0.05), t.card),
+        color: Color.alphaBlend(cor.withAlpha(13), t.card),
         borderRadius: BorderRadius.circular(t.cardRadius - 4),
-        border: Border.all(color: cor.withOpacity(0.22)),
+        border: Border.all(color: cor.withAlpha(56)),
         boxShadow: t.softShadow,
       ),
       child: Column(
@@ -2104,9 +2531,9 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                       width: 40,
                       height: 40,
                       decoration: BoxDecoration(
-                        color: cor.withOpacity(0.14),
+                        color: cor.withAlpha(36),
                         shape: BoxShape.circle,
-                        border: Border.all(color: cor.withOpacity(0.32)),
+                        border: Border.all(color: cor.withAlpha(82)),
                       ),
                       child: Center(
                         child: Container(
@@ -2117,7 +2544,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                             shape: BoxShape.circle,
                             boxShadow: [
                               BoxShadow(
-                                color: grupo.cor.withOpacity(0.24),
+                                color: grupo.cor.withAlpha(61),
                                 blurRadius: 6,
                               ),
                             ],
@@ -2162,9 +2589,9 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                         vertical: 6,
                       ),
                       decoration: BoxDecoration(
-                        color: cor.withOpacity(0.12),
+                        color: cor.withAlpha(31),
                         borderRadius: BorderRadius.circular(999),
-                        border: Border.all(color: cor.withOpacity(0.22)),
+                        border: Border.all(color: cor.withAlpha(56)),
                       ),
                       child: Text(
                         '${grupo.alunos.length}',
@@ -2258,12 +2685,12 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                               fit: StackFit.expand,
                               children: [
                                 fotoUrl != null && fotoUrl.isNotEmpty
-                                    ? CachedNetworkImage(
+                                    ? UaiStudentPhoto(
+                                        studentId: aluno.id,
                                         imageUrl: fotoUrl,
+                                        profile: UaiStudentPhotoProfile.list,
                                         fit: BoxFit.cover,
-                                        alignment: Alignment.center,
-                                        errorWidget: (c, u, e) =>
-                                            _placeholderIcon(),
+                                        fallback: _placeholderIcon(),
                                       )
                                     : _placeholderIcon(),
                                 Positioned(
@@ -2272,7 +2699,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                                   right: 0,
                                   child: Container(
                                     height: 23,
-                                    color: t.primary.withOpacity(0.92),
+                                    color: t.primary.withAlpha(235),
                                     child: Center(
                                       child: Text(
                                         '$idade ANOS',
@@ -2433,12 +2860,12 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                               fit: StackFit.expand,
                               children: [
                                 fotoUrl != null && fotoUrl.isNotEmpty
-                                    ? CachedNetworkImage(
+                                    ? UaiStudentPhoto(
+                                        studentId: aluno.id,
                                         imageUrl: fotoUrl,
+                                        profile: UaiStudentPhotoProfile.list,
                                         fit: BoxFit.cover,
-                                        alignment: Alignment.center,
-                                        errorWidget: (c, u, e) =>
-                                            _placeholderIcon(size: 42),
+                                        fallback: _placeholderIcon(size: 42),
                                       )
                                     : _placeholderIcon(size: 42),
                                 Positioned(
@@ -2447,7 +2874,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                                   right: 0,
                                   child: Container(
                                     height: 22,
-                                    color: t.primary.withOpacity(0.92),
+                                    color: t.primary.withAlpha(235),
                                     child: Center(
                                       child: Text(
                                         '$idade ANOS',
@@ -2593,10 +3020,12 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                       ),
                       child: fotoUrl != null && fotoUrl.isNotEmpty
                           ? ClipOval(
-                              child: CachedNetworkImage(
+                              child: UaiStudentPhoto(
+                                studentId: aluno.id,
                                 imageUrl: fotoUrl,
+                                profile: UaiStudentPhotoProfile.compact,
                                 fit: BoxFit.cover,
-                                errorWidget: (c, u, e) => Icon(
+                                fallback: Icon(
                                   Icons.person_rounded,
                                   size: 28,
                                   color: t.textMuted,
@@ -2686,3 +3115,4 @@ class _GrupoIndicadorAlunos {
     required this.alunos,
   });
 }
+

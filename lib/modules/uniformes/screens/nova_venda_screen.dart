@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
@@ -28,11 +29,17 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
   String? _fotoAlunoUrl;
   String? _statusPagamento = 'pendente';
 
-  List<Map<String, dynamic>> _itensVenda = [];
+  final List<Map<String, dynamic>> _itensVenda = [];
   double _valorTotal = 0;
   double _valorPago = 0;
+  String _formaPagamento = 'PIX';
+  String _statusEntrega = 'aguardando';
+  bool _salvando = false;
 
   final TextEditingController _observacoesController = TextEditingController();
+
+  bool get _isWindowsDesktop =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
 
   // Helpers de contraste
   Color _readableOn(Color background) {
@@ -41,19 +48,7 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
         : const Color(0xFFFFFFFF);
   }
 
-  Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance())
-        .abs();
-    if (diff >= 0.26) return color;
 
-    final bgIsDark = background.computeLuminance() < 0.45;
-    final hsl = HSLColor.fromColor(color);
-
-    return hsl
-        .withLightness(bgIsDark ? 0.72 : 0.32)
-        .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
-        .toColor();
-  }
 
   @override
   void dispose() {
@@ -90,6 +85,7 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
   }
 
   Future<void> _finalizarVenda() async {
+    if (_salvando) return;
     if (_alunoSelecionadoId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -116,11 +112,23 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
       return;
     }
 
+    setState(() => _salvando = true);
     try {
+      final itensPersistidos = _itensVenda.map((item) {
+        return <String, dynamic>{
+          ...item,
+          'status_entrega': _statusEntrega,
+          if (_statusEntrega == 'entregue')
+            'entregue_em': DateTime.now().toIso8601String(),
+          if (_statusEntrega == 'entregue') 'entregue_por': currentUser?.uid,
+        };
+      }).toList();
+
       final dadosVenda = {
         'aluno_id': _alunoSelecionadoId,
         'aluno_nome': _alunoSelecionadoNome,
-        'itens': _itensVenda,
+        'itens': itensPersistidos,
+        'status_entrega': _statusEntrega,
         'valor_total': _valorTotal,
         'valor_pago': _statusPagamento == 'pago' ? _valorTotal : _valorPago,
         'status_pagamento': _statusPagamento,
@@ -129,9 +137,25 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
         'vendedor_id': currentUser?.uid,
       };
 
-      await _uniformesService.registrarVenda(dadosVenda);
+      debugPrint('[UNIFORMES_WINDOWS] UI 01 enviando venda');
+      await _uniformesService.registrarVenda(
+        dadosVenda,
+        formaPagamentoInicial:
+            (_statusPagamento == 'pago' || _statusPagamento == 'parcial')
+                ? _formaPagamento
+                : null,
+      );
+      debugPrint('[UNIFORMES_WINDOWS] UI 02 service finalizado');
 
-      if (mounted) {
+      // Pequeno yield no desktop evita fazer pop/rebuild no mesmo instante
+      // em que o plugin nativo termina o commit.
+      if (_isWindowsDesktop) {
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+      }
+
+      if (!mounted) return;
+
+      {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -143,18 +167,22 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
         );
         Navigator.pop(context, true);
       }
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('[UNIFORMES_WINDOWS] erro ao registrar venda: ');
+      debugPrintStack(stackTrace: st);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '❌ Erro ao registrar venda: $e',
+              'Não foi possível registrar a venda agora. Verifique os dados e tente novamente.',
               style: TextStyle(color: _readableOn(context.uai.error)),
             ),
             backgroundColor: context.uai.error,
           ),
         );
       }
+    } finally {
+      if (mounted) setState(() => _salvando = false);
     }
   }
 
@@ -177,7 +205,6 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final cardBg = context.uai.card;
     final border = context.uai.border;
     final primary =
@@ -201,7 +228,7 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
         ),
         actions: [
           TextButton.icon(
-            onPressed: _finalizarVenda,
+            onPressed: _salvando ? null : _finalizarVenda,
             icon: Icon(Icons.check, color: onPrimary),
             label: Text('FINALIZAR', style: TextStyle(color: onPrimary)),
           ),
@@ -251,7 +278,7 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
                                     backgroundImage: imageProvider,
                                     radius: 16,
                                   ),
-                              placeholder: (_, __) => CircleAvatar(
+                              placeholder: (_, _) => CircleAvatar(
                                 radius: 16,
                                 backgroundColor: cardAlt,
                                 child: Icon(
@@ -260,7 +287,7 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
                                   color: textMuted,
                                 ),
                               ),
-                              errorWidget: (_, __, ___) => CircleAvatar(
+                              errorWidget: (_, _, _) => CircleAvatar(
                                 radius: 16,
                                 backgroundColor: cardAlt,
                                 child: Icon(Icons.person, color: textMuted),
@@ -352,7 +379,7 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
                       itemCount: _itensVenda.length,
-                      separatorBuilder: (_, __) => Divider(color: border),
+                      separatorBuilder: (_, _) => Divider(color: border),
                       itemBuilder: (context, index) {
                         final item = _itensVenda[index];
                         return ListTile(
@@ -361,7 +388,7 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
                             width: 40,
                             height: 40,
                             decoration: BoxDecoration(
-                              color: primary.withOpacity(0.1),
+                              color: primary.withAlpha(26),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Icon(Icons.shopping_bag, color: primary),
@@ -487,13 +514,23 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
                         states,
                       ) {
                         if (states.contains(WidgetState.selected)) {
-                          return primary.withOpacity(0.1);
+                          return primary.withAlpha(26);
                         }
                         return cardAlt;
                       }),
                       foregroundColor: WidgetStateProperty.all(textPrimary),
                     ),
                   ),
+
+                  if (_statusPagamento == 'pago' || _statusPagamento == 'parcial') ...[
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: _formaPagamento,
+                      decoration: const InputDecoration(labelText: 'Forma de pagamento'),
+                      items: const ['PIX', 'Dinheiro', 'Cartão', 'Transferência', 'Outro'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                      onChanged: (v) => setState(() => _formaPagamento = v ?? 'Outro'),
+                    ),
+                  ],
 
                   if (_statusPagamento == 'parcial') ...[
                     const SizedBox(height: 16),
@@ -531,6 +568,47 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
                       },
                     ),
                   ],
+
+                  const SizedBox(height: 16),
+
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: cardBg,
+                      borderRadius: BorderRadius.circular(context.uai.cardRadius),
+                      border: Border.all(color: border),
+                      boxShadow: context.uai.softShadow,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'STATUS DA ENTREGA',
+                          style: TextStyle(fontWeight: FontWeight.bold, color: textPrimary),
+                        ),
+                        const SizedBox(height: 12),
+                        SegmentedButton<String>(
+                          segments: const [
+                            ButtonSegment(
+                              value: 'aguardando',
+                              icon: Icon(Icons.schedule_rounded),
+                              label: Text('Aguardando entrega'),
+                            ),
+                            ButtonSegment(
+                              value: 'entregue',
+                              icon: Icon(Icons.check_circle_rounded),
+                              label: Text('Entregue'),
+                            ),
+                          ],
+                          selected: {_statusEntrega},
+                          onSelectionChanged: _salvando
+                              ? null
+                              : (selected) => setState(() => _statusEntrega = selected.first),
+                        ),
+                      ],
+                    ),
+                  ),
 
                   const SizedBox(height: 16),
 
@@ -575,3 +653,4 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
     );
   }
 }
+

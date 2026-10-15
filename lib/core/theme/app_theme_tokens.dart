@@ -170,7 +170,9 @@ class UaiThemeTokens extends ThemeExtension<UaiThemeTokens> {
       error: error ?? const Color(0xFFFF4D5E),
       info: info ?? const Color(0xFF64D7FF),
       eventos: info ?? const Color(0xFF64D7FF),
-      associacao: const Color(0xFFBDA0FF),
+      // Em temas personalizados/nuvem, a cor do módulo Associação acompanha
+      // a paleta escolhida na Central de Temas em vez de ficar presa ao roxo.
+      associacao: safeAccent,
       rifas: warning ?? const Color(0xFFE8B451),
       uniformes: success ?? const Color(0xFF35D07F),
       inscricoes: info ?? const Color(0xFF64D7FF),

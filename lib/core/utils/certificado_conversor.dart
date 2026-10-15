@@ -4,9 +4,9 @@ import 'package:flutter/material.dart';
 
 class CertificadoConversor {
   // Constantes A4 (medidas em milímetros)
-  static const double A4_WIDTH_MM = 297.0;
-  static const double A4_HEIGHT_MM = 210.0;
-  static const double MAX_FONT_SIZE_MM = 50.0;
+  static const double a4WidthMm = 297.0;
+  static const double a4HeightMm = 210.0;
+  static const double maxFontSizeMm = 50.0;
 
   /// Converte porcentagem para milímetros
   /// Ex: percentToMm(50, 297) = 148.5 mm
@@ -59,16 +59,16 @@ class CertificadoConversor {
     switch (tipo) {
       case 'x':
       case 'maxWidth':
-        maxSize = A4_WIDTH_MM;
+        maxSize = a4WidthMm;
         break;
       case 'y':
-        maxSize = A4_HEIGHT_MM;
+        maxSize = a4HeightMm;
         break;
       case 'fontSize':
-        maxSize = MAX_FONT_SIZE_MM;
+        maxSize = maxFontSizeMm;
         break;
       default:
-        maxSize = A4_WIDTH_MM;
+        maxSize = a4WidthMm;
     }
 
     // REGRA DE NEGÓCIO IMPORTANTE:
@@ -115,7 +115,7 @@ class CertificadoConversor {
       // Posição X
       if (configEmMm['pos_x_$campo'] != null) {
         final xMm = double.tryParse(configEmMm['pos_x_$campo'].toString()) ?? 0;
-        configParaSalvar['pos_x_$campo'] = mmToPercent(xMm, A4_WIDTH_MM);
+        configParaSalvar['pos_x_$campo'] = mmToPercent(xMm, a4WidthMm);
         debugPrint(
           '💾 Convertendo pos_x_$campo: ${xMm}mm → ${configParaSalvar['pos_x_$campo']}%',
         );
@@ -124,7 +124,7 @@ class CertificadoConversor {
       // Posição Y
       if (configEmMm['pos_y_$campo'] != null) {
         final yMm = double.tryParse(configEmMm['pos_y_$campo'].toString()) ?? 0;
-        configParaSalvar['pos_y_$campo'] = mmToPercent(yMm, A4_HEIGHT_MM);
+        configParaSalvar['pos_y_$campo'] = mmToPercent(yMm, a4HeightMm);
         debugPrint(
           '💾 Convertendo pos_y_$campo: ${yMm}mm → ${configParaSalvar['pos_y_$campo']}%',
         );
@@ -136,7 +136,7 @@ class CertificadoConversor {
             double.tryParse(configEmMm['font_size_$campo'].toString()) ?? 4;
         configParaSalvar['font_size_$campo'] = mmToPercent(
           fontSizeMm,
-          MAX_FONT_SIZE_MM,
+          maxFontSizeMm,
         );
         debugPrint(
           '💾 Convertendo font_size_$campo: ${fontSizeMm}mm → ${configParaSalvar['font_size_$campo']}%',
@@ -149,7 +149,7 @@ class CertificadoConversor {
             double.tryParse(configEmMm['max_width_$campo'].toString()) ?? 100;
         configParaSalvar['max_width_$campo'] = mmToPercent(
           maxWidthMm,
-          A4_WIDTH_MM,
+          a4WidthMm,
         );
         debugPrint(
           '💾 Convertendo max_width_$campo: ${maxWidthMm}mm → ${configParaSalvar['max_width_$campo']}%',
@@ -189,7 +189,7 @@ class CertificadoConversor {
       if (config['pos_x_$campo'] != null) {
         final xPercent =
             double.tryParse(config['pos_x_$campo'].toString()) ?? 0;
-        configParaExibicao['pos_x_$campo'] = percentToMm(xPercent, A4_WIDTH_MM);
+        configParaExibicao['pos_x_$campo'] = percentToMm(xPercent, a4WidthMm);
       }
 
       // Posição Y
@@ -198,7 +198,7 @@ class CertificadoConversor {
             double.tryParse(config['pos_y_$campo'].toString()) ?? 0;
         configParaExibicao['pos_y_$campo'] = percentToMm(
           yPercent,
-          A4_HEIGHT_MM,
+          a4HeightMm,
         );
       }
 
@@ -208,7 +208,7 @@ class CertificadoConversor {
             double.tryParse(config['font_size_$campo'].toString()) ?? 4;
         configParaExibicao['font_size_$campo'] = percentToMm(
           fontSizePercent,
-          MAX_FONT_SIZE_MM,
+          maxFontSizeMm,
         );
       }
 
@@ -218,7 +218,7 @@ class CertificadoConversor {
             double.tryParse(config['max_width_$campo'].toString()) ?? 100;
         configParaExibicao['max_width_$campo'] = percentToMm(
           maxWidthPercent,
-          A4_WIDTH_MM,
+          a4WidthMm,
         );
       }
     }
@@ -232,13 +232,13 @@ class CertificadoConversor {
     switch (tipo) {
       case 'x':
       case 'maxWidth':
-        return percentToMm(percent, A4_WIDTH_MM);
+        return percentToMm(percent, a4WidthMm);
       case 'y':
-        return percentToMm(percent, A4_HEIGHT_MM);
+        return percentToMm(percent, a4HeightMm);
       case 'fontSize':
-        return percentToMm(percent, MAX_FONT_SIZE_MM);
+        return percentToMm(percent, maxFontSizeMm);
       default:
-        return percentToMm(percent, A4_WIDTH_MM);
+        return percentToMm(percent, a4WidthMm);
     }
   }
 
@@ -263,11 +263,11 @@ class CertificadoConversor {
     switch (tipo) {
       case 'x':
       case 'maxWidth':
-        return valor >= 0 && valor <= A4_WIDTH_MM;
+        return valor >= 0 && valor <= a4WidthMm;
       case 'y':
-        return valor >= 0 && valor <= A4_HEIGHT_MM;
+        return valor >= 0 && valor <= a4HeightMm;
       case 'fontSize':
-        return valor > 0 && valor <= MAX_FONT_SIZE_MM;
+        return valor > 0 && valor <= maxFontSizeMm;
       default:
         return true;
     }
