@@ -1,5 +1,7 @@
 import 'dart:developer' as developer;
 import 'dart:async';
+import 'dart:convert';
+import 'package:uai_capoeira/modules/inscricoes/services/ficha_callable_client.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart'; // 👈 ADICIONAR
@@ -13,6 +15,8 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:uai_capoeira/modules/alunos/photo_studio/photo_editor_state.dart';
 import 'package:uai_capoeira/modules/alunos/photo_studio/photo_studio_screen.dart';
 import 'package:uai_capoeira/modules/alunos/photo_capture/guided_camera_screen.dart';
@@ -122,8 +126,21 @@ class _PhotoSaveProgressState {
 
 class EditarAlunoScreen extends StatefulWidget {
   final String? alunoId;
+  final String? academiaIdInicial;
+  final String? academiaNomeInicial;
+  final String? turmaIdInicial;
+  final String? turmaNomeInicial;
+  final Map<String, dynamic>? dadosInscricao;
 
-  const EditarAlunoScreen({super.key, this.alunoId});
+  const EditarAlunoScreen({
+    super.key,
+    this.alunoId,
+    this.academiaIdInicial,
+    this.academiaNomeInicial,
+    this.turmaIdInicial,
+    this.turmaNomeInicial,
+    this.dadosInscricao,
+  });
 
   @override
   State<EditarAlunoScreen> createState() => _EditarAlunoScreenState();
@@ -289,6 +306,9 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
 
   final _formKey = GlobalKey<FormState>();
   bool get _isEditing => widget.alunoId != null;
+  bool get _isFromInscricao => !_isEditing && widget.dadosInscricao != null;
+  String? _idCadastroEmAndamento;
+
 
   // 🔐 PERMISSÕES
   final PermissaoService _permissaoService = PermissaoService();
@@ -351,6 +371,47 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
   String _fotoOrigemPendente = 'studio';
 
   Map<String, dynamic> _fichaComplementar = fichaUaiVazia();
+  String _fichaAssinaturaCarregada = '';
+  String _assinaturaFicha(Map<String, dynamic> ficha) => jsonEncode({
+    'familia': ficha['familia'] ?? <String, dynamic>{},
+    'saude': ficha['saude'] ?? <String, dynamic>{},
+    'capoeira': ficha['capoeira'] ?? <String, dynamic>{},
+  });
+  int _fichaRevisao = 0;
+  bool _fichaRestritaCarregada = false;
+
+  Future<void> _carregarFichaRestrita(String alunoId) async {
+    final resposta = await FichaCallableClient.call('gerenciarFichaInscricao', {
+      'aluno_id': alunoId, 'acao': 'ler',
+    });
+    final raw = resposta['ficha'];
+    if (raw is Map) {
+      final ficha = Map<String, dynamic>.from(raw);
+      _fichaComplementar = ficha;
+      _fichaRevisao = (ficha['revisao'] as num?)?.toInt() ?? 0;
+    }
+    _fichaRestritaCarregada = true;
+    _fichaAssinaturaCarregada = _assinaturaFicha(_fichaComplementar);
+  }
+
+  Future<void> _salvarFichaRestritaSeAlterada(String alunoId) async {
+    if (_fichaAssinaturaCarregada == _assinaturaFicha(_fichaComplementar)) return;
+    if (!_fichaRestritaCarregada && _isEditing) {
+      throw StateError('A ficha restrita não foi carregada. Reabra o cadastro antes de editar os cuidados.');
+    }
+    final erros = validarFichaUai(_fichaComplementar);
+    if (erros.isNotEmpty) throw StateError(erros.join('\n'));
+    await FichaCallableClient.call('gerenciarFichaInscricao', {
+      'aluno_id': alunoId,
+      'acao': 'salvar',
+      'ficha': _fichaComplementar,
+      'revisao': _fichaRevisao,
+    });
+    _fichaRestritaCarregada = true;
+    _fichaAssinaturaCarregada = _assinaturaFicha(_fichaComplementar);
+    _fichaRevisao++;
+  }
+
   List<Map<String, dynamic>> _contatosEmergenciaAdicionais = [];
   bool _possuiEnderecoEstruturado = false;
   bool _enderecoLegadoAmbiguo = false;
@@ -590,6 +651,10 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
     try {
       await _fetchAcademias();
       await _fetchGraduacoes();
+      if (!_isEditing) {
+        await _aplicarDadosCadastroInicial();
+        _fichaAssinaturaCarregada = _assinaturaFicha(_fichaComplementar);
+      }
       if (_isEditing) {
         await _loadAlunoData();
       }
@@ -611,6 +676,139 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
         );
       }
     }
+  }
+
+  /// Os dois caminhos de cadastro usam o mesmo formulário e validadores.
+  /// A inscrição conserva seus dados de origem para a conversão transacional.
+  Future<void> _aplicarDadosCadastroInicial() async {
+    final origem = widget.dadosInscricao;
+    if (origem != null) {
+      for (final campo in _controllers.keys) {
+        final valor = origem[campo];
+        if (valor is String && valor.trim().isNotEmpty) {
+          _controllers[campo]!.text = valor;
+        } else if (valor is Timestamp) {
+          _controllers[campo]!.text = DateFormat('dd/MM/yyyy').format(valor.toDate());
+        }
+      }
+      // Datas antigas podem chegar como ISO, Timestamp ou dd/MM/yyyy.
+      // O formulário unificado sempre espera dd/MM/yyyy.
+      for (final campo in const [
+        'data_nascimento', 'data_graduacao_atual', 'tempo_capoeira',
+      ]) {
+        final texto = _controllers[campo]!.text.trim();
+        if (texto.isNotEmpty && !texto.contains('/')) {
+          final dt = DateTime.tryParse(texto);
+          if (dt != null) {
+            _controllers[campo]!.text = DateFormat('dd/MM/yyyy').format(dt);
+          }
+        }
+      }
+      final endereco = origem['endereco']?.toString() ?? '';
+      final interpretado = _EnderecoLegadoUai.interpretar(
+        endereco, cidadeConhecida: origem['cidade']?.toString());
+      for (final campo in const ['rua', 'numero', 'bairro', 'cidade']) {
+        if (_controllers[campo]!.text.trim().isEmpty &&
+            interpretado[campo]?.isNotEmpty == true) {
+          _controllers[campo]!.text = interpretado[campo]!;
+        }
+      }
+      _sexo = origem['sexo']?.toString();
+      // Saúde/ficha sensível da inscrição permanece na ficha restrita,
+      // identificada por ficha_inscricao_id. Não copiar para alunos (leitura
+      // de gestão mais ampla) durante a conversão.
+      _fichaComplementar = fichaUaiVazia();
+      _contatosEmergenciaAdicionais = (origem['contatos_emergencia_adicionais'] is List
+          ? origem['contatos_emergencia_adicionais'] as List : const [])
+          .whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+      _consolidarContatosLegados(origem: origem);
+      _fichaAssinaturaCarregada = _assinaturaFicha(_fichaComplementar);
+      final foto = (origem['foto_url'] ?? origem['foto_perfil_aluno'] ??
+          origem['foto_aluno_url'] ?? '').toString().trim();
+      if (foto.isNotEmpty) _networkImageUrl = foto;
+    }
+    _academiaId = widget.academiaIdInicial;
+    _academiaNome = widget.academiaNomeInicial;
+    _turmaId = widget.turmaIdInicial;
+    _turmaNome = widget.turmaNomeInicial;
+    // Não manter Dropdown com ID ausente: academia/turma podem ter sido
+    // desativadas entre a escolha inicial e a abertura da tela.
+    if (_academiaId != null && !_academiasMap.containsKey(_academiaId)) {
+      debugPrint('Academia inicial indisponível; escolha outra antes de salvar.');
+      _academiaId = null;
+      _academiaNome = null;
+      _turmaId = null;
+      _turmaNome = null;
+    }
+    if (_academiaId != null && _academiaId!.isNotEmpty) {
+      await _fetchTurmas(_academiaId);
+      if (_turmasMap.containsKey(widget.turmaIdInicial)) {
+        _turmaId = widget.turmaIdInicial;
+        _turmaNome = widget.turmaNomeInicial ??
+            _turmasMap[_turmaId]?['nome']?.toString();
+        _turmaCheia = _turmasMap[_turmaId]?['cheia'] == true;
+      } else if (widget.turmaIdInicial != null) {
+        _turmaId = null;
+        _turmaNome = null;
+      }
+    }
+  }
+
+  // O responsável é o contato principal. Dados legados que indiquem outra
+  // pessoa são preservados como contato adicional, nunca descartados.
+  void _consolidarContatosLegados({Map<String, dynamic>? origem}) {
+    final responsavel = _controllers['nome_responsavel']!;
+    final telefoneResponsavel = _controllers['contato_responsavel']!;
+    final nomeEmergencia = _controllers['nome_contato_emergencia']!;
+    final telefoneEmergencia = _controllers['contato_emergencia']!;
+    final nomeAntigo = nomeEmergencia.text.trim();
+    final telefoneAntigo = telefoneEmergencia.text.trim();
+    final nomePrincipal = responsavel.text.trim();
+    final telefonePrincipal = telefoneResponsavel.text.trim();
+    String soNumeros(String valor) => valor.replaceAll(RegExp(r'[^0-9]'), '');
+    final haOutroContato = (nomeAntigo.isNotEmpty || telefoneAntigo.isNotEmpty) &&
+        ((nomePrincipal.isNotEmpty && nomeAntigo.isNotEmpty &&
+            nomePrincipal.toUpperCase() != nomeAntigo.toUpperCase()) ||
+         (telefonePrincipal.isNotEmpty && telefoneAntigo.isNotEmpty &&
+            soNumeros(telefonePrincipal) != soNumeros(telefoneAntigo)));
+    if (haOutroContato) {
+      final nomeExtra = nomeAntigo.isNotEmpty ? nomeAntigo : 'Contato de emergência';
+      final telefoneExtra = soNumeros(telefoneAntigo);
+      final existe = _contatosEmergenciaAdicionais.any((item) =>
+          (telefoneExtra.isNotEmpty && soNumeros(item['telefone']?.toString() ?? '') == telefoneExtra) ||
+          (telefoneExtra.isEmpty &&
+              (item['nome']?.toString().trim().toUpperCase() ?? '') == nomeExtra.toUpperCase()));
+      if (!existe) {
+        _contatosEmergenciaAdicionais.add({
+          'nome': nomeExtra,
+          'telefone': telefoneExtra,
+          'grau': _controllers['grau_emergencia']!.text.trim(),
+        });
+      }
+    }
+    if (responsavel.text.trim().isEmpty && nomeAntigo.isNotEmpty) {
+      responsavel.text = nomeAntigo;
+    }
+    if (telefoneResponsavel.text.trim().isEmpty && telefoneAntigo.isNotEmpty) {
+      telefoneResponsavel.text = telefoneAntigo;
+    }
+    final familia = Map<String, dynamic>.from(
+      _fichaComplementar['familia'] is Map
+          ? _fichaComplementar['familia'] as Map : const <String, dynamic>{},
+    );
+    final parentesco = (origem?['grau_responsavel'] ??
+        familia['grau_responsavel'] ??
+        (!haOutroContato ? _controllers['grau_emergencia']!.text : null))
+        ?.toString().trim() ?? '';
+    if (parentesco.isNotEmpty) {
+      _controllers['grau_emergencia']!.text = parentesco;
+      familia['grau_responsavel'] = parentesco;
+      _fichaComplementar['familia'] = familia;
+    }
+    // Os campos legados continuam disponíveis para integrações antigas,
+    // agora refletindo o único contato principal visível.
+    nomeEmergencia.text = responsavel.text;
+    telefoneEmergencia.text = telefoneResponsavel.text;
   }
 
   // Buscar academias ativas
@@ -945,6 +1143,14 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
       _fichaComplementar = Map<String, dynamic>.from(
         data['ficha_complementar'] is Map ? data['ficha_complementar'] as Map : fichaUaiVazia(),
       );
+      // A tela da ficha lê fichas_inscricao via callable, não alunos.ficha_complementar.
+      // Uma falha impede edição da ficha, sem sobrescrever o conteúdo protegido.
+      try {
+        await _carregarFichaRestrita(widget.alunoId!);
+      } catch (e) {
+        debugPrint('Ficha restrita indisponível: $e');
+        _fichaRestritaCarregada = false;
+      }
       _contatosEmergenciaAdicionais = (data['contatos_emergencia_adicionais'] is List
               ? data['contatos_emergencia_adicionais'] as List : const [])
           .whereType<Map>()
@@ -1003,6 +1209,7 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
          }
        }
       _fichaComplementar['familia'] = familia;
+      _consolidarContatosLegados(origem: data);
       String? academiaId = data['academia_id'] as String?;
       String? turmaId = data['turma_id'] as String?;
       String? academiaNome = data['academia'] as String?;
@@ -1230,7 +1437,7 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
   }
 
   Future<void> _editarFotoAluno() async {
-    final podeEditar = await _verificarPermissao(
+    final podeEditar = !_isEditing || await _verificarPermissao(
       'pode_editar_aluno',
       acao: 'abrir o UAI Photo Studio',
     );
@@ -1872,12 +2079,176 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
     // O arquivo anterior não é removido: o worker fará backup idempotente.
   }
 
+  /// O commit do cadastro já ocorreu quando este diálogo aparece.
+  /// Compartilhar WhatsApp é opcional e nunca reverte ou repete a conversão.
+  Future<void> _oferecerConvitesPosCadastro() async {
+    if (!mounted || _isEditing) return;
+    try {
+      final db = FirebaseFirestore.instance;
+      final turma = await db.collection('turmas').doc(_turmaId).get();
+      if (!mounted) return;
+      final turmaData = turma.data() ?? const <String, dynamic>{};
+      final grupoUrl = turmaData['whatsapp_url']?.toString().trim() ?? '';
+      var conviteGrupo = turmaData['msg_convite_grupo_whatsapp']
+          ?.toString().trim() ?? '';
+      if (conviteGrupo.isEmpty) {
+        conviteGrupo = '🥋 Olá {nome_aluno}! Seja bem-vindo(a) à turma {turma_nome} da UAI Capoeira!';
+      }
+      final nome = _controllers['nome']!.text.trim();
+      for (final marcador in const ['nome_aluno', 'aluno_nome']) {
+        conviteGrupo = conviteGrupo.replaceAll('{{$marcador}}', nome)
+            .replaceAll('{$marcador}', nome);
+      }
+      for (final marcador in const ['turma_nome', 'nome_turma']) {
+        conviteGrupo = conviteGrupo.replaceAll('{{$marcador}}', _nomeTurmaAtual())
+            .replaceAll('{$marcador}', _nomeTurmaAtual());
+      }
+      for (final marcador in const ['academia_nome', 'nome_academia']) {
+        conviteGrupo = conviteGrupo.replaceAll('{{$marcador}}', _nomeAcademiaAtual())
+            .replaceAll('{$marcador}', _nomeAcademiaAtual());
+      }
+      if (grupoUrl.isNotEmpty) conviteGrupo = '$conviteGrupo\n\n👇 GRUPO DA TURMA: $grupoUrl';
+
+      var areaAlunoAtiva = false;
+      try {
+        final config = await db.collection('configuracoes_site')
+            .doc('area_aluno').get();
+        areaAlunoAtiva = config.data()?['visivel_site'] == true;
+      } catch (e) {
+        debugPrint('Configuração da Área do Aluno indisponível: $e');
+      }
+      if (!mounted) return;
+      final nascimento = _controllers['data_nascimento']!.text.trim();
+      final palavras = nome.toUpperCase().split(RegExp(r'\s+'))
+          .where((parte) => parte.isNotEmpty &&
+              !const {'DE', 'DA', 'DO', 'DAS', 'DOS', 'E'}.contains(parte));
+      final iniciais = palavras.map((parte) => parte.substring(0, 1))
+          .join().replaceAll(RegExp(r'[^A-ZÀ-Ú0-9]'), '');
+      final contatoAluno = _controllers['contato_aluno']!.text
+          .replaceAll(RegExp(r'[^0-9]'), '');
+      final contatoResponsavel = _controllers['contato_responsavel']!.text
+          .replaceAll(RegExp(r'[^0-9]'), '');
+      final telefoneBase = contatoAluno.length >= 8
+          ? contatoAluno : contatoResponsavel;
+      final ultimos4 = telefoneBase.length >= 4
+          ? telefoneBase.substring(telefoneBase.length - 4) : '';
+      final acessoValido = areaAlunoAtiva && nascimento.isNotEmpty &&
+          iniciais.isNotEmpty && ultimos4.isNotEmpty;
+      final mensagemAcesso = '🥋 ÁREA DO ALUNO - UAI CAPOEIRA 🥋\n\n'
+          'Olá! Seguem os dados para acessar a Área do Aluno de $nome.\n\n'
+          '🌐 https://uaicapoeira.com.br\n\n'
+          'No site, toque em Área do Aluno e preencha:\n'
+          '📅 Data de nascimento: $nascimento\n'
+          '🔤 Iniciais do nome: $iniciais\n'
+          '📱 Últimos 4 dígitos do telefone: $ultimos4\n\n'
+          'Não compartilhe esses dados com outras pessoas.';
+      final numeros = <String, String>{};
+      if (contatoAluno.length >= 10 && contatoAluno.length <= 13) {
+        numeros['Aluno'] = contatoAluno;
+      }
+      if (contatoResponsavel.length >= 10 &&
+          contatoResponsavel.length <= 13 &&
+          contatoResponsavel != contatoAluno) {
+        numeros['Responsável'] = contatoResponsavel;
+      }
+      if (!mounted || numeros.isEmpty || (grupoUrl.isEmpty && !acessoValido)) {
+        return;
+      }
+
+      Future<void> abrirWhatsApp(String numero, String texto) async {
+        final comPais = numero.startsWith('55') ? numero : '55$numero';
+        final uri = Uri.parse('https://wa.me/$comPais?text=${Uri.encodeComponent(texto)}');
+        if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+          throw StateError('O WhatsApp não pôde ser aberto.');
+        }
+      }
+
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Aluno cadastrado!'),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: SingleChildScrollView(child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('$nome foi cadastrado na turma ${_nomeTurmaAtual()}.'),
+                const SizedBox(height: 14),
+                if (grupoUrl.isNotEmpty) ...[
+                  const Text('Convite do grupo da turma',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 7),
+                  for (final contato in numeros.entries)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: OutlinedButton.icon(
+                        onPressed: () async {
+                          try {
+                            await abrirWhatsApp(contato.value, conviteGrupo);
+                          } catch (e) {
+                            if (!dialogContext.mounted) return;
+                            ScaffoldMessenger.of(dialogContext).showSnackBar(
+                              SnackBar(content: Text('Não foi possível abrir WhatsApp: $e')),
+                            );
+                          }
+                        },
+                        icon: const Icon(Icons.group_add_outlined),
+                        label: Text('Convidar ${contato.key}'),
+                      ),
+                    ),
+                ],
+                if (acessoValido) ...[
+                  const SizedBox(height: 12),
+                  const Text('Dados da Área do Aluno',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 7),
+                  for (final contato in numeros.entries)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: OutlinedButton.icon(
+                        onPressed: () async {
+                          try {
+                            await abrirWhatsApp(contato.value, mensagemAcesso);
+                          } catch (e) {
+                            if (!dialogContext.mounted) return;
+                            ScaffoldMessenger.of(dialogContext).showSnackBar(
+                              SnackBar(content: Text('Não foi possível abrir WhatsApp: $e')),
+                            );
+                          }
+                        },
+                        icon: const Icon(Icons.school_outlined),
+                        label: Text('Enviar acesso para ${contato.key}'),
+                      ),
+                    ),
+                ],
+              ],
+            )),
+          ),
+          actions: [TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Concluir'),
+          )],
+        ),
+      );
+    } catch (e) {
+      debugPrint('Convite pós-cadastro indisponível: $e');
+    }
+  }
+
   Future<void> _saveForm() async {
     if (_salvandoAluno) return;
     if (!_isMounted || !_formKey.currentState!.validate()) return;
 
     // O fluxo de edição cadastral não transfere, ativa ou desativa alunos.
     // Apenas a criação de alunos novos exige vínculo inicial com turma.
+    if (_isFromInscricao &&
+        (widget.dadosInscricao!['id']?.toString().trim().isNotEmpty != true)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Não é possível converter uma inscrição sem identificação.'),
+      ));
+      return;
+    }
     if (!_isEditing && _statusAtividade == 'ATIVO(A)' &&
         (_academiaId == null || _academiaId!.isEmpty ||
          _turmaId == null || _turmaId!.isEmpty)) {
@@ -1899,6 +2270,14 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
       ));
       return;
     }
+
+     if (!_isEditing && _pickedImage == null &&
+         (_networkImageUrl == null || _networkImageUrl!.isEmpty)) {
+       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+         content: Text('Adicione uma foto para cadastrar o aluno.'),
+       ));
+       return;
+     }
 
     final deveValidarLotacao = !_isEditing;
 
@@ -1937,6 +2316,24 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
     }
     if (!mounted) return;
 
+    // Falhar antes de gravar aluno/foto caso a ficha sensível esteja incompleta.
+    // A confirmação final da ficha ocorre na Function protegida.
+    if (_fichaAssinaturaCarregada != _assinaturaFicha(_fichaComplementar)) {
+      if (_isEditing && !_fichaRestritaCarregada) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Ficha protegida indisponível. Reabra a tela antes de salvar alterações de saúde.'),
+        ));
+        return;
+      }
+      final errosFicha = validarFichaUai(_fichaComplementar);
+      if (errosFicha.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Complete a ficha complementar: ${errosFicha.first}'),
+        ));
+        return;
+      }
+    }
+
     _safeSetState(() => _salvandoAluno = true);
     _mostrarSplashSalvandoAluno(
       mensagem: _pickedImage != null
@@ -1953,7 +2350,10 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
     String? fotoAntigaPendenteExcluir;
     Uint8List? fotoAntigaBytesBackup;
     final alunosCollection = FirebaseFirestore.instance.collection('alunos');
-    String? alunoIdSalvo = widget.alunoId ?? alunosCollection.doc().id;
+     _idCadastroEmAndamento ??= _isFromInscricao
+         ? 'inscricao_${widget.dadosInscricao!['id']}'
+         : alunosCollection.doc().id;
+     String alunoIdSalvo = widget.alunoId ?? _idCadastroEmAndamento!;
     bool backupFotoAntigaConcluido = false;
     DateTime? fotoAntigaDataReferencia;
 
@@ -2191,6 +2591,10 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
          dataToSave.remove('endereco_versao');
          dataToSave['endereco'] = _enderecoLegadoOriginal;
        }
+       _controllers['nome_contato_emergencia']!.text =
+           _controllers['nome_responsavel']!.text.trim();
+       _controllers['contato_emergencia']!.text =
+           _controllers['contato_responsavel']!.text.trim();
        final grauEmergencia = _controllers['grau_emergencia']!.text.trim();
        final mesmoContatoResponsavel =
            _controllers['nome_contato_emergencia']!.text.trim().toUpperCase() ==
@@ -2205,7 +2609,8 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
          familia['grau_responsavel'] = grauEmergencia;
          _fichaComplementar['familia'] = familia;
        }
-      dataToSave['ficha_complementar'] = _fichaComplementar;
+      // Informação sensível: salvar somente em fichas_inscricao via Cloud Function.
+      // Não duplicar saúde no documento de leitura geral alunos.
       dataToSave['contatos_emergencia_adicionais'] = _contatosEmergenciaAdicionais;
 
       for (final campo in const ['cpf', 'contato_aluno', 'contato_responsavel', 'contato_emergencia']) {
@@ -2269,7 +2674,50 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
         dataToSave.addAll(camposGraduacao);
       }
 
-      dataToSave.addAll(camposObrigatorios);
+       dataToSave.addAll(camposObrigatorios);
+       if (!_isEditing && !_isFromInscricao && _pickedImage != null) {
+         dataToSave['foto_cadastro_versao'] =
+             'cadastro_${_idCadastroEmAndamento ?? DateTime.now().microsecondsSinceEpoch}';
+         dataToSave['foto_cadastro_em'] = FieldValue.serverTimestamp();
+         dataToSave['foto_cadastro_data_tipo'] = 'cadastro';
+       }
+       if (_isFromInscricao) {
+         final origem = widget.dadosInscricao!;
+         final inscricaoId = origem['id']?.toString().trim() ?? '';
+         if (inscricaoId.isEmpty) {
+           throw StateError('A inscrição não possui identificação válida.');
+         }
+         dataToSave['inscricao_id'] = inscricaoId;
+         for (final campo in const [
+           'email_conta_uai', 'conta_uai_uid', 'email_confirmado',
+           'metodo_confirmacao_email', 'ficha_inscricao_id',
+           'grau_responsavel', 'is_maior_idade',
+         ]) {
+           if (origem[campo] != null) dataToSave[campo] = origem[campo];
+         }
+         if (_networkImageUrl != null && _networkImageUrl!.isNotEmpty) {
+           dataToSave['foto_inscricao_url'] =
+               (origem['foto_url'] ?? _networkImageUrl).toString();
+           final captura = origem['foto_capturada_em_ms'];
+           dataToSave['foto_inscricao_em'] = captura is num && captura > 0
+               ? Timestamp.fromMillisecondsSinceEpoch(captura.toInt())
+               : origem['data_inscricao'] is Timestamp
+                   ? origem['data_inscricao']
+                   : FieldValue.serverTimestamp();
+           dataToSave['foto_inscricao_data_tipo'] = captura is num && captura > 0
+               ? 'captura' : 'envio';
+         }
+         // A versão é o gatilho da fila fotográfica automática do cadastro.
+         dataToSave['foto_cadastro_versao'] =
+             'inscricao_${inscricaoId}_${DateTime.now().microsecondsSinceEpoch}';
+         dataToSave['foto_cadastro_em'] = FieldValue.serverTimestamp();
+         dataToSave['foto_cadastro_data_tipo'] = 'cadastro';
+         // Nunca perder o endereço público original quando a leitura é ambígua.
+         if (!dataToSave.containsKey('endereco') &&
+             (origem['endereco']?.toString().trim().isNotEmpty ?? false)) {
+           dataToSave['endereco'] = origem['endereco'].toString();
+         }
+       }
 
       if (_isEditing) {
         // Alterações estruturais são exclusivas dos fluxos auditáveis de
@@ -2334,17 +2782,6 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
             }..removeWhere((key, value) => value == null);
             dataToSave.addAll(camposGraduacao);
           }
-        }
-        if (!podeSalvarCapoeira && dataToSave['ficha_complementar'] is Map) {
-          final novaFicha = Map<String, dynamic>.from(
-            dataToSave['ficha_complementar'] as Map);
-          final fichaOriginal = dadosAntes['ficha_complementar'];
-          if (fichaOriginal is Map && fichaOriginal.containsKey('capoeira')) {
-            novaFicha['capoeira'] = fichaOriginal['capoeira'];
-          } else {
-            novaFicha.remove('capoeira');
-          }
-          dataToSave['ficha_complementar'] = novaFicha;
         }
         final fotoDataRaw =
             dadosAntes['foto_atualizada_em'] ?? dadosAntes['atualizado_em'];
@@ -2415,16 +2852,132 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
           }
         }
 
+        // A Cloud Function grava a ficha e seu histórico oficial na mesma
+        // transação; uma falha não é apresentada como sucesso completo.
+        await _salvarFichaRestritaSeAlterada(widget.alunoId!);
+
         // Contadores de turma não são atualizados numa edição cadastral.
       } else {
         dataToSave['criado_em'] = FieldValue.serverTimestamp();
+        dataToSave['data_do_cadastro'] = FieldValue.serverTimestamp();
+        dataToSave['cadastro_realizado_em'] = FieldValue.serverTimestamp();
+        final usuarioCadastro = FirebaseAuth.instance.currentUser;
+        var nomeCadastro = usuarioCadastro?.displayName?.trim() ?? '';
+        if (nomeCadastro.isEmpty && usuarioCadastro != null) {
+          try {
+            final perfil = await FirebaseFirestore.instance.collection('usuarios')
+                .doc(usuarioCadastro.uid).get();
+            nomeCadastro = (perfil.data()?['nome_completo'] ??
+                perfil.data()?['nome'] ?? '').toString().trim();
+          } catch (e) {
+            debugPrint('Nome de cadastro indisponível: $e');
+          }
+        }
+        if (nomeCadastro.isEmpty) nomeCadastro = usuarioCadastro?.email ?? 'Sistema';
+        dataToSave['cadastro_realizado_por'] = nomeCadastro;
+        dataToSave['cadastro_realizado_por_email'] = usuarioCadastro?.email;
+        dataToSave['cadastro_realizado_por_uid'] = usuarioCadastro?.uid;
         _atualizarSplashSalvandoAluno(
           titulo: 'Criando ficha do aluno',
           mensagem: 'Registrando os dados e vinculando a memória fotográfica…',
           progresso: 0.76,
         );
-        await alunosCollection.doc(alunoIdSalvo).set(dataToSave);
+         if (_isFromInscricao) {
+           final inscricaoId = widget.dadosInscricao!['id'].toString();
+           final db = FirebaseFirestore.instance;
+           final alunoRef = alunosCollection.doc(alunoIdSalvo);
+           final inscricaoRef = db.collection('inscricoes').doc(inscricaoId);
+           final aprovadaRef = db.collection('inscricoes_aprovadas').doc(inscricaoId);
+           await db.runTransaction((tx) async {
+             // Todos os reads precedem writes. Operação idempotente.
+             final atual = await tx.get(inscricaoRef);
+             final aprovado = await tx.get(aprovadaRef);
+             final alunoAtual = await tx.get(alunoRef);
+             if (!atual.exists) {
+               if (aprovado.data()?['aluno_id'] == alunoIdSalvo &&
+                   alunoAtual.data()?['inscricao_id']?.toString() == inscricaoId) {
+                 return; // Conversão já concluída na tentativa anterior.
+               }
+               throw StateError('Inscrição indisponível. Atualize a lista antes de tentar novamente.');
+             }
+             if (alunoAtual.exists &&
+                 alunoAtual.data()?['inscricao_id']?.toString() != inscricaoId) {
+               throw StateError('Conflito de cadastro: o aluno existente pertence a outra inscrição.');
+             }
+             if (aprovado.exists && aprovado.data()?['aluno_id'] != alunoIdSalvo) {
+               throw StateError('Esta inscrição já possui outra conversão registrada.');
+             }
+             final dadosOriginais = atual.data()!;
+             final timeline = <dynamic>[
+               ...((dadosOriginais['timeline'] is List)
+                   ? dadosOriginais['timeline'] as List : const []),
+               {
+                 'tipo': 'inscricao_aprovada',
+                 'titulo': 'Inscrição aprovada',
+                 'descricao': 'Convertida em aluno na turma ${_nomeTurmaAtual()}.',
+                 'data': Timestamp.now(),
+                 'origem': 'cadastro_unificado',
+                 'usuario_uid': FirebaseAuth.instance.currentUser?.uid,
+               }
+             ];
+             if (!alunoAtual.exists) {
+               tx.set(alunoRef, dataToSave);
+             } else {
+               final complementos = Map<String, dynamic>.from(dataToSave);
+               for (final campo in const [
+                 'criado_em', 'data_do_cadastro', 'cadastro_realizado_em',
+                 'cadastro_realizado_por', 'cadastro_realizado_por_email',
+                 'cadastro_realizado_por_uid',
+               ]) {
+                 complementos.remove(campo);
+               }
+               tx.set(alunoRef, complementos, SetOptions(merge: true));
+             }
+             tx.set(aprovadaRef, {
+               ...dadosOriginais,
+               'aluno_id': alunoIdSalvo,
+               'aluno_nome': _controllers['nome']!.text.trim(),
+               'aluno_apelido': _controllers['apelido']!.text.trim(),
+               'turma_id': _turmaId,
+               'turma_nome': _nomeTurmaAtual(),
+               'academia_id': _academiaId,
+               'academia_nome': _nomeAcademiaAtual(),
+               'aprovado_em': FieldValue.serverTimestamp(),
+               'aprovado_por_uid': FirebaseAuth.instance.currentUser?.uid,
+               'aprovado_por': FirebaseAuth.instance.currentUser?.displayName ??
+                   FirebaseAuth.instance.currentUser?.email ?? 'Sistema',
+               'status': 'aprovado',
+               'etapa_atendimento': 'convertida_em_aluno',
+               'timeline': timeline,
+             });
+             tx.delete(inscricaoRef);
+           });
+         } else {
+           await alunosCollection.doc(alunoIdSalvo).set(dataToSave);
+         }
         escritaAlunoConfirmada = true;
+        if (_isFromInscricao) {
+          // O histórico é reconstruível a partir de inscricoes_aprovadas:
+          // IDs determinísticos impedem duplicatas mesmo após interrupções.
+          try {
+            final registro = await FirebaseFirestore.instance
+                .collection('inscricoes_aprovadas')
+                .doc(widget.dadosInscricao!['id'].toString()).get();
+            final timeline = registro.data()?['timeline'];
+            if (timeline is List && timeline.isNotEmpty) {
+              await AlunoHistoricoEdicaoService().registrarProcessoInscricao(
+                alunoId: alunoIdSalvo,
+                inscricaoId: widget.dadosInscricao!['id'].toString(),
+                timeline: timeline,
+                alunoNome: _controllers['nome']!.text.trim(),
+              );
+            }
+          } catch (e) {
+            // Não desfazer um commit atômico que já criou o aluno e arquivou
+            // a inscrição. O histórico original fica no documento aprovado.
+            debugPrint('Histórico da inscrição aguardando sincronização: $e');
+          }
+        }
         unawaited(SessionLogService.instance.recordEntityOperation(
           module: 'alunos.editar', entityType: 'aluno',
           entityId: alunoIdSalvo, operation: 'criou', result: 'sucesso',
@@ -2433,6 +2986,12 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
         if (_turmaId != null && _turmaId!.isNotEmpty) {
           await _atualizarContadorTurma(_turmaId!);
         }
+      }
+
+      if (!_isEditing) {
+        // Em novo cadastro, somente tentar gravar ficha se o usuário a
+        // preencheu. A gravação usa o aluno recém-criado como referência.
+        await _salvarFichaRestritaSeAlterada(alunoIdSalvo);
       }
 
       _atualizarSplashSalvandoAluno(
@@ -2472,6 +3031,8 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
 
       if (mounted) {
         _fecharSplashSalvandoAluno();
+        if (!_isEditing) await _oferecerConvitesPosCadastro();
+        if (!mounted) return;
         final mensagem = !_isEditing
             ? 'Aluno criado!'
             : mudouTurmaOuAcademiaAoSalvar
@@ -2483,7 +3044,7 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(mensagem)));
-        Navigator.of(context).pop();
+        Navigator.of(context).pop(true);
       }
     } catch (e) {
       if (!escritaAlunoConfirmada) {
@@ -2851,6 +3412,8 @@ _buildSecaoCompacta('contato', 'Contato', [
                             'Contato do Responsável',
                             keyboardType: TextInputType.phone,
                           ),
+                          _buildParentescoEmergencia(),
+                          _buildContatosEmergenciaAdicionais(),
                                                     ]),
 _buildSecaoCompacta('endereco', 'Endereço', [
 
@@ -2910,16 +3473,6 @@ _buildSecaoCompacta('endereco', 'Endereço', [
 
                            // Campos compartilhados com a inscrição pública.
                                                     ]),
-_buildSecaoCompacta('complementares', 'Dados complementares da inscrição', [
-
-                           _buildTextField(_controllers['nome_contato_emergencia']!, 'Nome do contato de emergência'),
-                           _buildTextField(_controllers['contato_emergencia']!, 'Telefone de emergência', keyboardType: TextInputType.phone),
-                           _buildParentescoEmergencia(),
-                                                    ]),
-_buildSecaoCompacta('emergencia', 'Contatos adicionais de emergência', [
-
-                           _buildContatosEmergenciaAdicionais(),
-                                                    ]),
 _buildSecaoCompacta('saude', 'Ficha complementar • Saúde', [
 
                            FichaComplementarFields(
@@ -2953,7 +3506,8 @@ _buildSecaoCompacta('capoeira_ficha', 'Ficha complementar • Capoeira', [
 
                           // Seleção de Academia
                           DropdownButtonFormField<String>(
-                            initialValue: _academiaId,
+                            key: ValueKey('academia_${_academiaId ?? ''}'),
+                             initialValue: _academiaId,
                             items: [
                               DropdownMenuItem(
                                 value: null,
@@ -2995,7 +3549,8 @@ _buildSecaoCompacta('capoeira_ficha', 'Ficha complementar • Capoeira', [
                           Stack(
                             children: [
                               DropdownButtonFormField<String>(
-                                initialValue: _turmaId,
+                                key: ValueKey('turma_${_turmaId ?? ''}'),
+                                 initialValue: _turmaId,
                                 items: [
                                   DropdownMenuItem(
                                     value: null,
@@ -3251,7 +3806,7 @@ _buildSecaoCompacta('capoeira_ficha', 'Ficha complementar • Capoeira', [
       initialValue: reconhecido ? selecionado : null,
       isExpanded: true,
       decoration: InputDecoration(
-        labelText: 'Parentesco do contato de emergência',
+        labelText: 'O responsável é o quê do aluno?',
         prefixIcon: const Icon(Icons.family_restroom_rounded),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
         helperText: selecionado.isNotEmpty && !reconhecido

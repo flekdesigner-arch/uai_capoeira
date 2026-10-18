@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart';
 
 class LockChamadaService {
   static final Map<String, Timer> _timers = {}; // Para controle de heartbeat
-  static final Map<String, bool> _lockStatus = {}; // Cache do status
 
   // 🔥 VERIFICAR DISPONIBILIDADE
   static Future<bool> verificarDisponibilidade(

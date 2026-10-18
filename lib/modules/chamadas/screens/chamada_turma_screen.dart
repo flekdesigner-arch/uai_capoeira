@@ -67,7 +67,6 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
   }
 
   Color _onCard() => _readableOn(context.uai.card);
-  Color _onCardMuted() => _onCard().withAlpha(173);
   Color _appBarBg() =>
       Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
   Color _appBarFg() =>
@@ -134,8 +133,6 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
 
   // Dados da turma
   List<String> _diasTreinoTurma = [];
-  String _diaSemanaHoje = '';
-  String _diaSemanaAbrevHoje = '';
   String _tipoAulaHoje = 'OBJETIVA';
   Map<String, dynamic>? _chamadaExistente;
 
@@ -151,7 +148,6 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
 
   // UI
   final Map<String, Map<String, dynamic>> _graduacoesCache = {};
-  String? _svgContent;
 
   // 🔥 OTIMIZAÇÃO DE UI / CACHE LOCAL
   Timer? _buscaDebounce;
@@ -161,7 +157,6 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
 
   // Cache global enquanto o app está aberto para não baixar graduação/SVG toda hora.
   static final Map<String, Map<String, dynamic>> _graduacoesGlobalCache = {};
-  static String? _svgGlobalContent;
 
   // 🔥 ANIMAÇÕES
   late AnimationController _animationController;
@@ -169,7 +164,6 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
   late Animation<Offset> _slideAnimation;
 
   // 🔥 CONTROLE DA ANIMAÇÃO DE SALVAMENTO
-  bool _mostrarProgresso = false;
   String _statusMensagem = '';
 
   // 🧠 MODO BRINCADEIRA DA CHAMADA
@@ -666,8 +660,6 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
       }
 
       setState(() {
-        _diaSemanaHoje = diaSemanaCompleto;
-        _diaSemanaAbrevHoje = diaSemanaAbrev;
         _dataChamada = agora;
         _tipoAulaHoje = tipoAulaHoje;
       });
@@ -776,7 +768,6 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
       });
 
       _preloadGraduacoes();
-      _loadSvg();
     } catch (e) {
       debugPrint('❌ Erro ao carregar alunos: $e');
       setState(() {
@@ -788,27 +779,6 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
           _isLoading = false;
         });
       }
-    }
-  }
-
-  Future<void> _loadSvg() async {
-    try {
-      if (_svgGlobalContent != null) {
-        if (mounted) setState(() => _svgContent = _svgGlobalContent);
-        return;
-      }
-
-      final content = await DefaultAssetBundle.of(
-        context,
-      ).loadString('assets/images/corda.svg');
-
-      _svgGlobalContent = content;
-
-      if (mounted) {
-        setState(() => _svgContent = content);
-      }
-    } catch (e) {
-      debugPrint('⚠️ Erro ao carregar SVG: $e');
     }
   }
 
@@ -1216,7 +1186,6 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
     });
 
     _preloadGraduacoes();
-    _loadSvg();
   }
 
   void _agendarTelepatiaSeAtiva() {
@@ -1851,19 +1820,6 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
     );
   }
 
-  String _formatarDiaParaComparacao(String dia) {
-    final lower = dia.toLowerCase();
-    return lower
-        .replaceAll('segunda', 'seg')
-        .replaceAll('terça', 'ter')
-        .replaceAll('terca', 'ter')
-        .replaceAll('quarta', 'qua')
-        .replaceAll('quinta', 'qui')
-        .replaceAll('sexta', 'sex')
-        .replaceAll('sábado', 'sab')
-        .replaceAll('sabado', 'sab')
-        .replaceAll('domingo', 'dom');
-  }
 
   void _invalidarCacheFiltro() {
     _cacheAssinaturaFiltro = '';
@@ -2331,7 +2287,6 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
 
     setState(() {
       _salvandoChamada = true;
-      _mostrarProgresso = true;
       _statusMensagem = 'Enviando para processamento...';
     });
     _animationController.forward();
@@ -2395,7 +2350,6 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
       debugPrint('❌ Erro ao processar chamada: $e');
       setState(() {
         _salvandoChamada = false;
-        _mostrarProgresso = false;
       });
 
       if (mounted) {
@@ -2411,7 +2365,6 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
       if (mounted) {
         setState(() {
           _salvandoChamada = false;
-          _mostrarProgresso = false;
         });
       }
     }
@@ -3137,15 +3090,6 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
     );
   }
 
-  Widget _placeholderIcon({double size = 50}) {
-    return Center(
-      child: Icon(
-        Icons.person_rounded,
-        size: size,
-        color: context.uai.textMuted,
-      ),
-    );
-  }
 
   // ============================================
   // HEADER DA CHAMADA
@@ -3327,133 +3271,10 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
     );
   }
 
-  Widget _buildHeaderSlimStat({
-    required String label,
-    required String value,
-    required IconData icon,
-    required Color color,
-  }) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
-        decoration: BoxDecoration(
-          color: _onPrimary().withAlpha(33),
-          borderRadius: BorderRadius.circular(13),
-          border: Border.all(color: _onPrimary().withAlpha(41)),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 15, color: color),
-            SizedBox(width: 5),
-            Text(
-              value,
-              style: TextStyle(
-                color: color,
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            SizedBox(width: 4),
-            Flexible(
-              child: Text(
-                label,
-                style: TextStyle(
-                  color: _onPrimary().withAlpha(194),
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
-  Widget _buildHeaderMetricCard({
-    required String value,
-    required String label,
-    required IconData icon,
-    required Color color,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 11),
-      decoration: BoxDecoration(
-        color: context.uai.card.withAlpha(33),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: context.uai.card.withAlpha(31)),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: color, size: 20),
-          SizedBox(height: 4),
-          Text(
-            value,
-            style: TextStyle(
-              color: color,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          Text(
-            label,
-            style: TextStyle(
-              color: _onPrimary().withAlpha(199),
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildStatItem({
-    required String value,
-    required String label,
-    required Color color,
-    required IconData icon,
-  }) {
-    final accent = _ensureVisible(color, context.uai.card);
 
-    return Column(
-      children: [
-        Row(
-          children: [
-            Icon(icon, size: 14, color: accent),
-            const SizedBox(width: 4),
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: accent,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 2),
-        Text(
-          label,
-          style: TextStyle(fontSize: 10, color: context.uai.textSecondary),
-        ),
-      ],
-    );
-  }
 
-  String _getStatusText(int presentes, int total) {
-    if (presentes == 0) return 'NENHUM PRESENTE';
-    if (presentes == total) return 'TODOS PRESENTES';
-    return 'CHAMADA EM ANDAMENTO';
-  }
-
-  Color _getStatusColor(int presentes, int total) {
-    if (presentes == 0) return context.uai.error;
-    if (presentes == total) return context.uai.success;
-    return context.uai.warning;
-  }
 
   Color _getTipoAulaColor(String tipoAula) {
     switch (tipoAula.toUpperCase()) {

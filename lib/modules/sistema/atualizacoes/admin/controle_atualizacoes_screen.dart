@@ -34,6 +34,7 @@ import 'package:uai_capoeira/modules/sistema/atualizacoes/services/atualizacoes_
 import 'package:uai_capoeira/modules/sistema/atualizacoes/models/local_publish_automation_models.dart';
 import 'package:uai_capoeira/modules/sistema/atualizacoes/services/local_apk_file_loader_factory.dart';
 import 'package:uai_capoeira/modules/sistema/atualizacoes/services/local_publish_platform_service.dart';
+import 'package:uai_capoeira/modules/sistema/atualizacoes/services/release_notes_reader.dart';
 import 'package:uai_capoeira/modules/sistema/atualizacoes/services/local_publish_runner_base.dart';
 import 'package:uai_capoeira/modules/sistema/atualizacoes/services/local_publish_runner_factory.dart';
 import 'package:uai_capoeira/modules/sistema/atualizacoes/widgets/local_publish_automation_panel.dart';
@@ -2224,6 +2225,29 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
     );
   }
 
+  Future<void> _importarNotasDoProjeto() async {
+    try {
+      final notas = await lerNotasReleaseProjeto();
+      if (!mounted) return;
+      if (notas == null) {
+        _snack('Manifesto nao encontrado. Execute a Central na pasta do projeto ou confira release_notes/proxima_versao.json.', color: context.uai.warning);
+        return;
+      }
+      String texto(String campo) => ((notas[campo] as List).cast<String>()).join('\n');
+      setState(() {
+        _resumoController.text = (notas['resumo'] as String? ?? '').trim();
+        _implementacoesController.text = texto('implementacoes');
+        _melhoriasController.text = texto('melhorias');
+        _correcoesController.text = texto('correcoes');
+        _removidosController.text = texto('removidos');
+        _observacoesController.text = texto('observacoes_internas');
+      });
+      _snack('Notas importadas. Revise o texto antes de publicar.', color: context.uai.success);
+    } catch (e) {
+      if (mounted) _snack('Falha ao ler notas: $e', color: context.uai.error);
+    }
+  }
+
   Widget _buildAbaNovaVersao(BuildContext context) {
     final t = context.uai;
     final versaoDigitada = _versaoController.text.trim().isEmpty
@@ -2236,6 +2260,25 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
         const SizedBox(height: 14),
         _buildReleaseChannelCard(),
         const SizedBox(height: 14),
+        if (_platformInfo.canRunLocalAutomation) ...[
+          _sectionCard(
+            title: 'Notas automáticas da próxima versão',
+            icon: Icons.auto_awesome_rounded,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text('O gerador ZIP leva o manifesto para as IAs. Depois de aplicar os patches, importe as notas locais e revise antes de lançar.'),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: _automationRunning || _salvando ? null : _importarNotasDoProjeto,
+                  icon: const Icon(Icons.file_download_outlined),
+                  label: const Text('Importar notas do projeto'),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+        ],
         _sectionCard(
           title: 'Identificação da versão',
           icon: Icons.edit_note_rounded,

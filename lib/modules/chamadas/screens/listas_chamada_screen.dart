@@ -20,10 +20,26 @@ Color _readableOn(Color background) {
 
 Color _onCard(BuildContext context) => _readableOn(context.uai.card);
 Color _onCardMuted(BuildContext context) => _onCard(context).withAlpha(173);
-Color _onPrimary(BuildContext context) => _readableOn(context.uai.primary);
 
 // Cache em memória para fotos antigas de chamadas.
 // Evita FutureBuilder/consulta aluno por aluno dentro dos cards.
+// Mensagem de falha compartilhada pelos fluxos de exclusão de chamadas.
+String _mensagemErroExclusao(Object erro) {
+  final texto = erro.toString();
+  final lower = texto.toLowerCase();
+  if (lower.contains('channel') ||
+      lower.contains('unable to establish connection') ||
+      lower.contains('cloud functions')) {
+    return 'Esta ação deve ser feita pelo PWA ou APK nesta versão.';
+  }
+  if (erro is FirebaseFunctionsException &&
+      erro.message != null &&
+      erro.message!.trim().isNotEmpty) {
+    return erro.message!;
+  }
+  return 'Não foi possível excluir a chamada. Tente novamente.';
+}
+
 class _FotosAlunosChamadaCache {
   static final Map<String, String> fotosPorAlunoId = <String, String>{};
   static final Set<String> idsConsultados = <String>{};
@@ -71,8 +87,6 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   Color _onCard([BuildContext? c]) => _readableOn((c ?? context).uai.card);
   Color _onCardMuted([BuildContext? c]) =>
       _onCard(c ?? context).withAlpha(173);
-  Color _onPrimary([BuildContext? c]) =>
-      _readableOn((c ?? context).uai.primary);
 
   Color _appButtonBg() =>
       Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
@@ -678,10 +692,6 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
     return chaves.any((chave) => _permissoes[chave] == true);
   }
 
-  bool _temPermissao(String permissao) {
-    if (_usuarioAtualEhAdmin()) return true;
-    return _permissoes[permissao] == true;
-  }
 
   bool get _podeEditarChamada => _temPermissaoDiretaOuAlias(const [
     'pode_editar_chamada',
@@ -2465,18 +2475,6 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
         .trim();
   }
 
-  String? _alunoFotoFromMap(Map<String, dynamic> alunoMap) {
-    final value =
-        alunoMap['foto_perfil_aluno'] ??
-            alunoMap['foto_url'] ??
-            alunoMap['foto'] ??
-            alunoMap['imagem_url'] ??
-            alunoMap['avatar_url'];
-
-    final foto = value?.toString().trim();
-    if (foto == null || foto.isEmpty) return null;
-    return foto;
-  }
 
   String? _fotoAlunoChamada(Map<String, dynamic> alunoMap) {
     return AlunoFotoResolver.resolverSincrono(alunoMap);
@@ -2790,21 +2788,6 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
     );
   }
 
-  String _mensagemErroExclusao(Object erro) {
-    final texto = erro.toString();
-    final lower = texto.toLowerCase();
-    if (lower.contains('channel') ||
-        lower.contains('unable to establish connection') ||
-        lower.contains('cloud functions')) {
-      return 'Esta ação deve ser feita pelo PWA ou APK nesta versão.';
-    }
-    if (erro is FirebaseFunctionsException &&
-        erro.message != null &&
-        erro.message!.trim().isNotEmpty) {
-      return erro.message!;
-    }
-    return 'Não foi possível excluir a chamada. Tente novamente.';
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -3288,21 +3271,6 @@ class _DiaSemanaHeader extends StatelessWidget {
 
   const _DiaSemanaHeader(this.label);
 
-  String _mensagemErroExclusao(Object erro) {
-    final texto = erro.toString();
-    final lower = texto.toLowerCase();
-    if (lower.contains('channel') ||
-        lower.contains('unable to establish connection') ||
-        lower.contains('cloud functions')) {
-      return 'Esta ação deve ser feita pelo PWA ou APK nesta versão.';
-    }
-    if (erro is FirebaseFunctionsException &&
-        erro.message != null &&
-        erro.message!.trim().isNotEmpty) {
-      return erro.message!;
-    }
-    return 'Não foi possível excluir a chamada. Tente novamente.';
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -3335,7 +3303,7 @@ class _EditarChamadaDialog extends StatefulWidget {
     required this.alunos,
     required this.turmaNome,
     required this.onChamadaEditada,
-    this.podeExcluirChamada = false,
+    required this.podeExcluirChamada,
   });
 
   @override
@@ -4432,21 +4400,6 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
     }
   }
 
-  String _mensagemErroExclusao(Object erro) {
-    final texto = erro.toString();
-    final lower = texto.toLowerCase();
-    if (lower.contains('channel') ||
-        lower.contains('unable to establish connection') ||
-        lower.contains('cloud functions')) {
-      return 'Esta ação deve ser feita pelo PWA ou APK nesta versão.';
-    }
-    if (erro is FirebaseFunctionsException &&
-        erro.message != null &&
-        erro.message!.trim().isNotEmpty) {
-      return erro.message!;
-    }
-    return 'Não foi possível excluir a chamada. Tente novamente.';
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -5340,10 +5293,9 @@ class DetalhesChamadaScreen extends StatefulWidget {
 
 class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
   final TextEditingController _buscaController = TextEditingController();
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
 
   bool _abrindoPerfilAluno = false;
-  String? _excluindoChamadaId;
   String _busca = '';
   String _filtro = 'TODOS';
 
@@ -5462,18 +5414,6 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
         .trim();
   }
 
-  String? _alunoFotoFromMap(Map<String, dynamic> alunoMap) {
-    final value =
-        alunoMap['foto_perfil_aluno'] ??
-            alunoMap['foto_url'] ??
-            alunoMap['foto'] ??
-            alunoMap['imagem_url'] ??
-            alunoMap['avatar_url'];
-
-    final foto = value?.toString().trim();
-    if (foto == null || foto.isEmpty) return null;
-    return foto;
-  }
 
   String? _fotoAlunoDetalhes(Map<String, dynamic> alunoMap) {
     return AlunoFotoResolver.resolverSincrono(alunoMap);
@@ -5559,22 +5499,6 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
     } finally {
       _abrindoPerfilAluno = false;
     }
-  }
-
-  String _mensagemErroExclusao(Object erro) {
-    final texto = erro.toString();
-    final lower = texto.toLowerCase();
-    if (lower.contains('channel') ||
-        lower.contains('unable to establish connection') ||
-        lower.contains('cloud functions')) {
-      return 'Esta ação deve ser feita pelo PWA ou APK nesta versão.';
-    }
-    if (erro is FirebaseFunctionsException &&
-        erro.message != null &&
-        erro.message!.trim().isNotEmpty) {
-      return erro.message!;
-    }
-    return 'Não foi possível excluir a chamada. Tente novamente.';
   }
 
   @override

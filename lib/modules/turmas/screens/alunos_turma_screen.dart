@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uai_capoeira/modules/inscricoes/services/ficha_callable_client.dart';
 import 'package:flutter/material.dart';
 import 'package:uai_capoeira/core/emergency_offline/offline_readonly_views.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -129,23 +131,19 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
 
   bool _isOnline = true;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
-  bool _isRefreshing = false;
 
   String? _svgContent;
   String _searchQuery = '';
   Timer? _searchDebounce; // Debounce para busca avançada
   int _viewMode = 0;
-  final List<IconData> _viewModeIcons = [
-    Icons.view_list_rounded,
-    Icons.warning_amber_rounded,
-    Icons.workspace_premium_rounded,
-    Icons.format_list_bulleted_rounded,
-  ];
+  int _preferredViewMode = 0;
+  static const _viewPreferenceKey = 'uai_alunos_turma_layout_v1';
   final List<String> _viewModeTooltips = [
-    'Visual principal',
-    'Filtrar por Indicadores',
-    'Filtrar por Graduação',
-    'Lista compacta',
+    'Lista padrão',
+    'Card em grade',
+    'Filtrar por indicadores',
+    'Filtrar por graduação',
+    'Lista compacta (filtro)',
   ];
 
   String? _indicadorExpandidoKey;
@@ -157,6 +155,9 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
   final Map<String, Map<String, dynamic>> _graduacoesCache = {};
   final Map<String, String> _svgCache = {};
   final Map<String, bool> _graduacaoValidaCache = {};
+  // Uma busca por graduação, não uma busca por card/aluno.
+  final Map<String, Future<Map<String, dynamic>?>> _coresGraduacaoFutures = {};
+
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _alunosCache = [];
   int _capacidadeMaximaTurma = 0;
@@ -192,6 +193,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
       if (!mounted) return;
       _registrarCacaBugAberturaLista(origem: 'initState_post_frame');
     });
+    _restaurarVisualizacao();
     _carregarPermissoes();
     _loadSvg();
     _preloadGraduacoes();
@@ -449,10 +451,38 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     _atualizarBuscaAlunos('');
   }
 
-  void _alterarViewMode() {
-    final novoModo = (_viewMode + 1) % 4;
-    setState(() => _viewMode = novoModo);
+  Future<void> _restaurarVisualizacao() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final modo = prefs.getInt(_viewPreferenceKey) ?? 0;
+      if (!mounted) return;
+      setState(() {
+        _preferredViewMode = modo == 1 ? 1 : 0;
+        _viewMode = _preferredViewMode;
+      });
+    } catch (e) {
+      debugPrint('Preferência de visualização indisponível: $e');
+    }
+  }
+
+  Future<void> _selecionarVisualizacaoPersistente(int novoModo) async {
+    if (novoModo != 0 && novoModo != 1) return;
+    setState(() {
+      _preferredViewMode = novoModo;
+      _viewMode = novoModo;
+    });
     _registrarCacaBugMudouVisualizacao(novoModo);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_viewPreferenceKey, novoModo);
+    } catch (e) {
+      debugPrint('Não foi possível salvar preferência visual: $e');
+    }
+  }
+
+  void _aplicarFiltroVisual(int modo) {
+    setState(() => _viewMode = modo);
+    _registrarCacaBugMudouVisualizacao(modo);
   } // ======================== NORMALIZAÇÃO E BUSCA AVANÇADA ========================
 
   String _normalizeString(String text) {
@@ -621,13 +651,26 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
       );
       return;
     }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Row(children: [
+          SizedBox(width: 16, height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+          SizedBox(width: 10),
+          Expanded(child: Text('Buscando dados atualizados do servidor...')),
+        ]),
+        backgroundColor: context.uai.primary,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 3),
+      ),
+    );
     setState(() {
-      _isRefreshing = true;
       _isLoading = true;
     });
     try {
       _cache.limparTodoCache();
       _graduacoesCache.clear();
+      _coresGraduacaoFutures.clear();
       _svgCache.clear();
       _graduacaoValidaCache.clear();
       await _limparCacheImagens();
@@ -668,7 +711,6 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     } finally {
       if (mounted) {
         setState(() {
-          _isRefreshing = false;
           _isLoading = false;
         });
       }
@@ -831,6 +873,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
       }
 
       _graduacoesCache.clear();
+      _coresGraduacaoFutures.clear();
 
       for (final doc in snapshot.docs) {
         _salvarGraduacaoNoCache(doc.id, doc.data());
@@ -1156,18 +1199,6 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     );
   }
 
-  String _labelAusenciaPorDias(int? dias) {
-    final faixa = _faixaAusenciaPorDias(dias);
-    final label = faixa?['label']?.toString().trim() ?? '';
-    return label.isEmpty ? 'Indicador' : label;
-  }
-
-  String _textoAusenciaPorDias(int? dias) {
-    if (dias == null) return '?';
-    if (dias <= 0) return 'HOJ';
-    return '${dias}d';
-  }
-
   String _descricaoAusenciaPorDias(int? dias) {
     if (dias == null) return 'Sem registro de última presença';
     if (dias <= 0) return 'Última presença hoje';
@@ -1491,11 +1522,6 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     return svgString;
   }
 
-  Future<bool> _hasValidGraduation(Map<String, dynamic> data) async {
-    final svg = await _getModifiedSvg(data);
-    return svg != null;
-  }
-
   String _getGraduacaoNome(Map<String, dynamic> data) =>
       _obterNomeGraduacaoAluno(data);
 
@@ -1759,10 +1785,35 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
             tooltip: 'Linha do tempo da turma',
             onPressed: _abrirLinhaDoTempo,
           ),
-          IconButton(
-            icon: Icon(_viewModeIcons[_viewMode], color: appBarFg),
-            tooltip: _viewModeTooltips[_viewMode],
-            onPressed: _alterarViewMode,
+          PopupMenuButton<int>(
+            icon: Icon(Icons.view_module_rounded, color: appBarFg),
+            tooltip: 'Visualizações e filtros da turma',
+            initialValue: _viewMode,
+            onSelected: (modo) {
+              if (modo <= 1) {
+                _selecionarVisualizacaoPersistente(modo);
+              } else {
+                _aplicarFiltroVisual(modo);
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(value: 0, child: ListTile(
+                dense: true, leading: Icon(Icons.view_list_rounded),
+                title: Text('Lista padrão'))),
+              const PopupMenuItem(value: 1, child: ListTile(
+                dense: true, leading: Icon(Icons.grid_view_rounded),
+                title: Text('Card em grade'), subtitle: Text('Salvar preferência'))),
+              const PopupMenuDivider(),
+              const PopupMenuItem(value: 2, child: ListTile(
+                dense: true, leading: Icon(Icons.circle_outlined),
+                title: Text('Filtrar por indicadores'))),
+              const PopupMenuItem(value: 3, child: ListTile(
+                dense: true, leading: Icon(Icons.military_tech_outlined),
+                title: Text('Filtrar por graduação'))),
+              const PopupMenuItem(value: 4, child: ListTile(
+                dense: true, leading: Icon(Icons.view_headline_rounded),
+                title: Text('Lista compacta'))),
+            ],
           ),
           IconButton(
             icon: Icon(
@@ -1775,24 +1826,6 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                       ? 'Sem permissão'
                       : 'Offline - Conecte-se para cadastrar'),
             onPressed: podeAdicionar ? _abrirCadastroAluno : null,
-          ),
-          IconButton(
-            icon: _isRefreshing
-                ? SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: appBarFg,
-                    ),
-                  )
-                : Icon(Icons.refresh, color: appBarFg),
-            tooltip: _isRefreshing
-                ? 'Recarregando...'
-                : (_isOnline
-                      ? 'Recarregar do servidor (limpa cache)'
-                      : 'Offline - Conecte-se para recarregar'),
-            onPressed: _isRefreshing ? null : _forcarRecarregamento,
           ),
         ],
         bottom: PreferredSize(
@@ -1963,86 +1996,6 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     );
   }
 
-  Widget _buildResumoAlunosHeader(int filtrados) {
-    final t = context.uai;
-
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(12, 12, 12, 6),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: t.card,
-        borderRadius: BorderRadius.circular(t.cardRadius),
-        border: Border.all(color: t.border),
-        boxShadow: t.softShadow,
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 43,
-            height: 43,
-            decoration: BoxDecoration(
-              color: t.primary.withAlpha(26),
-              borderRadius: BorderRadius.circular(t.buttonRadius),
-            ),
-            child: Icon(Icons.groups_rounded, color: t.primary),
-          ),
-          const SizedBox(width: 11),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Alunos ativos',
-                  style: TextStyle(
-                    color: t.textPrimary,
-                    fontSize: 15.5,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  _searchQuery.isEmpty
-                      ? '${_alunosCache.length} aluno${_alunosCache.length == 1 ? '' : 's'} nesta turma'
-                      : '$filtrados resultado${filtrados == 1 ? '' : 's'} para a busca',
-                  style: TextStyle(
-                    color: t.textSecondary,
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (!_isOnline)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-              decoration: BoxDecoration(
-                color: t.warning.withAlpha(31),
-                borderRadius: BorderRadius.circular(99),
-                border: Border.all(color: t.warning.withAlpha(51)),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.wifi_off_rounded, size: 13, color: t.warning),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Offline',
-                    style: TextStyle(
-                      color: t.warning,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
   Widget _getCurrentView(
     List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
   ) {
@@ -2050,10 +2003,12 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
       case 0:
         return _buildVisualPrincipalResponsivo(docs);
       case 1:
-        return _buildIndicadoresView(docs);
+        return _buildCardsFotograficos(docs);
       case 2:
-        return _buildGraduacoesView(docs);
+        return _buildIndicadoresView(docs);
       case 3:
+        return _buildGraduacoesView(docs);
+      case 4:
         return _buildCompactView(docs);
       default:
         return _buildVisualPrincipalResponsivo(docs);
@@ -2155,6 +2110,280 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
             ),
           );
         },
+      ),
+    );
+  }
+
+  // Segundo layout persistente: grade equivalente aos cards da chamada.
+  Widget _buildCardsFotograficos(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
+    return RefreshIndicator(
+      color: context.uai.primary,
+      backgroundColor: context.uai.surface,
+      onRefresh: _forcarRecarregamento,
+      child: LayoutBuilder(builder: (context, constraints) {
+        final largura = constraints.maxWidth;
+        final colunas = largura >= 1400 ? 6 : largura >= 1080 ? 5
+            : largura >= 780 ? 4 : largura >= 550 ? 3 : 2;
+        const margem = 12.0;
+        const espacamento = 10.0;
+        final larguraCard = (largura - margem * 2 -
+            espacamento * (colunas - 1)) / colunas;
+        // Grade mais baixa: a foto cresce na largura, não indefinidamente na altura.
+        // Mantém espaço mínimo para presença, faixa e nome da graduação.
+        final alturaCard = larguraCard * (largura >= 1080 ? 0.94 : 1.08) + 59;
+        return GridView.builder(
+          key: const ValueKey('cardsChamada'),
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(margem, 10, margem, 24),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: colunas,
+            crossAxisSpacing: espacamento,
+            mainAxisSpacing: espacamento,
+            mainAxisExtent: alturaCard.clamp(190.0, 292.0).toDouble(),
+          ),
+          itemCount: docs.length,
+          itemBuilder: (context, i) => _buildCardFotografico(docs[i]),
+        );
+      }),
+    );
+  }
+
+  bool _coresGraduacaoValidas(Map<String, dynamic>? dados) {
+    if (dados == null) return false;
+    final cor = dados['hex_cor1']?.toString().trim() ?? '';
+    return RegExp(r'^#?[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$').hasMatch(cor);
+  }
+
+  // A corda SVG já resolve IDs e nomes ausentes do cache. A faixa agora
+  // também consulta o documento oficial antes de usar qualquer cor neutra.
+  Future<Map<String, dynamic>?> _buscarCoresGraduacao(
+    String? id, String nome,
+  ) async {
+    Map<String, dynamic>? atual = id != null ? _graduacoesCache[id] : null;
+    atual ??= _graduacoesCache[nome];
+    atual ??= _graduacoesCache[_graduacaoKey(nome)];
+    if (_coresGraduacaoValidas(atual)) return atual;
+
+    if (id != null && id.isNotEmpty) {
+      try {
+        DocumentSnapshot<Map<String, dynamic>> doc;
+        try {
+          doc = await _firestore.collection('graduacoes').doc(id)
+              .get(const GetOptions(source: Source.cache));
+          if (!doc.exists && _isOnline) {
+            doc = await _firestore.collection('graduacoes').doc(id)
+                .get(const GetOptions(source: Source.server));
+          }
+        } catch (_) {
+          doc = await _firestore.collection('graduacoes').doc(id)
+              .get(const GetOptions(source: Source.server));
+        }
+        if (doc.exists) {
+          _salvarGraduacaoNoCache(doc.id, doc.data() ?? {});
+          atual = _graduacoesCache[id];
+          if (_coresGraduacaoValidas(atual)) return atual;
+        }
+      } catch (e) {
+        debugPrint('Faixa: não foi possível resolver graduação $id: $e');
+      }
+    }
+
+    if (nome.isNotEmpty && nome != 'SEM GRADUAÇÃO') {
+      try {
+        QuerySnapshot<Map<String, dynamic>> docs;
+        try {
+          docs = await _firestore.collection('graduacoes')
+              .where('nome_graduacao', isEqualTo: nome).limit(1)
+              .get(const GetOptions(source: Source.cache));
+          if (docs.docs.isEmpty && _isOnline) {
+            docs = await _firestore.collection('graduacoes')
+                .where('nome_graduacao', isEqualTo: nome).limit(1)
+                .get(const GetOptions(source: Source.server));
+          }
+        } catch (_) {
+          docs = await _firestore.collection('graduacoes')
+              .where('nome_graduacao', isEqualTo: nome).limit(1)
+              .get(const GetOptions(source: Source.server));
+        }
+        if (docs.docs.isNotEmpty) {
+          final doc = docs.docs.first;
+          _salvarGraduacaoNoCache(doc.id, doc.data(), nomeForcado: nome);
+          atual = _graduacoesCache[_graduacaoKey(nome)];
+          if (_coresGraduacaoValidas(atual)) return atual;
+        }
+      } catch (e) {
+        debugPrint('Faixa: não foi possível resolver graduação $nome: $e');
+      }
+    }
+    return atual;
+  }
+
+  Future<Map<String, dynamic>?> _coresGraduacaoParaAluno(
+    Map<String, dynamic> aluno, String nome,
+  ) {
+    final id = aluno['graduacao_id']?.toString().trim();
+    final chave = '${id ?? ''}|${_graduacaoKey(nome)}';
+    return _coresGraduacaoFutures.putIfAbsent(
+      chave, () => _buscarCoresGraduacao(id, nome),
+    );
+  }
+
+  // Usa as MESMAS cores de preenchimento da corda SVG: hex_cor1 / hex_cor2.
+  Color _corGraduacaoCard(dynamic raw, Color fallback) =>
+      _colorFromHexSeguro(raw?.toString(), fallback);
+
+  Widget _buildCardFotografico(
+    QueryDocumentSnapshot<Map<String, dynamic>> aluno,
+  ) {
+    final t = context.uai;
+    final data = aluno.data();
+    final nome = (data['nome'] ?? 'Nome não informado').toString();
+    final foto = (data['foto_perfil_aluno'] ?? '').toString();
+    final graduacao = _getGraduacaoNome(data);
+    final futureCores = _coresGraduacaoParaAluno(data, graduacao);
+    final cuidados = data['possui_cuidados_especiais'] == true;
+    final aberto = _alunoCuidadosAbertoId == aluno.id;
+    final corIndicador = _corAusenciaPorDias(_diasSemPresenca(data));
+    return Material(
+      color: t.card,
+      borderRadius: BorderRadius.circular(17),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => _abrirDetalhesAluno(aluno.id),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(17),
+            border: Border.all(color: t.border, width: 1),
+          ),
+          child: Column(children: [
+            Expanded(child: Stack(fit: StackFit.expand, children: [
+              foto.isNotEmpty
+                  ? UaiStudentPhoto(
+                      studentId: aluno.id, imageUrl: foto,
+                      profile: UaiStudentPhotoProfile.list,
+                      fit: BoxFit.cover, fallback: _placeholderIcon())
+                  : _placeholderIcon(),
+              const Positioned.fill(child: DecoratedBox(
+                decoration: BoxDecoration(gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.center,
+                  colors: [Color(0xA8000000), Colors.transparent],
+                )),
+              )),
+              Positioned(left: 5, right: 5, bottom: 5,
+                child: Center(child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withAlpha(90),
+                    borderRadius: BorderRadius.circular(99)),
+                  child: Text(nome.toUpperCase(),
+                    textAlign: TextAlign.center, maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white,
+                      fontWeight: FontWeight.w900, fontSize: 10.5, height: 1.08)),
+                )),
+              ),
+              // Dois pontos indicadores, como na chamada: novato + ausência.
+              Positioned(top: 8, left: 8, child: Row(children: [
+                Container(width: 12, height: 12, decoration: BoxDecoration(
+                  color: _ehNovato(data) ? t.error : t.success,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 2))),
+                const SizedBox(width: 5),
+                if (_indicadoresAusenciaAtivos)
+                  Container(width: 12, height: 12, decoration: BoxDecoration(
+                    color: corIndicador, shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2))),
+              ])),
+              // Mesmo lugar do botão de observações na chamada, sem expor a ficha.
+              if (cuidados) Positioned(top: 6, right: 6, child: Tooltip(
+                message: 'Consultar cuidados especiais',
+                child: Material(color: Colors.white.withAlpha(245),
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: () => _alternarCuidadosNoCard(aluno.id),
+                    child: const Padding(padding: EdgeInsets.all(7),
+                      child: Icon(Icons.warning_amber_rounded, size: 17,
+                        color: Color(0xFFBE7900))),
+                  ),
+                ),
+              )),
+            ])),
+            SizedBox(height: 37, child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 260),
+              child: aberto
+                  ? InkWell(
+                      key: ValueKey('cuidado_${aluno.id}'),
+                      onTap: () => _alternarCuidadosNoCard(aluno.id),
+                      child: Center(child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        child: Text(_alunoCuidadosCarregando
+                            ? 'Consultando cuidados...' : _alunoCuidadosTexto,
+                          maxLines: 2, overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 10, color: t.textPrimary)),
+                      )),
+                    )
+                  : Column(
+                      key: ValueKey('presenca_${aluno.id}'),
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        if (_indicadoresAusenciaAtivos && _mostrarTextoUltimaPresenca)
+                          Padding(padding: const EdgeInsets.symmetric(horizontal: 4),
+                            child: Text(_descricaoAusenciaPorDias(_diasSemPresenca(data)),
+                              maxLines: 1, overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 10, color: corIndicador,
+                                  fontWeight: FontWeight.w800))),
+                        SyncIndicator(
+                          isPending: _syncService.isDocumentPending(aluno),
+                          isCompact: true),
+                      ],
+                    ),
+            )),
+            // Mesmos hex_cor1/hex_cor2 do SVG da corda; destaque real
+            // no rodapé, inclusive para duas metades da mesma cor.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
+              child: FutureBuilder<Map<String, dynamic>?>(
+                future: futureCores,
+                builder: (context, snapshot) {
+                  final refGraduacao = snapshot.data;
+                  final cor1 = _corGraduacaoCard(
+                    refGraduacao?['hex_cor1'], const Color(0xFFEDE7DB));
+                  final cor2 = _corGraduacaoCard(
+                    refGraduacao?['hex_cor2'], cor1);
+                  return Container(
+                    height: 20,
+                    clipBehavior: Clip.antiAlias,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: t.textSecondary.withAlpha(70), width: 0.8),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(child: ColoredBox(color: cor2)),
+                        Expanded(child: ColoredBox(color: cor1)),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+            SizedBox(height: 19, child: Center(child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Text(graduacao.toUpperCase(),
+                textAlign: TextAlign.center,
+                maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.w900,
+                    color: t.textSecondary)),
+            ))),
+          ]),
+        ),
       ),
     );
   }
@@ -2635,6 +2864,165 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     );
   }
 
+  String? _alunoCuidadosAbertoId;
+  bool _alunoCuidadosCarregando = false;
+  String _alunoCuidadosTexto = '';
+
+  Future<void> _alternarCuidadosNoCard(String alunoId) async {
+    if (_alunoCuidadosAbertoId == alunoId) {
+      setState(() {
+        _alunoCuidadosAbertoId = null;
+        _alunoCuidadosTexto = '';
+        _alunoCuidadosCarregando = false;
+      });
+      return;
+    }
+    setState(() {
+      _alunoCuidadosAbertoId = alunoId;
+      _alunoCuidadosTexto = '';
+      _alunoCuidadosCarregando = true;
+    });
+    try {
+      final resposta = await FichaCallableClient.call('gerenciarFichaInscricao', {
+        'aluno_id': alunoId, 'acao': 'ler',
+      });
+      final ficha = resposta['ficha'];
+      final saude = ficha is Map ? ficha['saude'] : null;
+      if (saude is! Map) throw StateError('Ficha restrita indisponível');
+      final condicoes = saude['condicoes'] is List
+          ? (saude['condicoes'] as List).map((e) => e.toString().trim())
+              .where((e) => e.isNotEmpty).join(', ')
+          : '';
+      final detalhes = (saude['detalhes'] ?? '').toString().trim();
+      final orientacao = (saude['orientacao'] ?? '').toString().trim();
+      final informacoes = [condicoes, detalhes, orientacao]
+          .where((e) => e.isNotEmpty).toList();
+      if (!mounted || _alunoCuidadosAbertoId != alunoId) return;
+      setState(() {
+        _alunoCuidadosTexto = informacoes.isEmpty
+            ? 'Cuidados especiais sinalizados. Consulte a ficha complementar.'
+            : informacoes.join(' • ');
+        _alunoCuidadosCarregando = false;
+      });
+    } catch (_) {
+      if (!mounted || _alunoCuidadosAbertoId != alunoId) return;
+      setState(() {
+        _alunoCuidadosTexto = 'Não foi possível consultar. Verifique acesso e conexão.';
+        _alunoCuidadosCarregando = false;
+      });
+    }
+  }
+
+  Widget _painelDeslizanteCuidados({
+    required String alunoId,
+    required Widget conteudoNormal,
+  }) {
+    final aberto = _alunoCuidadosAbertoId == alunoId;
+    return ClipRect(
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 340),
+        reverseDuration: const Duration(milliseconds: 290),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        layoutBuilder: (atual, anteriores) => Stack(
+          alignment: Alignment.centerLeft,
+          children: [...anteriores, ?atual],
+        ),
+        transitionBuilder: (child, animation) {
+          final verso = child.key == const ValueKey('cuidados');
+          return SlideTransition(
+            position: Tween<Offset>(
+              begin: Offset(verso ? 1 : -1, 0),
+              end: Offset.zero,
+            ).animate(animation),
+            child: child,
+          );
+        },
+        child: aberto
+            ? InkWell(
+                key: const ValueKey('cuidados'),
+                onTap: () => _alternarCuidadosNoCard(alunoId),
+                child: SizedBox.expand(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 5, 4, 5),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('⚠ CUIDADOS ESPECIAIS',
+                            maxLines: 1, overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 10.5,
+                                color: Color(0xFFBF7500), fontWeight: FontWeight.w900)),
+                        const SizedBox(height: 3),
+                        if (_alunoCuidadosCarregando)
+                          const SizedBox(height: 15, width: 15,
+                              child: CircularProgressIndicator(strokeWidth: 2))
+                        else
+                          Flexible(child: Text(_alunoCuidadosTexto,
+                              maxLines: 3, overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 10.5, height: 1.15,
+                                  fontWeight: FontWeight.w600))),
+                        const Text('Toque para voltar',
+                            style: TextStyle(fontSize: 9, color: Color(0xFF888888))),
+                      ],
+                    ),
+                  ),
+                ),
+              )
+            : SizedBox.expand(
+                key: const ValueKey('normal'),
+                child: conteudoNormal,
+              ),
+      ),
+    );
+  }
+
+  // Alerta discreto no próprio nome: mantém a fotografia completamente livre.
+  Widget _nomeAlunoComAlerta({
+    required String alunoId,
+    required Map<String, dynamic> dados,
+    required String nome,
+    required double tamanhoFonte,
+    required Color corTexto,
+  }) {
+    final possuiCuidados = dados['possui_cuidados_especiais'] == true;
+    final nomeWidget = Text.rich(
+      TextSpan(children: [
+        if (possuiCuidados)
+          WidgetSpan(
+            alignment: PlaceholderAlignment.baseline,
+            baseline: TextBaseline.alphabetic,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: Icon(
+                Icons.warning_amber_rounded,
+                size: tamanhoFonte,
+                color: const Color(0xFFE49A00),
+              ),
+            ),
+          ),
+        TextSpan(text: nome.toUpperCase()),
+      ]),
+      style: TextStyle(
+        color: corTexto,
+        fontSize: tamanhoFonte,
+        fontWeight: FontWeight.w900,
+        height: 1.08,
+      ),
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+    );
+    if (!possuiCuidados) return nomeWidget;
+    return Tooltip(
+      message: 'Consultar cuidados especiais (acesso restrito)',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _alternarCuidadosNoCard(alunoId),
+        child: nomeWidget,
+      ),
+    );
+  }
+
   Widget _buildAlunoListCard(
     QueryDocumentSnapshot<Map<String, dynamic>> aluno,
   ) {
@@ -2716,7 +3104,9 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                             ),
                           ),
                           Expanded(
-                            child: Padding(
+                            child: _painelDeslizanteCuidados(
+                              alunoId: aluno.id,
+                              conteudoNormal: Padding(
                               padding: EdgeInsets.fromLTRB(
                                 12,
                                 graduacaoNome.isNotEmpty &&
@@ -2730,16 +3120,12 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Text(
-                                    nomeAluno.toUpperCase(),
-                                    style: TextStyle(
-                                      color: t.textPrimary,
-                                      fontSize: 14.2,
-                                      fontWeight: FontWeight.w900,
-                                      height: 1.08,
-                                    ),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
+                                  _nomeAlunoComAlerta(
+                                    alunoId: aluno.id,
+                                    dados: data,
+                                    nome: nomeAluno,
+                                    tamanhoFonte: 14.2,
+                                    corTexto: t.textPrimary,
                                   ),
                                   if (graduacaoNome.isNotEmpty &&
                                       graduacaoNome != 'SEM GRADUAÇÃO') ...[
@@ -2767,6 +3153,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                                   ),
                                 ],
                               ),
+                            ),
                             ),
                           ),
                           if (mostrarCorda)
@@ -2891,7 +3278,9 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                             ),
                           ),
                           Expanded(
-                            child: Padding(
+                            child: _painelDeslizanteCuidados(
+                              alunoId: aluno.id,
+                              conteudoNormal: Padding(
                               padding: EdgeInsets.fromLTRB(
                                 cardWidth < 340 ? 9 : 12,
                                 8,
@@ -2902,16 +3291,12 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Text(
-                                    nomeAluno.toUpperCase(),
-                                    style: TextStyle(
-                                      color: t.textPrimary,
-                                      fontWeight: FontWeight.w900,
-                                      fontSize: cardWidth < 340 ? 12.4 : 13.2,
-                                      height: 1.08,
-                                    ),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
+                                  _nomeAlunoComAlerta(
+                                    alunoId: aluno.id,
+                                    dados: data,
+                                    nome: nomeAluno,
+                                    tamanhoFonte: cardWidth < 340 ? 12.4 : 13.2,
+                                    corTexto: t.textPrimary,
                                   ),
                                   if (graduacaoNome.isNotEmpty &&
                                       graduacaoNome != 'SEM GRADUAÇÃO') ...[
@@ -2939,6 +3324,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                                   ),
                                 ],
                               ),
+                            ),
                             ),
                           ),
                           if (mostrarCorda)

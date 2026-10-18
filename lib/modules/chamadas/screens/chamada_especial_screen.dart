@@ -1382,38 +1382,6 @@ class _ChamadaEspecialScreenState extends State<ChamadaEspecialScreen> {
     );
   }
 
-  Widget _buildStatItem({
-    required String value,
-    required String label,
-    required Color color,
-    required IconData icon,
-  }) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 14, color: color),
-            const SizedBox(width: 2),
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 2),
-        Text(
-          label,
-          style: TextStyle(fontSize: 9, color: context.uai.textSecondary),
-        ),
-      ],
-    );
-  }
 
   bool _isChamadaDesktop(double width) => width >= 700;
 
