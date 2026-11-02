@@ -27,6 +27,9 @@ import 'package:uai_capoeira/modules/chamadas/models/frequencia_model.dart';
 import 'package:uai_capoeira/modules/chamadas/services/frequencia_service.dart';
 import 'historico_frequencia_screen.dart';
 import 'historico_edicoes_aluno_screen.dart';
+import 'package:uai_capoeira/modules/disciplina/disciplina_dialog.dart';
+import 'package:uai_capoeira/modules/disciplina/disciplina_service.dart';
+import 'package:uai_capoeira/modules/turmas/admin/vincular_aluno_inativo_turma_screen.dart';
 import 'package:uai_capoeira/modules/alunos/screens/detalhe_participacao_screen.dart';
 import 'package:uai_capoeira/modules/alunos/services/aluno_historico_edicao_service.dart';
 import 'package:uai_capoeira/modules/alunos/photo_history/aluno_photo_memory_viewer.dart';
@@ -370,7 +373,11 @@ class AlunoDetalheScreen extends StatefulWidget {
   final String alunoId;
   final bool offlineOnly;
 
-  const AlunoDetalheScreen({super.key, required this.alunoId, this.offlineOnly = false});
+  const AlunoDetalheScreen({
+    super.key,
+    required this.alunoId,
+    this.offlineOnly = false,
+  });
 
   @override
   State<AlunoDetalheScreen> createState() => _AlunoDetalheScreenState();
@@ -401,8 +408,7 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
   }
 
   Color _onCard([BuildContext? c]) => _readableOn((c ?? context).uai.card);
-  Color _onCardMuted([BuildContext? c]) =>
-      _onCard(c ?? context).withAlpha(173);
+  Color _onCardMuted([BuildContext? c]) => _onCard(c ?? context).withAlpha(173);
 
   Color _onPrimary([BuildContext? c]) {
     final t = (c ?? context).uai;
@@ -445,12 +451,28 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
   //  CONTROLE PARA RECARREGAR FREQUÊNCIA QUANDO VOLTAR DA EDIÇÃO
   int _frequenciaKey = 0;
 
+  Timer? _disciplinaDiaTimer;
+
   @override
   void initState() {
     super.initState();
     if (widget.offlineOnly) return;
+    var dia = DisciplinaService.chaveData(DisciplinaService.hoje());
+    _disciplinaDiaTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      final atual = DisciplinaService.chaveData(DisciplinaService.hoje());
+      if (mounted && atual != dia) {
+        dia = atual;
+        setState(() {});
+      }
+    });
     _carregarUsuarioLogado();
     _carregarDadosAluno();
+  }
+
+  @override
+  void dispose() {
+    _disciplinaDiaTimer?.cancel();
+    super.dispose();
   }
 
   void _abrirFotoTelaCheia(String? fotoUrl, String nomeAluno) {
@@ -484,7 +506,9 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
           currentPhotoUrl: fotoUrl,
           dataNascimento: nascimento,
           onOpenEditor: () async {
-            await _navegarEditarAluno(EditarAlunoScreen(alunoId: widget.alunoId));
+            await _navegarEditarAluno(
+              EditarAlunoScreen(alunoId: widget.alunoId),
+            );
           },
         ),
       ),
@@ -500,7 +524,8 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
       alunoData['nome'],
       fallback: 'Aluno sem nome',
     );
-    final inscricaoId = alunoData['termo_inscricao_atual_id'] ?? alunoData['inscricao_id'];
+    final inscricaoId =
+        alunoData['termo_inscricao_atual_id'] ?? alunoData['inscricao_id'];
 
     if (inscricaoId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1135,9 +1160,7 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                 decoration: BoxDecoration(
                   color: context.uai.error.withAlpha(26),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: context.uai.error.withAlpha(41),
-                  ),
+                  border: Border.all(color: context.uai.error.withAlpha(41)),
                 ),
                 child: Row(
                   children: [
@@ -1294,20 +1317,14 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
           }
         } catch (appError) {
           final webUrl = Uri.parse(
-            'https://web.whatsapp.com/send?phone=$cleanedPhone${
-                mensagem != null && mensagem.isNotEmpty
-                    ? '&text=${Uri.encodeComponent(mensagem)}'
-                    : ''}',
+            'https://web.whatsapp.com/send?phone=$cleanedPhone${mensagem != null && mensagem.isNotEmpty ? '&text=${Uri.encodeComponent(mensagem)}' : ''}',
           );
 
           await launchUrl(webUrl, mode: LaunchMode.externalApplication);
         }
       } else {
         final webUrl = Uri.parse(
-          'https://web.whatsapp.com/send?phone=$cleanedPhone${
-              mensagem != null && mensagem.isNotEmpty
-                  ? '&text=${Uri.encodeComponent(mensagem)}'
-                  : ''}',
+          'https://web.whatsapp.com/send?phone=$cleanedPhone${mensagem != null && mensagem.isNotEmpty ? '&text=${Uri.encodeComponent(mensagem)}' : ''}',
         );
 
         await launchUrl(webUrl, mode: LaunchMode.externalApplication);
@@ -1548,7 +1565,8 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                                   SizedBox(width: 12),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           destino['titulo'] as String,
@@ -2009,7 +2027,8 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                       SizedBox(height: 12),
                       ...destinos.map((destino) {
                         final numero = destino['numero']!;
-                        final isAluno = _limparNumeroContato(numero) ==
+                        final isAluno =
+                            _limparNumeroContato(numero) ==
                             _limparNumeroContato(contatoAlunoAtual);
                         final color = isAluno
                             ? context.uai.info
@@ -2047,7 +2066,8 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                                   SizedBox(width: 12),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Row(
                                           children: [
@@ -2059,7 +2079,8 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                                                 style: TextStyle(
                                                   fontSize: 14.5,
                                                   fontWeight: FontWeight.w900,
-                                                  color: context.uai.textPrimary,
+                                                  color:
+                                                      context.uai.textPrimary,
                                                 ),
                                               ),
                                             ),
@@ -2071,7 +2092,8 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                                               ),
                                               decoration: BoxDecoration(
                                                 color: color.withAlpha(33),
-                                                borderRadius: BorderRadius.circular(99),
+                                                borderRadius:
+                                                    BorderRadius.circular(99),
                                               ),
                                               child: Text(
                                                 titulo.toUpperCase(),
@@ -2247,7 +2269,9 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
 
     // ✓ REDIRECIONAMENTO BASEADO NO PESO
     if (pesoPermissao >= 100) {
-      developer.log('✓ Redirecionando para EditarAlunoScreen (peso: $pesoPermissao)');
+      developer.log(
+        '✓ Redirecionando para EditarAlunoScreen (peso: $pesoPermissao)',
+      );
 
       await _navegarEditarAluno(EditarAlunoScreen(alunoId: widget.alunoId));
     } else {
@@ -2417,14 +2441,17 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
     required List<_MotivoAlunoStatus> motivos,
     required _MotivoAlunoStatus? selecionado,
   }) async {
-    Widget construirConteudo(BuildContext popupContext, {required bool compacto}) {
+    Widget construirConteudo(
+      BuildContext popupContext, {
+      required bool compacto,
+    }) {
       final t = popupContext.uai;
 
       return Container(
         constraints: BoxConstraints(
           maxWidth: 540,
-          maxHeight: MediaQuery.sizeOf(popupContext).height *
-              (compacto ? 0.78 : 0.72),
+          maxHeight:
+              MediaQuery.sizeOf(popupContext).height * (compacto ? 0.78 : 0.72),
         ),
         decoration: BoxDecoration(
           color: t.surface,
@@ -2856,10 +2883,11 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                             child: InkWell(
                               borderRadius: BorderRadius.circular(16),
                               onTap: () async {
-                                final motivo = await _mostrarSeletorMotivoDesativacao(
-                                  motivos: motivos,
-                                  selecionado: motivoSelecionado,
-                                );
+                                final motivo =
+                                    await _mostrarSeletorMotivoDesativacao(
+                                      motivos: motivos,
+                                      selecionado: motivoSelecionado,
+                                    );
                                 if (motivo != null && sheetContext.mounted) {
                                   setSheetState(
                                     () => motivoSelecionado = motivo,
@@ -2877,7 +2905,8 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                                   color: t.card,
                                   borderRadius: BorderRadius.circular(16),
                                   border: Border.all(
-                                    color: motivoAtual?.cor.withAlpha(140) ??
+                                    color:
+                                        motivoAtual?.cor.withAlpha(140) ??
                                         t.border,
                                     width: motivoAtual == null ? 1 : 1.4,
                                   ),
@@ -2888,23 +2917,29 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                                       width: 38,
                                       height: 38,
                                       decoration: BoxDecoration(
-                                        color: (motivoAtual?.cor ?? t.textSecondary)
-                                            .withAlpha(26),
+                                        color:
+                                            (motivoAtual?.cor ??
+                                                    t.textSecondary)
+                                                .withAlpha(26),
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       child: Icon(
-                                        motivoAtual?.icone ?? Icons.flag_rounded,
+                                        motivoAtual?.icone ??
+                                            Icons.flag_rounded,
                                         size: 19,
-                                        color: motivoAtual?.cor ?? t.textSecondary,
+                                        color:
+                                            motivoAtual?.cor ?? t.textSecondary,
                                       ),
                                     ),
                                     const SizedBox(width: 11),
                                     Expanded(
                                       child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                            motivoAtual?.titulo ?? 'Selecione um motivo',
+                                            motivoAtual?.titulo ??
+                                                'Selecione um motivo',
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                             style: TextStyle(
@@ -3063,8 +3098,8 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                                       onChanged: destinos.isEmpty
                                           ? null
                                           : (value) => setSheetState(
-                                                () => enviarWhatsApp = value,
-                                              ),
+                                              () => enviarWhatsApp = value,
+                                            ),
                                     ),
                                   ],
                                 ),
@@ -3112,7 +3147,8 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                                   context,
                                   _DesativacaoAlunoPayload(
                                     motivo: motivoSelecionado!,
-                                    observacao: observacaoController.text.trim(),
+                                    observacao: observacaoController.text
+                                        .trim(),
                                     enviarWhatsApp:
                                         enviarWhatsApp && destinos.isNotEmpty,
                                     destinoWhatsApp: destinoWhatsApp,
@@ -3124,8 +3160,9 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: t.warning,
                                 foregroundColor: _readableOn(t.warning),
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 14),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 14,
+                                ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(14),
                                 ),
@@ -3458,7 +3495,37 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
       acao: 'ativar aluno',
     );
 
-    if (!temPermissao || !mounted) return;
+    if (!temPermissao || !context.mounted || !mounted) return;
+
+    if (alunoData['expulso_ativo'] == true) {
+      if (!_isAdmin) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Aluno expulso: somente um administrador pode autorizar o retorno.',
+            ),
+          ),
+        );
+        return;
+      }
+      final academiaIdExpulso = alunoData['academia_id']?.toString() ?? '';
+      if (academiaIdExpulso.isEmpty) return;
+
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => VincularAlunoInativoTurmaScreen(
+            academiaId: academiaIdExpulso,
+            academiaNome: alunoData['academia']?.toString() ?? '',
+            alunoIdInicial: alunoId,
+          ),
+        ),
+      );
+      if (mounted) {
+        await _carregarDadosAluno(forcarServidor: true);
+      }
+      return;
+    }
 
     final academiaId = alunoData['academia_id'] as String?;
     if (academiaId == null || academiaId.isEmpty) {
@@ -3707,8 +3774,9 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                                             label:
                                                 '$totalAlunos/$capacidadeMaxima alunos',
                                             color: temVaga
-                                                ? context.uai.warning
-                                                      .withAlpha(41)
+                                                ? context.uai.warning.withAlpha(
+                                                    41,
+                                                  )
                                                 : context.uai.error.withAlpha(
                                                     41,
                                                   ),
@@ -3815,9 +3883,7 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                           erroEtapa = 'batch_commit';
                           await batch.commit();
                           erroEtapa = 'atualizar_contador';
-                          await _atualizarContadorTurmaAuditoria(
-                            selectedId,
-                          );
+                          await _atualizarContadorTurmaAuditoria(selectedId);
                           erroEtapa = 'invalidar_cache';
                           await _cache.invalidateAluno(widget.alunoId);
                           erroEtapa = 'recarregar_dados';
@@ -4115,7 +4181,10 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                   children: [
                     Container(
                       width: double.infinity,
-                      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 13,
+                        vertical: 11,
+                      ),
                       decoration: BoxDecoration(
                         color: context.uai.cardAlt,
                         borderRadius: BorderRadius.circular(16),
@@ -4319,14 +4388,19 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                                             ),
                                           if (isSelected && !isTurmaAtual)
                                             Container(
-                                              margin: const EdgeInsets.only(left: 8),
-                                              padding: const EdgeInsets.symmetric(
-                                                horizontal: 8,
-                                                vertical: 3,
+                                              margin: const EdgeInsets.only(
+                                                left: 8,
                                               ),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 3,
+                                                  ),
                                               decoration: BoxDecoration(
-                                                color: context.uai.primary.withAlpha(31),
-                                                borderRadius: BorderRadius.circular(10),
+                                                color: context.uai.primary
+                                                    .withAlpha(31),
+                                                borderRadius:
+                                                    BorderRadius.circular(10),
                                               ),
                                               child: Text(
                                                 'SELECIONADA',
@@ -4399,8 +4473,9 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                                             label:
                                                 turma['nivel']?.toString() ??
                                                 'N/A',
-                                            color: context.uai.info
-                                                .withAlpha(41),
+                                            color: context.uai.info.withAlpha(
+                                              41,
+                                            ),
                                             textColor: context.uai.info,
                                           ),
                                           _buildTurmaChip(
@@ -4421,10 +4496,12 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                                             color: isTurmaAtual
                                                 ? context.uai.border
                                                 : temVaga
-                                                ? context.uai.warning
-                                                      .withAlpha(41)
-                                                : context.uai.error
-                                                      .withAlpha(41),
+                                                ? context.uai.warning.withAlpha(
+                                                    41,
+                                                  )
+                                                : context.uai.error.withAlpha(
+                                                    41,
+                                                  ),
                                             textColor: isTurmaAtual
                                                 ? context.uai.textSecondary
                                                 : temVaga
@@ -4464,184 +4541,190 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
               SizedBox(
                 height: 44,
                 child: ElevatedButton.icon(
-                onPressed: selectedTurmaId != null
-                    ? () async {
-                        if (selectedTurmaId == turmaAtualId) {
-                          Navigator.pop(context);
-                          return;
-                        }
-                        var erroEtapa = 'pre_validacao';
-                        final selectedId = selectedTurmaId;
-                        if (selectedId == null || selectedId.isEmpty) return;
+                  onPressed: selectedTurmaId != null
+                      ? () async {
+                          if (selectedTurmaId == turmaAtualId) {
+                            Navigator.pop(context);
+                            return;
+                          }
+                          var erroEtapa = 'pre_validacao';
+                          final selectedId = selectedTurmaId;
+                          if (selectedId == null || selectedId.isEmpty) return;
 
-                        try {
-                          erroEtapa = 'verificar_capacidade';
-                          final temVaga = await _verificarCapacidadeTurma(
-                            selectedId,
-                          );
+                          try {
+                            erroEtapa = 'verificar_capacidade';
+                            final temVaga = await _verificarCapacidadeTurma(
+                              selectedId,
+                            );
 
-                          if (!temVaga) {
+                            if (!temVaga) {
+                              if (mounted) {
+                                if (!context.mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: const Text(
+                                      'Esta turma não tem mais vagas disponíveis.',
+                                    ),
+                                    backgroundColor: context.uai.error,
+                                  ),
+                                );
+                              }
+                              return;
+                            }
+
+                            final turmaNovaId = selectedId;
+                            final turmaNovaNome =
+                                selectedTurmaNome ?? 'Sem nome';
+                            _cacaBugRegistrarEventoAcao(
+                              acao: CacaBugActions.iniciouMudarTurmaAluno,
+                              descricao:
+                                  'Usuário iniciou mudança de turma do aluno ${_cacaBugDadosAlunoAcao()['alunoNome']}',
+                              extra: {
+                                'turmaOrigemId': turmaAtualId,
+                                'turmaOrigemNome': turmaAtualNome,
+                                'turmaDestinoId': turmaNovaId,
+                                'turmaDestinoNome': turmaNovaNome,
+                                'academiaId': academiaId,
+                                'academiaNome': academiaNome,
+                              },
+                            );
+                            final alunoRef = _firestore
+                                .collection('alunos')
+                                .doc(alunoId);
+                            final batch = _firestore.batch();
+
+                            if (turmaAtualId != null &&
+                                turmaAtualId.isNotEmpty) {
+                              batch.update(
+                                _firestore
+                                    .collection('turmas')
+                                    .doc(turmaAtualId),
+                                {
+                                  'alunos': FieldValue.arrayRemove([alunoId]),
+                                  'atualizado_em': FieldValue.serverTimestamp(),
+                                },
+                              );
+                            }
+
+                            batch.update(
+                              _firestore.collection('turmas').doc(turmaNovaId),
+                              {
+                                'alunos': FieldValue.arrayUnion([alunoId]),
+                                'atualizado_em': FieldValue.serverTimestamp(),
+                              },
+                            );
+
+                            batch.update(alunoRef, {
+                              'turma_id': turmaNovaId,
+                              'turma': turmaNovaNome,
+                              'data_mudanca_turma':
+                                  FieldValue.serverTimestamp(),
+                              'atualizado_em': FieldValue.serverTimestamp(),
+                            });
+                            erroEtapa = 'batch_commit';
+                            await batch.commit();
+
+                            erroEtapa = 'atualizar_contador_origem';
+                            if (turmaAtualId != null &&
+                                turmaAtualId.isNotEmpty) {
+                              await _atualizarContadorTurmaAuditoria(
+                                turmaAtualId,
+                              );
+                            }
+                            erroEtapa = 'atualizar_contador_destino';
+                            await _atualizarContadorTurmaAuditoria(turmaNovaId);
+
+                            final resumo =
+                                'Mudança de turma: ${turmaAtualNome ?? 'Turma não informada'} → $turmaNovaNome';
+                            final dadosDepois =
+                                Map<String, dynamic>.from(dadosAntes)..addAll({
+                                  'turma_id': turmaNovaId,
+                                  'turma': turmaNovaNome,
+                                  'academia_id': academiaId,
+                                  'academia': academiaNome,
+                                });
+                            erroEtapa = 'registrar_historico';
+                            await AlunoHistoricoEdicaoService()
+                                .registrarEdicaoManual(
+                                  alunoId: alunoId,
+                                  dadosAntes: dadosAntes,
+                                  dadosDepois: dadosDepois,
+                                  origem: 'aluno_detalhe_mudar_turma',
+                                  subtipoEdicao: 'mudanca_turma',
+                                  resumoPersonalizado: resumo,
+                                );
+
+                            erroEtapa = 'invalidar_cache';
+                            await _cache.invalidateAluno(alunoId);
+
+                            if (!context.mounted) return;
+                            if (!mounted) return;
+                            Navigator.pop(context);
+
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: const Text(
+                                  'Aluno transferido para nova turma com sucesso!',
+                                ),
+                                backgroundColor: context.uai.success,
+                              ),
+                            );
+
+                            erroEtapa = 'recarregar_dados';
+                            await _carregarDadosAluno(forcarServidor: true);
+
+                            _cacaBugRegistrarEventoAcao(
+                              acao: CacaBugActions.mudouTurmaAluno,
+                              descricao:
+                                  'Usuário mudou o aluno ${_cacaBugDadosAlunoAcao()['alunoNome']} para outra turma',
+                              extra: {
+                                'turmaOrigemId': turmaAtualId,
+                                'turmaOrigemNome':
+                                    turmaAtualNome ?? 'Turma não informada',
+                                'turmaDestinoId': turmaNovaId,
+                                'turmaDestinoNome': turmaNovaNome,
+                                'academiaId': academiaId,
+                                'academiaNome':
+                                    academiaNome ?? 'Academia não informada',
+                                'sucesso': true,
+                              },
+                            );
+                          } catch (e) {
+                            _cacaBugRegistrarErroAcao(
+                              acao: CacaBugActions.erroMudarTurmaAluno,
+                              descricao:
+                                  'Erro ao mudar turma do aluno ${_cacaBugDadosAlunoAcao()['alunoNome']}',
+                              erro: e,
+                              extra: {
+                                'erroEtapa': erroEtapa,
+                                'turmaOrigemId': turmaAtualId,
+                                'turmaOrigemNome':
+                                    turmaAtualNome ?? 'Turma não informada',
+                                'turmaDestinoId': selectedId,
+                                'turmaDestinoNome':
+                                    selectedTurmaNome ?? 'Turma não informada',
+                                'academiaId': academiaId,
+                                'academiaNome':
+                                    academiaNome ?? 'Academia não informada',
+                              },
+                            );
                             if (mounted) {
                               if (!context.mounted) return;
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
-                                  content: const Text(
-                                    'Esta turma não tem mais vagas disponíveis.',
+                                  content: Text(
+                                    _mensagemErroAmigavelAlunoDetalhe(
+                                      e,
+                                      contexto: 'mudança de turma',
+                                    ),
                                   ),
                                   backgroundColor: context.uai.error,
                                 ),
                               );
                             }
-                            return;
-                          }
-
-                          final turmaNovaId = selectedId;
-                          final turmaNovaNome = selectedTurmaNome ?? 'Sem nome';
-                          _cacaBugRegistrarEventoAcao(
-                            acao: CacaBugActions.iniciouMudarTurmaAluno,
-                            descricao:
-                                'Usuário iniciou mudança de turma do aluno ${_cacaBugDadosAlunoAcao()['alunoNome']}',
-                            extra: {
-                              'turmaOrigemId': turmaAtualId,
-                              'turmaOrigemNome': turmaAtualNome,
-                              'turmaDestinoId': turmaNovaId,
-                              'turmaDestinoNome': turmaNovaNome,
-                              'academiaId': academiaId,
-                              'academiaNome': academiaNome,
-                            },
-                          );
-                          final alunoRef = _firestore
-                              .collection('alunos')
-                              .doc(alunoId);
-                          final batch = _firestore.batch();
-
-                          if (turmaAtualId != null && turmaAtualId.isNotEmpty) {
-                            batch.update(
-                              _firestore.collection('turmas').doc(turmaAtualId),
-                              {
-                                'alunos': FieldValue.arrayRemove([alunoId]),
-                                'atualizado_em': FieldValue.serverTimestamp(),
-                              },
-                            );
-                          }
-
-                          batch.update(
-                            _firestore.collection('turmas').doc(turmaNovaId),
-                            {
-                              'alunos': FieldValue.arrayUnion([alunoId]),
-                              'atualizado_em': FieldValue.serverTimestamp(),
-                            },
-                          );
-
-                          batch.update(alunoRef, {
-                            'turma_id': turmaNovaId,
-                            'turma': turmaNovaNome,
-                            'data_mudanca_turma': FieldValue.serverTimestamp(),
-                            'atualizado_em': FieldValue.serverTimestamp(),
-                          });
-                          erroEtapa = 'batch_commit';
-                          await batch.commit();
-
-                          erroEtapa = 'atualizar_contador_origem';
-                          if (turmaAtualId != null && turmaAtualId.isNotEmpty) {
-                            await _atualizarContadorTurmaAuditoria(
-                              turmaAtualId,
-                            );
-                          }
-                          erroEtapa = 'atualizar_contador_destino';
-                          await _atualizarContadorTurmaAuditoria(turmaNovaId);
-
-                          final resumo =
-                              'Mudança de turma: ${turmaAtualNome ?? 'Turma não informada'} → $turmaNovaNome';
-                          final dadosDepois =
-                              Map<String, dynamic>.from(dadosAntes)..addAll({
-                                'turma_id': turmaNovaId,
-                                'turma': turmaNovaNome,
-                                'academia_id': academiaId,
-                                'academia': academiaNome,
-                              });
-                          erroEtapa = 'registrar_historico';
-                          await AlunoHistoricoEdicaoService()
-                              .registrarEdicaoManual(
-                                alunoId: alunoId,
-                                dadosAntes: dadosAntes,
-                                dadosDepois: dadosDepois,
-                                origem: 'aluno_detalhe_mudar_turma',
-                                subtipoEdicao: 'mudanca_turma',
-                                resumoPersonalizado: resumo,
-                              );
-
-                          erroEtapa = 'invalidar_cache';
-                          await _cache.invalidateAluno(alunoId);
-
-                          if (!context.mounted) return;
-                          if (!mounted) return;
-                          Navigator.pop(context);
-
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: const Text(
-                                'Aluno transferido para nova turma com sucesso!',
-                              ),
-                              backgroundColor: context.uai.success,
-                            ),
-                          );
-
-                          erroEtapa = 'recarregar_dados';
-                          await _carregarDadosAluno(forcarServidor: true);
-
-                          _cacaBugRegistrarEventoAcao(
-                            acao: CacaBugActions.mudouTurmaAluno,
-                            descricao:
-                                'Usuário mudou o aluno ${_cacaBugDadosAlunoAcao()['alunoNome']} para outra turma',
-                            extra: {
-                              'turmaOrigemId': turmaAtualId,
-                              'turmaOrigemNome':
-                                  turmaAtualNome ?? 'Turma não informada',
-                              'turmaDestinoId': turmaNovaId,
-                              'turmaDestinoNome': turmaNovaNome,
-                              'academiaId': academiaId,
-                              'academiaNome':
-                                  academiaNome ?? 'Academia não informada',
-                              'sucesso': true,
-                            },
-                          );
-                        } catch (e) {
-                          _cacaBugRegistrarErroAcao(
-                            acao: CacaBugActions.erroMudarTurmaAluno,
-                            descricao:
-                                'Erro ao mudar turma do aluno ${_cacaBugDadosAlunoAcao()['alunoNome']}',
-                            erro: e,
-                            extra: {
-                              'erroEtapa': erroEtapa,
-                              'turmaOrigemId': turmaAtualId,
-                              'turmaOrigemNome':
-                                  turmaAtualNome ?? 'Turma não informada',
-                              'turmaDestinoId': selectedId,
-                              'turmaDestinoNome':
-                                  selectedTurmaNome ?? 'Turma não informada',
-                              'academiaId': academiaId,
-                              'academiaNome':
-                                  academiaNome ?? 'Academia não informada',
-                            },
-                          );
-                          if (mounted) {
-                            if (!context.mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  _mensagemErroAmigavelAlunoDetalhe(
-                                    e,
-                                    contexto: 'mudança de turma',
-                                  ),
-                                ),
-                                backgroundColor: context.uai.error,
-                              ),
-                            );
                           }
                         }
-                      }
-                    : null,
+                      : null,
                   icon: Icon(
                     selectedTurmaId == turmaAtualId
                         ? Icons.check_rounded
@@ -4706,7 +4789,10 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
       'assets/images/whatsapp.svg',
       width: 20,
       height: 20,
-      colorFilter: ColorFilter.mode(enabled ? color : context.uai.textMuted, BlendMode.srcIn),
+      colorFilter: ColorFilter.mode(
+        enabled ? color : context.uai.textMuted,
+        BlendMode.srcIn,
+      ),
     );
   }
 
@@ -4723,6 +4809,7 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
       }
       return '';
     }
+
     String numero(List<String> campos) {
       for (final campo in campos) {
         final valor = d[campo]?.toString().trim() ?? '';
@@ -4730,11 +4817,13 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
       }
       return '';
     }
+
     String normalizar(String valor) {
       var n = valor.replaceAll(RegExp(r'\D'), '');
       if (n.length > 11 && n.startsWith('55')) n = n.substring(2);
       return n;
     }
+
     DateTime? nascimento;
     final raw = d['data_nascimento'];
     if (raw is Timestamp) nascimento = raw.toDate();
@@ -4742,19 +4831,34 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
     if (raw is String && raw.trim().isNotEmpty) {
       try {
         nascimento = DateFormat('dd/MM/yyyy').parseStrict(raw.trim());
-      } catch (_) { nascimento = DateTime.tryParse(raw.trim()); }
+      } catch (_) {
+        nascimento = DateTime.tryParse(raw.trim());
+      }
     }
     final hoje = DateTime.now();
     int? idade;
     if (nascimento != null && !nascimento.isAfter(hoje)) {
       idade = hoje.year - nascimento.year;
-      if (hoje.month < nascimento.month || (hoje.month == nascimento.month && hoje.day < nascimento.day)) idade--;
+      if (hoje.month < nascimento.month ||
+          (hoje.month == nascimento.month && hoje.day < nascimento.day)) {
+        idade--;
+      }
     }
     idade ??= int.tryParse('${d['idade'] ?? ''}'.trim());
-    final maior = idade != null && idade >= 0 ? idade >= 18 : d['is_maior_idade'] == true;
+    final maior = idade != null && idade >= 0
+        ? idade >= 18
+        : d['is_maior_idade'] == true;
     final nr = numero(['contato_responsavel']);
-    final ne = numero(['contato_emergencia', 'telefone_emergencia', 'emergencia_contato']);
-    final nomeR = texto(['nome_responsavel', 'responsavel', 'responsavel_nome']);
+    final ne = numero([
+      'contato_emergencia',
+      'telefone_emergencia',
+      'emergencia_contato',
+    ]);
+    final nomeR = texto([
+      'nome_responsavel',
+      'responsavel',
+      'responsavel_nome',
+    ]);
     final nomeE = texto(['nome_contato_emergencia', 'responsavel_emergencia']);
     // Menor: responsável primeiro; maior: emergência primeiro, com fallback legado.
     final usarEmergencia = maior ? ne.isNotEmpty : nr.isEmpty && ne.isNotEmpty;
@@ -4768,9 +4872,13 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
       'titulo': titulo,
       'principal': principal,
       'nome': nome.isEmpty ? titulo : nome,
-      'grau': usarEmergencia ? texto(['grau_emergencia']) : texto(['grau_responsavel']),
+      'grau': usarEmergencia
+          ? texto(['grau_emergencia'])
+          : texto(['grau_responsavel']),
       'extra': repetido ? '' : outro,
-      'nome_extra': (usarEmergencia ? nomeR : nomeE).isEmpty ? 'Contato de emergência' : (usarEmergencia ? nomeR : nomeE),
+      'nome_extra': (usarEmergencia ? nomeR : nomeE).isEmpty
+          ? 'Contato de emergência'
+          : (usarEmergencia ? nomeR : nomeE),
     };
   }
 
@@ -4868,13 +4976,16 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
         final nome = item['nome']?.toString().trim() ?? '';
         final grau = item['grau']?.toString().trim() ?? '';
         final jaExiste = contatos.any(
-          (c) => _limparNumeroContato(c['numero']?.toString()) ==
+          (c) =>
+              _limparNumeroContato(c['numero']?.toString()) ==
               _limparNumeroContato(numero),
         );
         if (jaExiste) continue;
         contatos.add({
           'titulo': nome.isEmpty ? 'Contato de emergência ${i + 2}' : nome,
-          'subtitulo': grau.isEmpty ? 'Contato de emergência' : 'Contato de emergência • $grau',
+          'subtitulo': grau.isEmpty
+              ? 'Contato de emergência'
+              : 'Contato de emergência • $grau',
           'numero': numero,
           'cor': context.uai.warning,
           'icone': Icons.emergency_share_rounded,
@@ -5136,6 +5247,77 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
     );
   }
 
+  // Endereco para exibicao e pesquisa: nao modifica o cadastro no Firestore.
+  // Campos estruturados tem prioridade; o texto legado completa informacoes
+  // apenas quando o cadastro nao possui rua/numero/bairro estruturados.
+  String? _enderecoAlunoParaMapa(Map<String, dynamic>? dados) {
+    if (dados == null) return null;
+    String ler(String campo) {
+      final valor = dados[campo]?.toString().trim() ?? '';
+      return const {
+            'null',
+            'nao informado',
+            'não informado',
+            '-',
+          }.contains(valor.toLowerCase())
+          ? ''
+          : valor;
+    }
+
+    final rua = ler('rua');
+    final numero = ler('numero');
+    final bairro = ler('bairro');
+    final cidade = ler('cidade');
+    final uf = ler('uf').isNotEmpty ? ler('uf') : ler('estado');
+    final legado = ler('endereco');
+    final temEstruturado =
+        rua.isNotEmpty || numero.isNotEmpty || bairro.isNotEmpty;
+    String endereco;
+    if (temEstruturado) {
+      final trecho = [
+        rua,
+        if (numero.isNotEmpty) numero,
+      ].where((v) => v.isNotEmpty).join(', ');
+      endereco = [trecho, bairro].where((v) => v.isNotEmpty).join(' - ');
+    } else {
+      endereco = legado;
+    }
+    if (endereco.isEmpty) return null;
+    // Evita acrescentar a cidade/UF novamente caso o endereco legado ja as contenha.
+    if (cidade.isNotEmpty &&
+        !endereco.toLowerCase().contains(cidade.toLowerCase())) {
+      endereco = '$endereco - $cidade';
+    }
+    if (uf.isNotEmpty &&
+        !endereco.toLowerCase().endsWith(', ${uf.toLowerCase()}') &&
+        !endereco.toLowerCase().endsWith('- ${uf.toLowerCase()}')) {
+      endereco = '$endereco, $uf';
+    }
+    return endereco.replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  Future<void> _abrirEnderecoNoGoogleMaps(String endereco) async {
+    final uri = Uri.https('www.google.com', '/maps/search/', {
+      'api': '1',
+      'query': endereco,
+    });
+    try {
+      final abriu = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!abriu && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Não foi possível abrir o Google Maps.'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Não foi possível abrir o Google Maps.')),
+      );
+    }
+  }
+
   Widget _buildEmergencyContactsSection({
     required String nomeAluno,
     required String contatoAluno,
@@ -5164,6 +5346,7 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
         : 'Aluno';
 
     final temPrincipal = _temContatoValido(contatoPrincipal);
+    final enderecoMapa = _enderecoAlunoParaMapa(_alunoData);
 
     return Container(
       margin: EdgeInsets.symmetric(vertical: 8, horizontal: 0),
@@ -5301,41 +5484,72 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                       ),
                     ),
                     SizedBox(height: 12),
-                    if (temPrincipal)
-                      Container(
-                        width: double.infinity,
-                        padding: EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: context.uai.error.withAlpha(26),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: context.uai.error.withAlpha(41),
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: enderecoMapa == null
+                            ? null
+                            : () => _abrirEnderecoNoGoogleMaps(enderecoMapa),
+                        borderRadius: BorderRadius.circular(16),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: context.uai.info.withAlpha(21),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: context.uai.info.withAlpha(72),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.location_on_outlined,
+                                color: context.uai.info,
+                                size: 21,
+                              ),
+                              const SizedBox(width: 9),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Endereço do aluno',
+                                      style: TextStyle(
+                                        color: context.uai.textSecondary,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      enderecoMapa ?? 'Endereço não informado',
+                                      maxLines: 3,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: context.uai.textPrimary,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 7),
+                              Icon(
+                                enderecoMapa == null
+                                    ? Icons.location_off_outlined
+                                    : Icons.open_in_new_rounded,
+                                color: enderecoMapa == null
+                                    ? context.uai.textMuted
+                                    : context.uai.info,
+                                size: 18,
+                              ),
+                            ],
                           ),
                         ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.priority_high_rounded,
-                              color: context.uai.error,
-                              size: 20,
-                            ),
-                            SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'Contato principal: $nomePrincipal • ${_formatarTelefoneVisual(contatoPrincipal)}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: context.uai.textPrimary,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                softWrap: false,
-                              ),
-                            ),
-                          ],
-                        ),
                       ),
+                    ),
                     SizedBox(height: 10),
                     LayoutBuilder(
                       builder: (context, constraints) {
@@ -5379,21 +5593,29 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                       ),
                     ],
                     if (_alunoData?['contatos_emergencia_adicionais'] is List)
-                      for (final raw in (_alunoData!['contatos_emergencia_adicionais'] as List))
-                        if (raw is Map && _temContatoValido(raw['telefone']?.toString())) ...[
+                      for (final raw
+                          in (_alunoData!['contatos_emergencia_adicionais']
+                              as List))
+                        if (raw is Map &&
+                            _temContatoValido(raw['telefone']?.toString())) ...[
                           SizedBox(height: 10),
                           _buildContactPersonCard(
-                            titulo: (raw['grau']?.toString().trim().isNotEmpty ?? false)
+                            titulo:
+                                (raw['grau']?.toString().trim().isNotEmpty ??
+                                    false)
                                 ? 'Contato de emergência • ${raw['grau']}'
                                 : 'Contato de emergência adicional',
-                            nome: (raw['nome']?.toString().trim().isNotEmpty ?? false)
+                            nome:
+                                (raw['nome']?.toString().trim().isNotEmpty ??
+                                    false)
                                 ? raw['nome'].toString()
                                 : 'Contato de emergência',
                             numero: raw['telefone'].toString(),
                             color: context.uai.warning,
                             icon: Icons.emergency_share_rounded,
                             fullWidth: true,
-                            mensagemWhatsApp: 'Olá, preciso falar sobre $nomeAluno.',
+                            mensagemWhatsApp:
+                                'Olá, preciso falar sobre $nomeAluno.',
                           ),
                         ],
                     SizedBox(height: 12),
@@ -5471,9 +5693,7 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                                 style: OutlinedButton.styleFrom(
                                   foregroundColor: context.uai.warning,
                                   side: BorderSide(
-                                    color: context.uai.warning.withAlpha(
-                                      71,
-                                    ),
+                                    color: context.uai.warning.withAlpha(71),
                                   ),
                                   padding: EdgeInsets.symmetric(vertical: 12),
                                   shape: RoundedRectangleBorder(
@@ -5572,9 +5792,7 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
               ),
               style: OutlinedButton.styleFrom(
                 foregroundColor: context.uai.associacao,
-                side: BorderSide(
-                  color: context.uai.associacao.withAlpha(89),
-                ),
+                side: BorderSide(color: context.uai.associacao.withAlpha(89)),
                 padding: EdgeInsets.symmetric(vertical: 13),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
@@ -5751,7 +5969,8 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
     if (lowerMonitor.contains('roxo') || lowerMonitor.contains('roxa')) {
       return context.uai.associacao;
     }
-    if (lowerMonitor.contains('vermelho') || lowerMonitor.contains('vermelha')) {
+    if (lowerMonitor.contains('vermelho') ||
+        lowerMonitor.contains('vermelha')) {
       return context.uai.error;
     }
     if (lowerMonitor.contains('verde')) return context.uai.success;
@@ -6287,6 +6506,37 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
     );
   }
 
+  String _formatarDataDisciplinaUi(dynamic value) {
+    final texto = value?.toString().trim() ?? '';
+    if (texto.isEmpty) return '--/--/----';
+    final data = DateTime.tryParse(texto);
+    if (data == null) return texto;
+    return DateFormat('dd/MM/yyyy').format(data);
+  }
+
+  List<double> _matrizEscalaCinzaHero() => const <double>[
+    0.2126,
+    0.7152,
+    0.0722,
+    0,
+    0,
+    0.2126,
+    0.7152,
+    0.0722,
+    0,
+    0,
+    0.2126,
+    0.7152,
+    0.0722,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+  ];
+
   Widget _buildPerfilHeroCard({
     required String? fotoUrl,
     required String nome,
@@ -6302,143 +6552,167 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
     final width = MediaQuery.sizeOf(context).width;
     final compact = width < 560;
 
-    final foto = _buildFotoPerfilHero(
-      fotoUrl: fotoUrl,
-      nome: nome,
-      isAtivo: isAtivo,
-      statusColor: statusColor,
-    );
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: DisciplinaService.resumo(widget.alunoId).snapshots(),
+      builder: (context, disciplinaSnapshot) {
+        final evento = DisciplinaService.suspensaoAtual(
+          disciplinaSnapshot.data?.data(),
+          DisciplinaService.hoje(),
+        );
+        final suspenso = evento != null;
+        final retornoFormatado = _formatarDataDisciplinaUi(
+          evento?['data_retorno'] ?? evento?['fim_exclusivo'],
+        );
 
-    final infos = Column(
-      crossAxisAlignment: compact
-          ? CrossAxisAlignment.center
-          : CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Flexible(
-              child: Text(
-                nome,
-                style: TextStyle(
-                  color: onGradient,
-                  fontSize: compact ? 23 : 28,
-                  height: 1.05,
-                  fontWeight: FontWeight.w900,
-                ),
-                textAlign: compact ? TextAlign.center : TextAlign.start,
-              ),
-            ),
-            IconButton(
-              tooltip: 'Copiar nome completo',
-              icon: Icon(Icons.copy_rounded, size: 19, color: onGradient),
-              onPressed: () => _mostrarOpcoesCopiarNome(nome),
-            ),
-          ],
-        ),
-        if (apelido != null && apelido.trim().isNotEmpty) ...[
-          const SizedBox(height: 5),
-          Text(
-            '"$apelido"',
-            style: TextStyle(
-              color: onGradient.withAlpha(194),
-              fontSize: 15,
-              fontStyle: FontStyle.italic,
-              fontWeight: FontWeight.w700,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: compact ? TextAlign.center : TextAlign.start,
-          ),
-        ],
-        const SizedBox(height: 14),
-        Wrap(
-          alignment: compact ? WrapAlignment.center : WrapAlignment.start,
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _buildPerfilHeroChip(
-              icon: isAtivo
-                  ? Icons.check_circle_rounded
-                  : Icons.pause_circle_filled_rounded,
-              label: isAtivo ? 'ATIVO' : 'INATIVO',
-              color: statusColor,
-              onGradient: onGradient,
-            ),
-            if (idade != null && idade.trim().isNotEmpty)
-              _buildPerfilHeroChip(
-                icon: Icons.cake_rounded,
-                label: '$idade anos',
-                color: t.warning,
-                onGradient: onGradient,
-              ),
-            if (turma != null && turma.trim().isNotEmpty)
-              _buildPerfilHeroChip(
-                icon: Icons.groups_rounded,
-                label: turma,
-                color: t.info,
-                onGradient: onGradient,
-              ),
-            if (monitor != null && monitor.trim().isNotEmpty)
-              _buildPerfilHeroChip(
-                icon: Icons.military_tech_rounded,
-                label: 'Monitor $monitor',
-                color: _getMonitorColor(monitor),
-                onGradient: onGradient,
-              ),
-          ],
-        ),
-      ],
-    );
+        final foto = _buildFotoPerfilHero(
+          fotoUrl: fotoUrl,
+          nome: nome,
+          isAtivo: isAtivo,
+          statusColor: statusColor,
+          emEscalaCinza: suspenso,
+        );
 
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.all(compact ? 18 : 22),
-      decoration: BoxDecoration(
-        gradient: t.primaryGradient,
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: onGradient.withAlpha(31)),
-        boxShadow: t.cardShadow,
-      ),
-      child: compact
-          ? Column(children: [foto, const SizedBox(height: 16), infos])
-          : Row(
+        final infos = Column(
+          crossAxisAlignment: compact
+              ? CrossAxisAlignment.center
+              : CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                foto,
-                const SizedBox(width: 22),
-                Expanded(child: infos),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
+                Flexible(
+                  child: Text(
+                    nome,
+                    style: TextStyle(
+                      color: onGradient,
+                      fontSize: compact ? 23 : 28,
+                      height: 1.05,
+                      fontWeight: FontWeight.w900,
+                    ),
+                    textAlign: compact ? TextAlign.center : TextAlign.start,
                   ),
-                  decoration: BoxDecoration(
-                    color: onGradient.withAlpha(31),
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: onGradient.withAlpha(36)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.touch_app_rounded,
-                        color: onGradient,
-                        size: 16,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Toque na foto',
-                        style: TextStyle(
-                          color: onGradient.withAlpha(219),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
-                  ),
+                ),
+                IconButton(
+                  tooltip: 'Copiar nome completo',
+                  icon: Icon(Icons.copy_rounded, size: 19, color: onGradient),
+                  onPressed: () => _mostrarOpcoesCopiarNome(nome),
                 ),
               ],
             ),
+            if (apelido != null && apelido.trim().isNotEmpty) ...[
+              const SizedBox(height: 5),
+              Text(
+                '"$apelido"',
+                style: TextStyle(
+                  color: onGradient.withAlpha(194),
+                  fontSize: 15,
+                  fontStyle: FontStyle.italic,
+                  fontWeight: FontWeight.w700,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: compact ? TextAlign.center : TextAlign.start,
+              ),
+            ],
+            const SizedBox(height: 14),
+            Wrap(
+              alignment: compact ? WrapAlignment.center : WrapAlignment.start,
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _buildPerfilHeroChip(
+                  icon: isAtivo
+                      ? Icons.check_circle_rounded
+                      : Icons.pause_circle_filled_rounded,
+                  label: isAtivo ? 'ATIVO' : 'INATIVO',
+                  color: statusColor,
+                  onGradient: onGradient,
+                ),
+                if (idade != null && idade.trim().isNotEmpty)
+                  _buildPerfilHeroChip(
+                    icon: Icons.cake_rounded,
+                    label: '$idade anos',
+                    color: t.warning,
+                    onGradient: onGradient,
+                  ),
+                if (suspenso)
+                  _buildPerfilHeroChip(
+                    icon: Icons.block_rounded,
+                    label: evento['tipo'] == 'expulsao'
+                        ? 'EXPULSO'
+                        : 'SUSPENSO ATÉ $retornoFormatado',
+                    color: evento['tipo'] == 'expulsao' ? t.error : t.warning,
+                    onGradient: onGradient,
+                  ),
+                if (turma != null && turma.trim().isNotEmpty)
+                  _buildPerfilHeroChip(
+                    icon: Icons.groups_rounded,
+                    label: turma,
+                    color: t.info,
+                    onGradient: onGradient,
+                  ),
+                if (monitor != null && monitor.trim().isNotEmpty)
+                  _buildPerfilHeroChip(
+                    icon: Icons.military_tech_rounded,
+                    label: 'Monitor $monitor',
+                    color: _getMonitorColor(monitor),
+                    onGradient: onGradient,
+                  ),
+              ],
+            ),
+          ],
+        );
+
+        return Container(
+          width: double.infinity,
+          padding: EdgeInsets.all(compact ? 18 : 22),
+          decoration: BoxDecoration(
+            gradient: t.primaryGradient,
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(color: onGradient.withAlpha(31)),
+            boxShadow: t.cardShadow,
+          ),
+          child: compact
+              ? Column(children: [foto, const SizedBox(height: 16), infos])
+              : Row(
+                  children: [
+                    foto,
+                    const SizedBox(width: 22),
+                    Expanded(child: infos),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: onGradient.withAlpha(31),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: onGradient.withAlpha(36)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.touch_app_rounded,
+                            color: onGradient,
+                            size: 16,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Toque na foto',
+                            style: TextStyle(
+                              color: onGradient.withAlpha(219),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+        );
+      },
     );
   }
 
@@ -6447,6 +6721,7 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
     required String nome,
     required bool isAtivo,
     required Color statusColor,
+    bool emEscalaCinza = false,
   }) {
     final t = context.uai;
     final inicial = nome.trim().isNotEmpty ? nome.trim()[0].toUpperCase() : '?';
@@ -6479,26 +6754,40 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                 ],
               ),
               child: ClipOval(
-                child: fotoUrl != null && fotoUrl.trim().isNotEmpty
-                    ? UaiStudentPhoto(
-                        studentId: widget.alunoId,
-                        imageUrl: fotoUrl,
-                        profile: UaiStudentPhotoProfile.list,
-                        fit: BoxFit.cover,
-                        width: 116,
-                        height: 116,
-                        placeholder: Container(
-                          color: t.cardAlt,
-                          child: Center(
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: t.primary,
+                child: Builder(
+                  builder: (context) {
+                    Widget foto = fotoUrl != null && fotoUrl.trim().isNotEmpty
+                        ? UaiStudentPhoto(
+                            studentId: widget.alunoId,
+                            imageUrl: fotoUrl,
+                            profile: UaiStudentPhotoProfile.list,
+                            fit: BoxFit.cover,
+                            width: 116,
+                            height: 116,
+                            placeholder: Container(
+                              color: t.cardAlt,
+                              child: Center(
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: t.primary,
+                                ),
+                              ),
                             ),
-                          ),
+                            fallback: _fotoHeroFallback(inicial),
+                          )
+                        : _fotoHeroFallback(inicial);
+
+                    if (emEscalaCinza) {
+                      foto = ColorFiltered(
+                        colorFilter: ColorFilter.matrix(
+                          _matrizEscalaCinzaHero(),
                         ),
-                        fallback: _fotoHeroFallback(inicial),
-                      )
-                    : _fotoHeroFallback(inicial),
+                        child: foto,
+                      );
+                    }
+                    return foto;
+                  },
+                ),
               ),
             ),
           ),
@@ -6595,14 +6884,26 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
   @override
   Widget build(BuildContext context) {
     if (widget.offlineOnly) {
-      return Scaffold(appBar: AppBar(title: const Text('Detalhes do Aluno')),
-        body: OfflineReadonlyViews.loading(OfflineReadonlyViews.snapshot(), (snapshot) {
-          final alunos = OfflineReadonlyViews.rows(snapshot, 'alunos')
-            .where((e) => e['id'] == widget.alunoId).toList();
-          if (alunos.isEmpty) return OfflineReadonlyViews.notFound('Ficha do aluno');
-          return Column(children: [OfflineReadonlyViews.banner(snapshot),
-            Expanded(child: OfflineReadonlyViews.studentDetail(alunos.first))]);
-        }));
+      return Scaffold(
+        appBar: AppBar(title: const Text('Detalhes do Aluno')),
+        body: OfflineReadonlyViews.loading(OfflineReadonlyViews.snapshot(), (
+          snapshot,
+        ) {
+          final alunos = OfflineReadonlyViews.rows(
+            snapshot,
+            'alunos',
+          ).where((e) => e['id'] == widget.alunoId).toList();
+          if (alunos.isEmpty) {
+            return OfflineReadonlyViews.notFound('Ficha do aluno');
+          }
+          return Column(
+            children: [
+              OfflineReadonlyViews.banner(snapshot),
+              Expanded(child: OfflineReadonlyViews.studentDetail(alunos.first)),
+            ],
+          );
+        }),
+      );
     }
 
     if (_carregandoAluno || _carregandoPermissoes || !_permissoesCarregadas) {
@@ -6749,6 +7050,27 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
               if (isAtivo) {
                 menuItems.add(
                   PopupMenuItem(
+                    value: 'disciplina',
+                    child: Row(
+                      children: [
+                        Icon(Icons.gavel_rounded, color: context.uai.warning),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
+                            'Advertir / Suspender Aluno',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }
+
+              if (isAtivo) {
+                menuItems.add(
+                  PopupMenuItem(
                     value: 'mudar_turma',
                     child: Row(
                       children: [
@@ -6814,19 +7136,26 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
               menuItems.addAll([
                 PopupMenuItem(
                   value: 'parentes',
-                  child: Row(children: [
-                    Icon(Icons.family_restroom, color: context.uai.info),
-                    const SizedBox(width: 8),
-                    const Text('Ver parentes'),
-                  ]),
+                  child: Row(
+                    children: [
+                      Icon(Icons.family_restroom, color: context.uai.info),
+                      const SizedBox(width: 8),
+                      const Text('Ver parentes'),
+                    ],
+                  ),
                 ),
                 PopupMenuItem(
                   value: 'ficha_complementar',
-                  child: Row(children: [
-                    Icon(Icons.assignment_ind_outlined, color: context.uai.success),
-                    const SizedBox(width: 8),
-                    const Text('Ficha complementar'),
-                  ]),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.assignment_ind_outlined,
+                        color: context.uai.success,
+                      ),
+                      const SizedBox(width: 8),
+                      const Text('Ficha complementar'),
+                    ],
+                  ),
                 ),
               ]);
               return menuItems;
@@ -6834,12 +7163,31 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
             onSelected: (value) async {
               switch (value) {
                 case 'ficha_complementar':
- await Navigator.push(context, MaterialPageRoute(builder: (_) => FichaComplementarScreen(alunoId: widget.alunoId)));
- break;
- case 'parentes':
- await abrirRedeParentesco(context, alunoId: widget.alunoId, abrirPerfil: (id) { if(mounted) Navigator.push(context, MaterialPageRoute(builder: (_) => AlunoDetalheScreen(alunoId: id))); });
- break;
- case 'editar':
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          FichaComplementarScreen(alunoId: widget.alunoId),
+                    ),
+                  );
+                  break;
+                case 'parentes':
+                  await abrirRedeParentesco(
+                    context,
+                    alunoId: widget.alunoId,
+                    abrirPerfil: (id) {
+                      if (mounted) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => AlunoDetalheScreen(alunoId: id),
+                          ),
+                        );
+                      }
+                    },
+                  );
+                  break;
+                case 'editar':
                   await _editarAluno(context);
                   break;
                 case 'ver_termo': //  NOVO CASE
@@ -6850,6 +7198,28 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                   break;
                 case 'ativar':
                   await _ativarAluno(context, widget.alunoId, data);
+                  break;
+                case 'disciplina':
+                  final aplicado = await showDialog<bool>(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (_) => DisciplinaDialog(
+                      alunoId: widget.alunoId,
+                      alunoNome: nome,
+                      podeExpulsar: _isAdmin,
+                    ),
+                  );
+                  if (!context.mounted || !mounted) break;
+                  if (aplicado == true) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Ocorrência disciplinar registrada e auditada.',
+                        ),
+                      ),
+                    );
+                    await _carregarDadosAluno(forcarServidor: true);
+                  }
                   break;
                 case 'mudar_turma':
                   await _mudarTurma(context, widget.alunoId, data);
@@ -6868,9 +7238,7 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                     descricao:
                         'Usuário abriu o Raio-X de Frequência do aluno $nomeAluno',
                     tipo: 'navegacao',
-                    extra: {
-                      'destinoTela': 'HistoricoFrequenciaScreen',
-                    },
+                    extra: {'destinoTela': 'HistoricoFrequenciaScreen'},
                   );
                   await Navigator.push(
                     context,
@@ -6887,9 +7255,7 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
                     descricao:
                         'Usuário voltou para o detalhe do aluno $nomeAluno',
                     tipo: 'navegacao',
-                    extra: {
-                      'origemTela': 'HistoricoFrequenciaScreen',
-                    },
+                    extra: {'origemTela': 'HistoricoFrequenciaScreen'},
                   );
                   break;
               }
@@ -6898,22 +7264,29 @@ class _AlunoDetalheScreenState extends State<AlunoDetalheScreen> {
           ),
         ],
       ),
-      body: _buildPerfilConteudo(
-        data: data,
-        fotoUrl: fotoUrl,
-        contatoAluno: contatoAluno,
-        contatoResponsavel: contatoResponsavel,
-        nomeResponsavel: nomeResponsavel,
-        contatoEmergencia: contatoEmergencia,
-        nomeContatoEmergencia: nomeContatoEmergencia,
-        monitor: monitor,
-        idade: idade,
-        nome: nome,
-        apelido: apelido,
-        statusAtividade: statusAtividade,
-        turma: turma,
-        turmaId: turmaId,
-        isAtivo: isAtivo,
+      body: Column(
+        children: [
+          DisciplinaAlunoBadge(alunoId: widget.alunoId),
+          Expanded(
+            child: _buildPerfilConteudo(
+              data: data,
+              fotoUrl: fotoUrl,
+              contatoAluno: contatoAluno,
+              contatoResponsavel: contatoResponsavel,
+              nomeResponsavel: nomeResponsavel,
+              contatoEmergencia: contatoEmergencia,
+              nomeContatoEmergencia: nomeContatoEmergencia,
+              monitor: monitor,
+              idade: idade,
+              nome: nome,
+              apelido: apelido,
+              statusAtividade: statusAtividade,
+              turma: turma,
+              turmaId: turmaId,
+              isAtivo: isAtivo,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -7667,9 +8040,7 @@ class _CardFrequenciaModernoState extends State<CardFrequenciaModerno> {
                                     margin: EdgeInsets.only(right: 8),
                                     padding: EdgeInsets.all(4),
                                     decoration: BoxDecoration(
-                                      color: context.uai.warning.withAlpha(
-                                        41,
-                                      ),
+                                      color: context.uai.warning.withAlpha(41),
                                       shape: BoxShape.circle,
                                     ),
                                     child: Icon(
@@ -8070,7 +8441,9 @@ class _CardEventosParticipadosState extends State<CardEventosParticipados> {
   String _cacaBugEventoNome(Map<String, dynamic> participacao) {
     final detalhes = participacao['evento_detalhes'] as Map<String, dynamic>?;
     return _cacaBugTextoSeguro(
-      detalhes?['nome'] ?? participacao['evento_nome'] ?? participacao['nome_evento'],
+      detalhes?['nome'] ??
+          participacao['evento_nome'] ??
+          participacao['nome_evento'],
       fallback: 'Evento sem nome',
     );
   }
@@ -8091,15 +8464,14 @@ class _CardEventosParticipadosState extends State<CardEventosParticipados> {
       CacaBugService.instance.registrarEvento(
         tipo: 'navegacao',
         acao: CacaBugActions.abriuEventosAluno,
-        descricao: 'Usuário abriu o card de eventos do aluno ${_cacaBugAlunoNome()}',
+        descricao:
+            'Usuário abriu o card de eventos do aluno ${_cacaBugAlunoNome()}',
         tela: 'AlunoDetalheScreen',
         arquivo: 'lib/modules/alunos/screens/aluno_detalhe_screen.dart',
         rota: '/alunos/detalhe',
         status: 'success',
         dados: _cacaBugPayloadBase(
-          extra: {
-            'destinoBloco': 'eventos_participados',
-          },
+          extra: {'destinoBloco': 'eventos_participados'},
         ),
       ),
     );
@@ -8112,7 +8484,12 @@ class _CardEventosParticipadosState extends State<CardEventosParticipados> {
     _registrarCacaBugAbriuEventosAluno();
     final total = _participacoes.length;
     final certificadosCount = _cacaBugTotalComCertificado();
-    final hash = [widget.alunoId, fonteDados, total, certificadosCount].join('|');
+    final hash = [
+      widget.alunoId,
+      fonteDados,
+      total,
+      certificadosCount,
+    ].join('|');
     if (!force && _cacaBugUltimoHashCarregamentoEventos == hash) return;
     _cacaBugUltimoHashCarregamentoEventos = hash;
 
@@ -8120,7 +8497,8 @@ class _CardEventosParticipadosState extends State<CardEventosParticipados> {
       CacaBugService.instance.registrarEvento(
         tipo: 'sistema',
         acao: CacaBugActions.carregouParticipacoesAluno,
-        descricao: 'Usuário carregou $total participação(ões) em eventos do aluno ${_cacaBugAlunoNome()}',
+        descricao:
+            'Usuário carregou $total participação(ões) em eventos do aluno ${_cacaBugAlunoNome()}',
         tela: 'AlunoDetalheScreen',
         arquivo: 'lib/modules/alunos/screens/aluno_detalhe_screen.dart',
         rota: '/alunos/detalhe',
@@ -8146,7 +8524,8 @@ class _CardEventosParticipadosState extends State<CardEventosParticipados> {
     unawaited(
       CacaBugService.instance.registrarErro(
         acao: CacaBugActions.erroCarregarParticipacoesAluno,
-        descricao: 'Erro ao carregar participações em eventos do aluno ${_cacaBugAlunoNome()}',
+        descricao:
+            'Erro ao carregar participações em eventos do aluno ${_cacaBugAlunoNome()}',
         tela: 'AlunoDetalheScreen',
         arquivo: 'lib/modules/alunos/screens/aluno_detalhe_screen.dart',
         rota: '/alunos/detalhe',
@@ -8168,15 +8547,14 @@ class _CardEventosParticipadosState extends State<CardEventosParticipados> {
       CacaBugService.instance.registrarEvento(
         tipo: 'acao_usuario',
         acao: CacaBugActions.atualizouParticipacoesAluno,
-        descricao: 'Usuário atualizou os eventos do aluno ${_cacaBugAlunoNome()}',
+        descricao:
+            'Usuário atualizou os eventos do aluno ${_cacaBugAlunoNome()}',
         tela: 'AlunoDetalheScreen',
         arquivo: 'lib/modules/alunos/screens/aluno_detalhe_screen.dart',
         rota: '/alunos/detalhe',
         status: 'success',
         dados: _cacaBugPayloadBase(
-          extra: {
-            'origemAtualizacao': 'botao_carregar_eventos',
-          },
+          extra: {'origemAtualizacao': 'botao_carregar_eventos'},
         ),
         force: true,
       ),
@@ -8216,7 +8594,8 @@ class _CardEventosParticipadosState extends State<CardEventosParticipados> {
         'eventoId': _cacaBugEventoId(participacao),
         'eventoNome': _cacaBugEventoNome(participacao),
         'tipoEvento': _cacaBugTextoSeguro(
-          (participacao['evento_detalhes'] as Map<String, dynamic>?)?['tipo_evento'] ??
+          (participacao['evento_detalhes']
+                  as Map<String, dynamic>?)?['tipo_evento'] ??
               participacao['tipo_evento'],
         ),
         'temCertificado': _cacaBugTemCertificado(participacao),
@@ -8465,9 +8844,7 @@ class _CardEventosParticipadosState extends State<CardEventosParticipados> {
         status: 'success',
         dados: _cacaBugPayloadParticipacao(
           participacao,
-          extra: {
-            'destinoTela': 'DetalheParticipacaoScreen',
-          },
+          extra: {'destinoTela': 'DetalheParticipacaoScreen'},
         ),
         force: true,
       ),
@@ -8496,9 +8873,7 @@ class _CardEventosParticipadosState extends State<CardEventosParticipados> {
         status: 'success',
         dados: _cacaBugPayloadParticipacao(
           participacao,
-          extra: {
-            'origemTela': 'DetalheParticipacaoScreen',
-          },
+          extra: {'origemTela': 'DetalheParticipacaoScreen'},
         ),
         force: true,
       ),
@@ -8774,9 +9149,7 @@ class _CardEventosParticipadosState extends State<CardEventosParticipados> {
                                   width: 40,
                                   height: 40,
                                   decoration: BoxDecoration(
-                                    color: context.uai.warning.withAlpha(
-                                      41,
-                                    ),
+                                    color: context.uai.warning.withAlpha(41),
                                     borderRadius: BorderRadius.circular(10),
                                   ),
                                   child: Icon(
@@ -8884,8 +9257,9 @@ class _CardEventosParticipadosState extends State<CardEventosParticipados> {
                                         ),
                                         borderRadius: BorderRadius.circular(10),
                                         border: Border.all(
-                                          color: context.uai.success
-                                              .withAlpha(46),
+                                          color: context.uai.success.withAlpha(
+                                            46,
+                                          ),
                                         ),
                                       ),
                                       child: Icon(
@@ -8899,8 +9273,7 @@ class _CardEventosParticipadosState extends State<CardEventosParticipados> {
                             ),
                           ),
                         );
-                      })
-                      ,
+                      }),
 
                   if (_participacoes.length > 3)
                     Padding(
@@ -8942,7 +9315,11 @@ class CardInformacoesModerno extends StatefulWidget {
   final String alunoId;
   final Map<String, dynamic>? initialData;
 
-  const CardInformacoesModerno({super.key, required this.alunoId, this.initialData});
+  const CardInformacoesModerno({
+    super.key,
+    required this.alunoId,
+    this.initialData,
+  });
 
   @override
   State<CardInformacoesModerno> createState() => _CardInformacoesModernoState();
@@ -9260,4 +9637,3 @@ class _CardInformacoesModernoState extends State<CardInformacoesModerno> {
 // Refatoração focada em tema dinâmico, responsividade e layout adaptativo.
 // Lógica original preservada.
 // ============================================================
-

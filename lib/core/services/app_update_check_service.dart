@@ -80,7 +80,30 @@ class AppUpdateCheckService {
   // =====================================================
   Future<AppUpdateStatus> verificarStatus() async {
     final versaoLocal = await getVersaoLocal();
-    final buildLocal = await getBuildLocal();
+    final buildLocalRaw = await getBuildLocal();
+    // --split-per-abi altera versionCode do APK (base+1000/2000/4000).
+    // O Firestore/release V3 guarda o build-base, não o código por ABI.
+    var buildLocal = buildLocalRaw;
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      try {
+        final abis = (await DeviceInfoPlugin().androidInfo).supportedAbis;
+        final abi = abis.firstWhere(
+          (item) => const ['arm64-v8a', 'armeabi-v7a', 'x86_64'].contains(item),
+          orElse: () => '',
+        );
+        final offset = switch (abi) {
+          'armeabi-v7a' => 1000,
+          'arm64-v8a' => 2000,
+          'x86_64' => 4000,
+          _ => 0,
+        };
+        if (offset > 0 && buildLocalRaw > offset) {
+          buildLocal = buildLocalRaw - offset;
+        }
+      } catch (e) {
+        debugPrint('Update: não foi possível normalizar build por ABI: $e');
+      }
+    }
 
     try {
       final configDoc = await _firestore
@@ -140,12 +163,10 @@ class AppUpdateCheckService {
       }
 
       final versaoMinimaObrigatoria = (config['versao_minima_obrigatoria'] ?? '').toString().trim();
-      final atualizacaoObrigatoria = canal == 'producao' && config['atualizacao_obrigatoria'] == true;
-      final precisaAtualizar = AppVersionModel.precisaAtualizar(versaoLocal: versaoLocal, versaoRemota: versaoServidor);
+      final precisaAtualizarVersao = AppVersionModel.precisaAtualizar(versaoLocal: versaoLocal, versaoRemota: versaoServidor);
       final estaAbaixoDaMinima = versaoMinimaObrigatoria.isNotEmpty
           ? AppVersionModel.precisaAtualizar(versaoLocal: versaoLocal, versaoRemota: versaoMinimaObrigatoria)
           : false;
-      final deveBloquear = atualizacaoObrigatoria && estaAbaixoDaMinima;
 
       if (versionModel == null) {
         final ultimaVersaoId = (config['ultima_versao_id'] ?? '').toString().trim();
@@ -153,6 +174,18 @@ class AppUpdateCheckService {
         versionModel ??= await _buscarVersaoPorVersao(versaoServidor);
         canal = versionModel?.canal ?? canal;
       }
+
+      // O canal efetivo só está decidido após resolver a versão no histórico.
+      final atualizacaoObrigatoria = canal == 'producao' &&
+          config['atualizacao_obrigatoria'] == true;
+      final deveBloquear = atualizacaoObrigatoria && estaAbaixoDaMinima;
+
+      // Mesmo número semântico pode receber um novo APK assinado com build
+      // maior. O resolvedor V3 diferencia versionName e versionCode.
+      final buildServidor = versionModel?.build ??
+          int.tryParse('${config['build_atual'] ?? 0}') ?? 0;
+      final precisaAtualizar = precisaAtualizarVersao ||
+          (versaoServidor == versaoLocal && buildServidor > buildLocal);
 
       final titulo = versionModel?.titulo.trim().isNotEmpty == true
           ? versionModel!.titulo

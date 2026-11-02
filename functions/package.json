@@ -5,10 +5,12 @@
     "serve": "firebase emulators:start --only functions",
     "shell": "firebase functions:shell",
     "start": "npm run shell",
-    "logs": "firebase functions:log"
+    "logs": "firebase functions:log",
+    "check:deploy-health": "node scripts/check_deploy_health_v3.cjs",
+    "test:health-v3": "node --test test/release_v3_health_local.test.cjs"
   },
   "engines": {
-    "node": "24"
+    "node": "22"
   },
   "main": "index.js",
   "dependencies": {

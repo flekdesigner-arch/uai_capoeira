@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:uai_capoeira/core/image_cache/uai_student_photo.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:uai_capoeira/core/services/uai_callable_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter/services.dart';
@@ -40,8 +40,6 @@ class EditarChamadaTurmaScreen extends StatefulWidget {
 
 class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
     with SingleTickerProviderStateMixin {
-  final _firestore = FirebaseFirestore.instance;
-  final _auth = FirebaseAuth.instance;
   final _buscaController = TextEditingController();
   final _professorController = TextEditingController();
   final _observacaoController = TextEditingController();
@@ -61,10 +59,11 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
   String _tipoOriginal = 'OBJETIVA';
   String _tipoEdit = 'OBJETIVA';
   String _professorOriginal = '';
-  String _professorIdOriginal = '';
   String _buscaAluno = '';
   String _filtroPresenca = 'Todos';
   bool _modoListaCompacta = false;
+  final String _comandoEdicao =
+      'editar_${DateTime.now().microsecondsSinceEpoch}';
   bool _salvando = false;
   bool _mostrarProgresso = false;
   bool _headerCompacto = false;
@@ -157,7 +156,6 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
         : data['tipo_aula'].toString().trim().toUpperCase();
     _tipoEdit = _tipoOriginal;
     _professorOriginal = data['professor_nome']?.toString() ?? 'Professor';
-    _professorIdOriginal = data['professor_id']?.toString() ?? '';
     _professorController.text = _professorOriginal;
 
     _alunosOriginal = (data['alunos'] as List? ?? [])
@@ -310,109 +308,6 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
   int get _percentual => _total > 0 ? ((_presentes / _total) * 100).round() : 0;
 
   String _dataFormatada(DateTime data) => DateFormat('yyyy-MM-dd').format(data);
-  String _mesKey(DateTime data) => DateFormat('yyyy-MM').format(data);
-
-  String _semanaKey(DateTime date) {
-    final d = DateTime.utc(date.year, date.month, date.day);
-    final thursday = d.add(Duration(days: 4 - d.weekday));
-    final yearStart = DateTime.utc(thursday.year, 1, 1);
-    final week = ((thursday.difference(yearStart).inDays) / 7).floor() + 1;
-    return '${thursday.year}-W${week.toString().padLeft(2, '0')}';
-  }
-
-  String _diaSemanaAbrev(DateTime data) {
-    switch (data.weekday) {
-      case DateTime.monday:
-        return 'seg';
-      case DateTime.tuesday:
-        return 'ter';
-      case DateTime.wednesday:
-        return 'qua';
-      case DateTime.thursday:
-        return 'qui';
-      case DateTime.friday:
-        return 'sex';
-      case DateTime.saturday:
-        return 'sab';
-      case DateTime.sunday:
-        return 'dom';
-      default:
-        return 'seg';
-    }
-  }
-
-  bool _mesAtual(DateTime data) {
-    final now = DateTime.now();
-    return data.year == now.year && data.month == now.month;
-  }
-
-  bool _semanaAtual(DateTime data) =>
-      _semanaKey(data) == _semanaKey(DateTime.now());
-
-  void _addNestedDelta(Map<String, dynamic> map, List<String> path, int delta) {
-    if (delta == 0 || path.isEmpty) return;
-    if (path.length == 1) {
-      final key = path.first;
-      final atual = map[key];
-      map[key] = atual is int ? atual + delta : delta;
-      return;
-    }
-    final key = path.first;
-    final child = Map<String, dynamic>.from((map[key] as Map?) ?? {});
-    map[key] = child;
-    _addNestedDelta(child, path.sublist(1), delta);
-  }
-
-  void _aplicarDeltaContador(
-    Map<String, dynamic> contador,
-    DateTime data,
-    int delta,
-  ) {
-    if (delta == 0) return;
-    final ano = data.year.toString();
-    final mes = _mesKey(data);
-    final semana = _semanaKey(data);
-    _addNestedDelta(contador, ['total'], delta);
-    _addNestedDelta(contador, ['porAno', ano], delta);
-    _addNestedDelta(contador, ['porMes', mes], delta);
-    _addNestedDelta(contador, ['porSemana', semana], delta);
-    if (_mesAtual(data)) _addNestedDelta(contador, ['mes'], delta);
-    if (_semanaAtual(data)) _addNestedDelta(contador, ['semana'], delta);
-  }
-
-  Map<String, dynamic> _materializarIncrements(
-    Map<String, dynamic> raw, {
-    bool incrementContext = false,
-  }) {
-    final result = <String, dynamic>{};
-    raw.forEach((key, value) {
-      final shouldIncrement =
-          incrementContext || key == 'total' || key == 'mes' || key == 'semana';
-      final childIncrement =
-          incrementContext ||
-          key == 'porAno' ||
-          key == 'porMes' ||
-          key == 'porSemana' ||
-          key == 'contadores';
-      if (value is int) {
-        if (shouldIncrement) {
-          if (value != 0) result[key] = FieldValue.increment(value);
-        } else {
-          result[key] = value;
-        }
-      } else if (value is Map<String, dynamic>) {
-        final child = _materializarIncrements(
-          value,
-          incrementContext: childIncrement,
-        );
-        if (child.isNotEmpty) result[key] = child;
-      } else {
-        result[key] = value;
-      }
-    });
-    return result;
-  }
-
   _ResumoEdicao _calcularResumoEdicao() {
     final originalPorId = {
       for (final a in _alunosOriginal) (a['id'] ?? '').toString(): a,
@@ -501,56 +396,6 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
       'graduacao_nome': aluno['graduacao_nome']?.toString() ?? '',
       'ultimo_dia_presente': aluno['ultimo_dia_presente'],
     };
-  }
-
-  Map<String, dynamic> _montarLogData(Map<String, dynamic> aluno) {
-    final alunoId =
-        aluno['id']?.toString() ?? aluno['aluno_id']?.toString() ?? '';
-    final professorNome = _professorController.text.trim().isEmpty
-        ? 'Professor'
-        : _professorController.text.trim();
-    return {
-      'log_id': 'log_${widget.turmaId}_${alunoId}_${_dataFormatada(_dataEdit)}',
-      'chamada_id': widget.chamadaId,
-      'aluno_id': alunoId,
-      'aluno_nome':
-          aluno['aluno_nome']?.toString() ??
-          aluno['nome']?.toString() ??
-          'Sem nome',
-      'turma_id': widget.turmaId,
-      'turma_nome': widget.turmaNome,
-      'academia_id': widget.academiaId,
-      'academia_nome': widget.academiaNome,
-      'data_aula': Timestamp.fromDate(_dataEdit),
-      'data_formatada': _dataFormatada(_dataEdit),
-      'dia_semana_abrev': _diaSemanaAbrev(_dataEdit),
-      'presente': _presencas[alunoId] == true,
-      'tipo_aula': _tipoEdit,
-      'observacao': (_observacoes[alunoId] ?? '').trim(),
-      'professor_id': _professorIdOriginal,
-      'professor_nome': professorNome,
-      'atualizado_em': FieldValue.serverTimestamp(),
-      'tipo_registro': 'chamada_turma_editada',
-    };
-  }
-
-  Future<List<DocumentSnapshot<Map<String, dynamic>>>> _buscarLogsDoAluno(
-    String alunoId,
-    String dataFormatadaAntiga,
-  ) async {
-    final porChamada = await _firestore
-        .collection('log_presenca_alunos')
-        .where('chamada_id', isEqualTo: widget.chamadaId)
-        .where('aluno_id', isEqualTo: alunoId)
-        .get();
-    if (porChamada.docs.isNotEmpty) return porChamada.docs;
-    final fallback = await _firestore
-        .collection('log_presenca_alunos')
-        .where('turma_id', isEqualTo: widget.turmaId)
-        .where('aluno_id', isEqualTo: alunoId)
-        .where('data_formatada', isEqualTo: dataFormatadaAntiga)
-        .get();
-    return fallback.docs;
   }
 
   Future<bool> _confirmarSalvar(_ResumoEdicao resumo) async {
@@ -688,149 +533,36 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
     _animationController.forward();
 
     try {
-      final user = _auth.currentUser;
       final alunosSalvar = _alunosEdit.map(_alunoEditadoParaSalvar).toList();
-      final dataNovaFormatada = _dataFormatada(_dataEdit);
-      final dataAntigaFormatada = _dataFormatada(_dataOriginal);
-      final professorNome = _professorController.text.trim().isEmpty
-          ? 'Professor'
-          : _professorController.text.trim();
-      final originalPorId = {
-        for (final a in _alunosOriginal) (a['id'] ?? '').toString(): a,
-      };
-      final editadoPorNome = user?.displayName?.trim().isNotEmpty == true
-          ? user!.displayName!.trim()
-          : user?.email;
-      final batch = _firestore.batch();
-
-      batch.update(_firestore.collection('chamadas').doc(widget.chamadaId), {
-        'data_chamada': Timestamp.fromDate(_dataEdit),
-        'data_formatada': dataNovaFormatada,
-        'dia_semana_abrev': _diaSemanaAbrev(_dataEdit),
-        'tipo_aula': _tipoEdit,
-        'professor_nome': professorNome,
-        'professor_id': _professorIdOriginal,
-        'alunos': alunosSalvar,
-        'presentes': _presentes,
-        'ausentes': _ausentes,
-        'total_alunos': _total,
-        'porcentagem_frequencia': _percentual,
-        'atualizado_em': FieldValue.serverTimestamp(),
-        'editado_em': FieldValue.serverTimestamp(),
-        'chamada_editada': true,
-        'editado_por_uid': user?.uid,
-        'editado_por_nome': editadoPorNome,
-        'editado_por_email': user?.email,
-        'edicao_origem': 'editar_chamada_turma_screen',
-        'resumo_edicao': resumo.textoCurto,
+      await UaiCallableClient.instance.call('editarChamada', {
+        'chamadaId': widget.chamadaId,
+        'criadoEmEsperado': (widget.chamadaData['criado_em'] as Timestamp?)
+            ?.millisecondsSinceEpoch,
+        'turmaId': widget.turmaId,
+        'comandoId': _comandoEdicao,
+        'versaoEsperada': widget.chamadaData['versao'] ?? 0,
+        'dataChamada': DateFormat('yyyy-MM-dd').format(_dataEdit),
+        'tipoAula': _tipoEdit,
+        'professorNome': _professorController.text.trim(),
+        'alunos': alunosSalvar
+            .map(
+              (a) => {
+                'id': a['aluno_id'],
+                'presente': a['presente'],
+                'observacao': a['observacao'],
+              },
+            )
+            .toList(),
       });
-
-      setState(() => _statusMensagem = 'Sincronizando logs...');
-      for (final aluno in alunosSalvar) {
-        final alunoId = aluno['id']?.toString() ?? '';
-        if (alunoId.isEmpty || !resumo.alunosComLogAlterado.contains(alunoId)) {
-          continue;
-        }
-        final logs = await _buscarLogsDoAluno(alunoId, dataAntigaFormatada);
-        final logData = _montarLogData(aluno);
-        if (logs.isNotEmpty) {
-          batch.set(logs.first.reference, logData, SetOptions(merge: true));
-          for (final extra in logs.skip(1)) {
-            batch.delete(extra.reference);
-          }
-        } else {
-          batch.set(
-            _firestore
-                .collection('log_presenca_alunos')
-                .doc('log_${widget.turmaId}_${alunoId}_$dataNovaFormatada'),
-            {...logData, 'registrado_em': FieldValue.serverTimestamp()},
-            SetOptions(merge: true),
-          );
-        }
-      }
-
-      setState(() => _statusMensagem = 'Ajustando contadores...');
-      for (final aluno in alunosSalvar) {
-        final alunoId = aluno['id']?.toString() ?? '';
-        if (alunoId.isEmpty) continue;
-        final original = originalPorId[alunoId];
-        final antes = original?['presente'] == true;
-        final depois = _presencas[alunoId] == true;
-        final alterouPresenca = antes != depois;
-        final precisaContador = resumo.mudouData
-            ? (antes || depois)
-            : alterouPresenca;
-        if (!precisaContador) continue;
-
-        final contadorRaw = <String, dynamic>{
-          'aluno_id': alunoId,
-          'aluno_nome': aluno['aluno_nome']?.toString() ?? 'Sem nome',
-          'turma_id_atual': widget.turmaId,
-          'turma_nome_atual': widget.turmaNome,
-          'academia_id_atual': widget.academiaId,
-          'academia_nome_atual': widget.academiaNome,
-          'cache_versao': 5,
-          'atualizado_em': FieldValue.serverTimestamp(),
-          'ultima_sync_logs': FieldValue.serverTimestamp(),
-          'periodo_mes_atual': _mesKey(DateTime.now()),
-          'periodo_semana_atual': _semanaKey(DateTime.now()),
-        };
-        final legacyRaw = <String, dynamic>{};
-        if (resumo.mudouData) {
-          if (antes) {
-            _aplicarDeltaContador(contadorRaw, _dataOriginal, -1);
-            _addNestedDelta(legacyRaw, [
-              'contadores',
-              _mesKey(_dataOriginal),
-            ], -1);
-          }
-          if (depois) {
-            _aplicarDeltaContador(contadorRaw, _dataEdit, 1);
-            _addNestedDelta(legacyRaw, ['contadores', _mesKey(_dataEdit)], 1);
-          }
-        } else if (alterouPresenca) {
-          if (!antes && depois) {
-            _aplicarDeltaContador(contadorRaw, _dataEdit, 1);
-            _addNestedDelta(legacyRaw, ['contadores', _mesKey(_dataEdit)], 1);
-          } else if (antes && !depois) {
-            _aplicarDeltaContador(contadorRaw, _dataOriginal, -1);
-            _addNestedDelta(legacyRaw, [
-              'contadores',
-              _mesKey(_dataOriginal),
-            ], -1);
-          }
-        }
-        final contadorUpdate = _materializarIncrements(contadorRaw);
-        if (contadorUpdate.isNotEmpty) {
-          batch.set(
-            _firestore
-                .collection('alunos')
-                .doc(alunoId)
-                .collection('contadores')
-                .doc('frequencia_dashboard'),
-            contadorUpdate,
-            SetOptions(merge: true),
-          );
-        }
-        final legacyUpdate = _materializarIncrements(legacyRaw);
-        if (legacyUpdate.isNotEmpty) {
-          batch.set(
-            _firestore.collection('alunos').doc(alunoId),
-            legacyUpdate,
-            SetOptions(merge: true),
-          );
-        }
-      }
-
-      await batch.commit();
-      unawaited(SessionLogService.instance.recordEntityOperation(
-        module: 'chamadas', entityType: 'chamada',
-        entityId: widget.chamadaId, operation: 'atualizou', result: 'sucesso',
-      ));
-      setState(() => _statusMensagem = 'Recalculando últimas presenças...');
-      for (final alunoId in resumo.alunosParaRecalcularUltimos) {
-        await _recalcularUltimosDoAluno(alunoId);
-      }
+      unawaited(
+        SessionLogService.instance.recordEntityOperation(
+          module: 'chamadas',
+          entityType: 'chamada',
+          entityId: widget.chamadaId,
+          operation: 'atualizou',
+          result: 'sucesso',
+        ),
+      );
       if (!mounted) return;
       setState(() => _statusMensagem = 'Finalizando...');
       await Future.delayed(const Duration(milliseconds: 350));
@@ -844,10 +576,15 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
       );
       Navigator.pop(context, true);
     } catch (e) {
-      unawaited(SessionLogService.instance.recordEntityOperation(
-        module: 'chamadas', entityType: 'chamada',
-        entityId: widget.chamadaId, operation: 'atualizou', result: 'falha',
-      ));
+      unawaited(
+        SessionLogService.instance.recordEntityOperation(
+          module: 'chamadas',
+          entityType: 'chamada',
+          entityId: widget.chamadaId,
+          operation: 'atualizou',
+          result: 'falha',
+        ),
+      );
       debugPrint('Erro ao salvar edição da chamada: $e');
       if (!mounted) return;
       setState(() {
@@ -862,59 +599,6 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
           duration: const Duration(seconds: 6),
         ),
       );
-    }
-  }
-
-  Future<void> _recalcularUltimosDoAluno(String alunoId) async {
-    try {
-      final alunoRef = _firestore.collection('alunos').doc(alunoId);
-      final contadorRef = alunoRef
-          .collection('contadores')
-          .doc('frequencia_dashboard');
-      final ultimaPresencaQuery = await _firestore
-          .collection('log_presenca_alunos')
-          .where('aluno_id', isEqualTo: alunoId)
-          .where('presente', isEqualTo: true)
-          .orderBy('data_aula', descending: true)
-          .limit(1)
-          .get();
-      final ultimaChamadaQuery = await _firestore
-          .collection('log_presenca_alunos')
-          .where('aluno_id', isEqualTo: alunoId)
-          .orderBy('data_aula', descending: true)
-          .limit(1)
-          .get();
-      final updatesAluno = <String, dynamic>{};
-      final updatesContador = <String, dynamic>{};
-      if (ultimaPresencaQuery.docs.isNotEmpty) {
-        final d = ultimaPresencaQuery.docs.first.data();
-        updatesAluno['ultima_presenca'] = d['data_aula'];
-        updatesAluno['ultimo_dia_presente'] = d['data_formatada'];
-        updatesContador['ultima_presenca'] = d['data_aula'];
-        updatesContador['ultimo_dia_presente'] = d['data_formatada'];
-      } else {
-        updatesAluno['ultima_presenca'] = null;
-        updatesAluno['ultimo_dia_presente'] = null;
-        updatesContador['ultima_presenca'] = null;
-        updatesContador['ultimo_dia_presente'] = null;
-      }
-      if (ultimaChamadaQuery.docs.isNotEmpty) {
-        final d = ultimaChamadaQuery.docs.first.data();
-        updatesAluno['ultima_chamada'] = d['data_aula'];
-        updatesAluno['ultima_chamada_por'] = d['professor_nome'];
-        updatesAluno['ultima_chamada_por_id'] = d['professor_id'];
-      } else {
-        updatesAluno['ultima_chamada'] = null;
-        updatesAluno['ultima_chamada_por'] = null;
-        updatesAluno['ultima_chamada_por_id'] = null;
-      }
-      updatesAluno['atualizado_em'] = FieldValue.serverTimestamp();
-      updatesContador['atualizado_em'] = FieldValue.serverTimestamp();
-      updatesContador['ultima_sync_logs'] = FieldValue.serverTimestamp();
-      await alunoRef.set(updatesAluno, SetOptions(merge: true));
-      await contadorRef.set(updatesContador, SetOptions(merge: true));
-    } catch (e) {
-      debugPrint('Erro ao recalcular últimos do aluno $alunoId: $e');
     }
   }
 
@@ -1667,7 +1351,6 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
     );
   }
 
-
   Widget _buildBusca() {
     return TextField(
       controller: _buscaController,
@@ -1733,7 +1416,8 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
                             ? isDesktop
                                   ? GridView.builder(
                                       controller: _listaScrollController,
-                                      scrollCacheExtent: const ScrollCacheExtent.pixels(700),
+                                      scrollCacheExtent:
+                                          const ScrollCacheExtent.pixels(700),
                                       padding: _gridPaddingForWidth(
                                         larguraTela,
                                       ),
@@ -1746,7 +1430,8 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
                                     )
                                   : ListView.builder(
                                       controller: _listaScrollController,
-                                      scrollCacheExtent: const ScrollCacheExtent.pixels(500),
+                                      scrollCacheExtent:
+                                          const ScrollCacheExtent.pixels(500),
                                       padding: const EdgeInsets.only(
                                         top: 6,
                                         bottom: 14,
@@ -1757,7 +1442,8 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
                                     )
                             : GridView.builder(
                                 controller: _listaScrollController,
-                                scrollCacheExtent: const ScrollCacheExtent.pixels(800),
+                                scrollCacheExtent:
+                                    const ScrollCacheExtent.pixels(800),
                                 padding: _gridPaddingForWidth(larguraTela),
                                 gridDelegate: _gridDelegateForChamada(
                                   larguraTela,
@@ -2124,8 +1810,9 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
                                             height: 1.08,
                                             shadows: [
                                               Shadow(
-                                                color: Colors.black.withAlpha((255.0 * (
-                                                  0.55)).round()),
+                                                color: Colors.black.withAlpha(
+                                                  (255.0 * (0.55)).round(),
+                                                ),
                                                 blurRadius: 8,
                                                 offset: const Offset(0, 1),
                                               ),
@@ -2566,9 +2253,7 @@ class _EditarChamadaTurmaScreenState extends State<EditarChamadaTurmaScreen>
                       decoration: BoxDecoration(
                         color: _onPrimary().withAlpha(36),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: _onPrimary().withAlpha(41),
-                        ),
+                        border: Border.all(color: _onPrimary().withAlpha(41)),
                       ),
                       child: Text(
                         _statusMensagem,

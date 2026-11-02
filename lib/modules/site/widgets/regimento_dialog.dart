@@ -403,13 +403,6 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
         .trim();
   }
 
-  int get _totalOrientacoes {
-    return _secoesRegimento.fold<int>(
-      0,
-      (total, secao) =>
-          total + _linhasConteudo(secao['conteudo']?.toString() ?? '').length,
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -692,83 +685,7 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
     );
   }
 
-  Widget _buildResumoCards(bool isCompact) {
-    final cards = [
-      _ResumoRegimento(
-        icon: Icons.article_rounded,
-        label: 'Seções',
-        value: _secoesRegimento.length.toString(),
-        color: Colors.blue,
-      ),
-      _ResumoRegimento(
-        icon: Icons.checklist_rounded,
-        label: 'Orientações',
-        value: _totalOrientacoes.toString(),
-        color: Colors.green,
-      ),
-      _ResumoRegimento(
-        icon: Icons.groups_rounded,
-        label: 'Grupo',
-        value: 'UAI',
-        color: Colors.orange,
-      ),
-    ];
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        const spacing = 8.0;
-        final itemWidth = (constraints.maxWidth - spacing * 2) / 3;
-
-        return Wrap(
-          spacing: spacing,
-          runSpacing: spacing,
-          children: cards.map((card) {
-            return SizedBox(
-              width: itemWidth,
-              child: _buildResumoCard(card, compact: isCompact),
-            );
-          }).toList(),
-        );
-      },
-    );
-  }
-
-  Widget _buildResumoCard(_ResumoRegimento card, {required bool compact}) {
-    return Container(
-      constraints: BoxConstraints(minHeight: compact ? 82 : 92),
-      padding: EdgeInsets.all(compact ? 9 : 12),
-      decoration: _cardDecoration(borderColor: card.color.withAlpha(26)),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(card.icon, color: card.color, size: compact ? 21 : 24),
-          const SizedBox(height: 5),
-          Text(
-            card.value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: card.color,
-              fontSize: compact ? 16 : 20,
-              fontWeight: FontWeight.w900,
-              height: 1,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            card.label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: Colors.grey.shade700,
-              fontSize: compact ? 9.6 : 10.8,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildSectionIntro(bool isCompact) {
     final t = context.uai;
@@ -1169,18 +1086,4 @@ class _RegimentoDialogState extends State<RegimentoDialog> {
       ],
     );
   }
-}
-
-class _ResumoRegimento {
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color color;
-
-  const _ResumoRegimento({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.color,
-  });
 }

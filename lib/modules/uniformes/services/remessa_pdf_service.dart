@@ -501,13 +501,5 @@ class RemessaPdfService {
         .trim();
   }
 
-  static String _textoSeguro(dynamic value) {
-    return (value ?? '')
-        .toString()
-        .replaceAll('\r', ' ')
-        .replaceAll(RegExp(r'\n+'), ' ')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-  }
 
 }

@@ -587,7 +587,7 @@ class MigracaoDetalheScreen extends StatefulWidget {
   const MigracaoDetalheScreen({super.key, required this.alunoData});
 
   @override
-  _MigracaoDetalheScreenState createState() => _MigracaoDetalheScreenState();
+  State<MigracaoDetalheScreen> createState() => _MigracaoDetalheScreenState();
 }
 
 class _MigracaoDetalheScreenState extends State<MigracaoDetalheScreen> {

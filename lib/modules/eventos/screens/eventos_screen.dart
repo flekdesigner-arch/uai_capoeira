@@ -1,4 +1,6 @@
+import 'package:uai_capoeira/core/access_simulation/simulation_navigation_guard.dart';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -18,6 +20,8 @@ class EventosScreen extends StatefulWidget {
 class _EventosScreenState extends State<EventosScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  bool _possuiAndamento = true;
+  bool _usuarioEhAdmin = false;
   final PermissaoService _permissaoService = PermissaoService();
 
   late Future<_EventosPermissoes> _permissoesFuture;
@@ -122,57 +126,11 @@ class _EventosScreenState extends State<EventosScreen>
     );
   }
 
-  Widget _dashboardResponsiveWrap({
-    required List<Widget> children,
-    double minItemWidth = 360,
-    int maxColumns = 4,
-    double spacing = 12,
-    double runSpacing = 12,
-    bool centerLastRow = true,
-  }) {
-    if (children.isEmpty) return const SizedBox.shrink();
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final width = constraints.maxWidth;
-
-        if (width < 720) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: List.generate(children.length, (index) {
-              final isLast = index == children.length - 1;
-
-              return Padding(
-                padding: EdgeInsets.only(bottom: isLast ? 0 : runSpacing),
-                child: SizedBox(width: double.infinity, child: children[index]),
-              );
-            }),
-          );
-        }
-
-        final columns = (width / minItemWidth)
-            .floor()
-            .clamp(1, maxColumns)
-            .toInt();
-
-        final itemWidth = (width - (spacing * (columns - 1))) / columns;
-
-        return Wrap(
-          alignment: centerLastRow ? WrapAlignment.center : WrapAlignment.start,
-          spacing: spacing,
-          runSpacing: runSpacing,
-          children: children
-              .map((child) => SizedBox(width: itemWidth, child: child))
-              .toList(),
-        );
-      },
-    );
-  }
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this, initialIndex: 0);
+    _tabController = TabController(length: 2, vsync: this, initialIndex: 0);
     _permissoesFuture = _carregarPermissoesTela();
   }
 
@@ -218,6 +176,7 @@ class _EventosScreenState extends State<EventosScreen>
       podeGerenciarParticipantes: results[7],
     );
 
+    _usuarioEhAdmin = await _permissaoService.usuarioAtualEhAdmin();
     if (permissoes.podeEntrarModulo) {
       await _carregarFiltros();
       await _selecionarAbaInicial(permissoes);
@@ -237,35 +196,46 @@ class _EventosScreenState extends State<EventosScreen>
   }
 
   Future<void> _selecionarAbaInicial(_EventosPermissoes permissoes) async {
-    // Regra:
-    // - Se existir evento em andamento E o usuário puder ver andamento, abre na aba EM ANDAMENTO.
-    // - Se não existir, ou se o usuário não puder ver andamento, fica em TODOS.
     try {
-      if (!permissoes.podeVerEventosAndamento) {
-        _agendarTrocaAba(0);
-        return;
-      }
-
       final snapshot = await FirebaseFirestore.instance
-          .collection('eventos')
-          .where('status', isEqualTo: 'andamento')
-          .limit(1)
-          .get();
-
-      _agendarTrocaAba(snapshot.docs.isNotEmpty ? 1 : 0);
+          .collection('eventos').where('status', isEqualTo: 'andamento').get();
+      if (!mounted) return;
+      final existe = snapshot.docs.any((doc) {
+        final evento = EventoModel.fromFirestore(doc);
+        return _podeGerirEvento(evento, permissoes);
+      });
+      setState(() => _possuiAndamento = existe);
+      _agendarTrocaAba(existe ? 0 : 1);
     } catch (e) {
-      debugPrint('Erro ao selecionar aba inicial de eventos: $e');
+      debugPrint('Erro ao selecionar aba inicial: $e');
+      // Falha de rede não equivale a ausência de eventos.
       _agendarTrocaAba(0);
     }
   }
 
   void _agendarTrocaAba(int index) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      if (_tabController.index == index) return;
-
-      _tabController.animateTo(index);
+      if (mounted && _tabController.index != index) _tabController.animateTo(index);
     });
+  }
+
+  bool _temAcessoGestaoEvento(EventoModel evento) {
+    final permitidos = evento.gestoresAutorizadosUids;
+    if (permitidos == null || _usuarioEhAdmin) return true;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    return uid != null && permitidos.contains(uid);
+  }
+
+  // A visibilidade do calendário não é a autorização para gerir um evento.
+  // Para eventos restritos, a lista de UIDs é a porta de entrada na gestão.
+  // Nos eventos legados sem lista, permanecem as permissões gerais.
+  bool _podeGerirEvento(EventoModel evento, _EventosPermissoes permissoes) {
+    if (_usuarioEhAdmin) return true;
+    if (evento.gestoresAutorizadosUids != null) {
+      return _temAcessoGestaoEvento(evento);
+    }
+    return evento.status != 'andamento' ||
+        permissoes.podeVerEventosAndamento;
   }
 
   Future<void> _carregarFiltros() async {
@@ -583,13 +553,14 @@ class _EventosScreenState extends State<EventosScreen>
     required String docId,
     required _EventosPermissoes permissoes,
   }) {
+    if (SimulationNavigationGuard.intercept(context, module: 'Detalhes e gestão do evento')) return;
     final status = evento.status;
     final tipo = evento.tipo.toLowerCase().trim();
     final isCampeonato = tipo == 'campeonato';
 
-    if (status == 'andamento' && !permissoes.podeVerEventosAndamento) {
+    if (!_podeGerirEvento(evento, permissoes)) {
       _mostrarSemPermissao(
-        'Você não tem permissão para abrir eventos em andamento.',
+        'Você pode visualizar este evento, mas não foi autorizado a gerenciá-lo.',
       );
       return;
     }
@@ -671,7 +642,6 @@ class _EventosScreenState extends State<EventosScreen>
           body: TabBarView(
             controller: _tabController,
             children: [
-              _buildEventosGrid('todos', permissoes),
               _buildEventosGrid('andamento', permissoes),
               _buildEventosGrid('finalizado', permissoes),
             ],
@@ -705,7 +675,7 @@ class _EventosScreenState extends State<EventosScreen>
           gradient: context.uai.primaryGradient,
         ),
       ),
-      bottom: TabBar(
+      bottom: !_possuiAndamento ? null : TabBar(
         controller: _tabController,
         isScrollable: isCompact,
         indicatorColor: fg,
@@ -722,7 +692,6 @@ class _EventosScreenState extends State<EventosScreen>
           fontSize: 12,
         ),
         tabs: const [
-          Tab(text: 'TODOS', icon: Icon(Icons.event_rounded, size: 18)),
           Tab(
             text: 'EM ANDAMENTO',
             icon: Icon(Icons.pending_actions_rounded, size: 18),
@@ -782,19 +751,34 @@ class _EventosScreenState extends State<EventosScreen>
           );
         }).toList();
 
-        final itensPermitidos = permissoes.podeVerEventosAndamento
-            ? itensBase
-            : itensBase
-            .where((item) => item.evento.status != 'andamento')
+        // A listagem de gestão contém apenas eventos para os quais
+        // este usuário possui autorização efetiva de entrada.
+        // Administradores seguem com acesso irrestrito.
+        final itensPermitidos = itensBase
+            .where((item) => _podeGerirEvento(item.evento, permissoes))
             .toList();
 
         var itensVisiveis = itensPermitidos;
 
-        if (status != 'todos') {
-          itensVisiveis = itensPermitidos
-              .where((item) => item.evento.status == status)
-              .toList();
+        final possuiAndamento = itensPermitidos.any(
+          (item) => item.evento.status == 'andamento',
+        );
+        if (_possuiAndamento != possuiAndamento &&
+            _filtroCidade == 'Todas' && _filtroTipo == 'Todos') {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted || _possuiAndamento == possuiAndamento) return;
+            setState(() => _possuiAndamento = possuiAndamento);
+            _agendarTrocaAba(possuiAndamento ? 0 : 1);
+          });
         }
+        if (status == 'andamento') {
+          itensVisiveis = itensPermitidos
+              .where((item) => item.evento.status == 'andamento').toList();
+        } else if (status == 'finalizado' && possuiAndamento) {
+          itensVisiveis = itensPermitidos
+              .where((item) => item.evento.status == 'finalizado').toList();
+        }
+
 
         return _buildEventosScroll(
           status: status,
@@ -826,12 +810,12 @@ class _EventosScreenState extends State<EventosScreen>
             Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _buildEventosHero(
+                if (status == 'finalizado') _buildEventosHero(
                   status: status,
                   itensPermitidos: itensPermitidos,
                   itensVisiveis: itensVisiveis,
                 ),
-                const SizedBox(height: 12),
+                if (status == 'finalizado') const SizedBox(height: 10),
                 _buildFilterSummaryBar(
                   totalFiltrado: itensPermitidos.length,
                   totalVisivel: itensVisiveis.length,
@@ -870,7 +854,7 @@ class _EventosScreenState extends State<EventosScreen>
 
     final title = switch (status) {
       'andamento' => 'Eventos em andamento',
-      'finalizado' => 'Eventos finalizados',
+      'finalizado' => 'Eventos finalizados e histórico',
       _ => 'Painel de eventos',
     };
 
@@ -1616,8 +1600,7 @@ class _EventosScreenState extends State<EventosScreen>
         ? 'Andamento'
         : 'Ativo';
 
-    final bloqueadoAndamento =
-        status == 'andamento' && !permissoes.podeVerEventosAndamento;
+    final bloqueadoAndamento = !_podeGerirEvento(evento, permissoes);
 
     final borderAccent = bloqueadoAndamento
         ? context.uai.warning.withAlpha(71)
@@ -1631,7 +1614,7 @@ class _EventosScreenState extends State<EventosScreen>
         onTap: () {
           if (bloqueadoAndamento) {
             _mostrarSemPermissao(
-              'Você não tem permissão para abrir eventos em andamento.',
+              'Você pode visualizar, mas não tem autorização para gerir este evento.',
             );
             return;
           }
@@ -1660,7 +1643,14 @@ class _EventosScreenState extends State<EventosScreen>
               return Column(
                 children: [
                   AspectRatio(
-                    aspectRatio: isTiny ? 1.10 : 1.16,
+                    // O tamanho do banner deve seguir o mesmo cálculo do Wrap.
+                    // Um ratio divergente reduzia a área de informações e
+                    // provocava RenderFlex overflow (19 px) no desktop.
+                    aspectRatio: cardWidth / (cardWidth < 220
+                        ? cardWidth * .78
+                        : cardWidth < 320
+                            ? cardWidth * .68
+                            : cardWidth * .58),
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
@@ -1700,6 +1690,18 @@ class _EventosScreenState extends State<EventosScreen>
                             maxWidth: isTiny ? 74 : 96,
                           ),
                         ),
+                        if (status == 'andamento' && !bloqueadoAndamento)
+                          Positioned(
+                            bottom: 8, right: 8,
+                            child: Tooltip(
+                              message: 'Gestão autorizada',
+                              child: CircleAvatar(
+                                radius: 15,
+                                backgroundColor: Colors.white,
+                                child: Icon(Icons.lock_open_rounded, color: Colors.green.shade700, size: 19),
+                              ),
+                            ),
+                          ),
                         if (bloqueadoAndamento)
                           Container(
                             color: Color.alphaBlend(
@@ -1714,15 +1716,12 @@ class _EventosScreenState extends State<EventosScreen>
                                   color: context.uai.card.withAlpha(224),
                                   shape: BoxShape.circle,
                                   border: Border.all(
-                                    color: context.uai.warning.withAlpha(61),
+                                    color: Colors.red.withAlpha(110),
                                   ),
                                 ),
                                 child: Icon(
                                   Icons.lock_outline_rounded,
-                                  color: _ensureVisible(
-                                    context.uai.warning,
-                                    context.uai.card,
-                                  ),
+                                  color: Colors.red.shade700,
                                   size: isTiny ? 24 : 28,
                                 ),
                               ),
@@ -1742,7 +1741,8 @@ class _EventosScreenState extends State<EventosScreen>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Expanded(
+                          Flexible(
+                            fit: FlexFit.loose,
                             child: Center(
                               child: Text(
                                 evento.nome,

@@ -68,7 +68,6 @@ class _EventoCertificadoConfigDialogState
   late Map<String, CertificadoTextoCampoConfig> _textos;
   late CertificadoVisualConfig _visual;
   late CertificadoStudioConfig _studio;
-  CertificadoSvgInspection? _ultimaInspecaoSvg;
   bool _importandoSvg = false;
   String? _selectedLayerId;
   String? _selectedTextId;
@@ -675,7 +674,7 @@ class _EventoCertificadoConfigDialogState
       allowedExtensions: const ['svg'],
       withData: true,
     );
-    if (result == null || result.files.isEmpty) return;
+    if (!mounted || result == null || result.files.isEmpty) return;
     final file = result.files.single;
     final bytes = file.bytes;
     if (bytes == null) {
@@ -715,7 +714,7 @@ class _EventoCertificadoConfigDialogState
           baseOrigemLargura: imported.inspection.larguraOrigem,
           baseOrigemAltura: imported.inspection.alturaOrigem,
         );
-        _ultimaInspecaoSvg = imported.inspection;
+
       });
       _snackStudio('SVG sanitizado e aplicado como base do certificado.');
       await _mostrarInspectorSvg(imported.inspection);
@@ -736,10 +735,10 @@ class _EventoCertificadoConfigDialogState
       allowedExtensions: const ['svg'],
       withData: true,
     );
-    if (result == null || result.files.isEmpty) return;
+    if (!mounted || result == null || result.files.isEmpty) return;
     final file = result.files.single;
     final bytes = file.bytes;
-    if (bytes == null) return;
+    if (bytes == null || !mounted) return;
 
     setState(() => _importandoSvg = true);
     try {
@@ -772,7 +771,7 @@ class _EventoCertificadoConfigDialogState
       );
       setState(() {
         _studio = _studio.copyWith(camadas: [..._studio.camadas, layer]);
-        _ultimaInspecaoSvg = imported.inspection;
+
       });
       _snackStudio('Camada SVG adicionada ao canvas.');
     } catch (e) {
@@ -798,7 +797,7 @@ class _EventoCertificadoConfigDialogState
       );
       final inspection = _svgImportService.inspecionar(original: svg, sanitized: svg);
       if (!mounted) return;
-      setState(() => _ultimaInspecaoSvg = inspection);
+
       await _mostrarInspectorSvg(inspection);
     } catch (e) {
       _snackStudio('Não foi possível inspecionar o SVG: $e', erro: true);
@@ -990,6 +989,7 @@ class _EventoCertificadoConfigDialogState
         atual = CertificadoStudioRect(x: slot.x, y: slot.y, largura: slot.width, altura: slot.height);
       }
     }
+    if (!mounted) return;
     atual ??= const CertificadoStudioRect(x: 20, y: 20, largura: 100, altura: 10);
 
     final ctrls = [
@@ -1252,7 +1252,7 @@ class _EventoCertificadoConfigDialogState
       ),
     );
     nome.dispose();
-    if (result == null || result.trim().isEmpty) return false;
+    if (result == null || result.trim().isEmpty || !mounted) return false;
     try {
       final config = _configuracaoAtualParaPreview();
       final id = await CertificadoActionFeedback.run(
@@ -1369,20 +1369,20 @@ class _EventoCertificadoConfigDialogState
                     templates = await _templateRepository.listar();
                     if (!context.mounted) return;
                     setDialogState(() {});
-                    ScaffoldMessenger.of(this.context).showSnackBar(
+                    ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text('Template duplicado: $novoNome'),
-                        backgroundColor: this.context.uai.success,
+                        backgroundColor: context.uai.success,
                         behavior: SnackBarBehavior.floating,
                       ),
                     );
                     debugPrint('Template duplicado: ${item.id} -> $novoId');
                   } catch (e) {
                     if (!context.mounted) return;
-                    ScaffoldMessenger.of(this.context).showSnackBar(
+                    ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text('Erro ao duplicar template: $e'),
-                        backgroundColor: this.context.uai.error,
+                        backgroundColor: context.uai.error,
                         behavior: SnackBarBehavior.floating,
                       ),
                     );
@@ -1423,19 +1423,19 @@ class _EventoCertificadoConfigDialogState
                     templates.removeWhere((t) => t.id == item.id);
                     if (!context.mounted) return;
                     setDialogState(() {});
-                    ScaffoldMessenger.of(this.context).showSnackBar(
+                    ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text('Template excluído: ${item.nome}'),
-                        backgroundColor: this.context.uai.success,
+                        backgroundColor: context.uai.success,
                         behavior: SnackBarBehavior.floating,
                       ),
                     );
                   } catch (e) {
                     if (!context.mounted) return;
-                    ScaffoldMessenger.of(this.context).showSnackBar(
+                    ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text('Erro ao excluir template: $e'),
-                        backgroundColor: this.context.uai.error,
+                        backgroundColor: context.uai.error,
                         behavior: SnackBarBehavior.floating,
                       ),
                     );
@@ -2408,10 +2408,14 @@ class _EventoCertificadoConfigDialogState
                     const SizedBox(height: 2),
                     Text(opcao.$3, style: TextStyle(color: t.textSecondary, fontSize: 9.8, height: 1.25)),
                   ])),
-                  Radio<String>(
-                    value: opcao.$1,
+                  RadioGroup<String>(
                     groupValue: _studio.finalidade,
-                    onChanged: (v) => setState(() => _studio = _studio.copyWith(finalidade: v ?? opcao.$1)),
+                    onChanged: (v) {
+                      if (v != null) {
+                        setState(() => _studio = _studio.copyWith(finalidade: v));
+                      }
+                    },
+                    child: Radio<String>(value: opcao.$1),
                   ),
                 ]),
               ),
@@ -3025,62 +3029,6 @@ class _EventoCertificadoConfigDialogState
     ];
   }
 
-  Widget _buildHeader(Color primary, Color onPrimary) {
-    final t = context.uai;
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
-      decoration: BoxDecoration(
-        gradient: t.primaryGradient,
-        border: Border(bottom: BorderSide(color: t.border)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: onPrimary.withAlpha(36),
-              borderRadius: BorderRadius.circular(t.buttonRadius),
-              border: Border.all(color: onPrimary.withAlpha(41)),
-            ),
-            child: Icon(Icons.card_membership_rounded, color: onPrimary),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Configurações do certificado',
-                  style: TextStyle(
-                    color: onPrimary,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  'Defina modelo, assinaturas, local/data e visual dos textos.',
-                  style: TextStyle(
-                    color: onPrimary.withAlpha(204),
-                    fontSize: 12.2,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            onPressed: () => Navigator.pop(context),
-            icon: Icon(Icons.close_rounded, color: onPrimary),
-            tooltip: 'Fechar',
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildAtivacaoCard() {
     final t = context.uai;
@@ -3389,11 +3337,6 @@ class _EventoCertificadoConfigDialogState
     );
   }
 
-  double _asDouble(String value, double fallback) {
-    final clean = value.trim().replaceAll(',', '.');
-    if (clean.isEmpty) return fallback;
-    return double.tryParse(clean) ?? fallback;
-  }
 
   Color _hexToColor(String value, Color fallback) {
     final clean = value.trim().replaceAll('#', '').toUpperCase();
@@ -3401,17 +3344,6 @@ class _EventoCertificadoConfigDialogState
     return Color(int.parse('FF$clean', radix: 16));
   }
 
-  String _normalizarHexInput(String value, String fallback) {
-    final clean = value.trim().toUpperCase();
-    if (RegExp(r'^#[0-9A-F]{6}$').hasMatch(clean)) return clean;
-
-    final without = clean.replaceAll('#', '');
-    if (RegExp(r'^[0-9A-F]{6}$').hasMatch(without)) {
-      return '#$without';
-    }
-
-    return fallback;
-  }
 
   void _atualizarTexto(
     String campo,
@@ -4874,55 +4806,6 @@ class _EventoCertificadoConfigDialogState
     );
   }
 
-  Widget _buildFooter(Color primary, Color onPrimary) {
-    final t = context.uai;
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
-      decoration: BoxDecoration(
-        color: t.card,
-        border: Border(top: BorderSide(color: t.border)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: OutlinedButton(
-              onPressed: () => Navigator.pop(context),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: t.textPrimary,
-                side: BorderSide(color: t.border),
-                padding: const EdgeInsets.symmetric(vertical: 13),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(t.buttonRadius),
-                ),
-              ),
-              child: const Text(
-                'CANCELAR',
-                style: TextStyle(fontWeight: FontWeight.w900),
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: ElevatedButton.icon(
-              onPressed: _salvar,
-              icon: const Icon(Icons.save_rounded),
-              label: const Text('SALVAR CONFIG.'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: primary,
-                foregroundColor: onPrimary,
-                padding: const EdgeInsets.symmetric(vertical: 13),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(t.buttonRadius),
-                ),
-                textStyle: const TextStyle(fontWeight: FontWeight.w900),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _ModeloCertificadoOption {

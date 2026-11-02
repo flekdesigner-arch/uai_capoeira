@@ -32,6 +32,10 @@ class LocalPublishAutomationPanel extends StatelessWidget {
   final VoidCallback? onRunFullAutomation;
   final VoidCallback? onRunBetaAutomation;
   final VoidCallback? onClearLog;
+  final String notificationAudience;
+  final ValueChanged<String> onNotificationAudienceChanged;
+  final bool triggerWifiCheck;
+  final ValueChanged<bool> onTriggerWifiCheckChanged;
 
   const LocalPublishAutomationPanel({
     super.key,
@@ -42,6 +46,10 @@ class LocalPublishAutomationPanel extends StatelessWidget {
     required this.onRunFullAutomation,
     this.onRunBetaAutomation,
     required this.onClearLog,
+    required this.notificationAudience,
+    required this.onNotificationAudienceChanged,
+    required this.triggerWifiCheck,
+    required this.onTriggerWifiCheckChanged,
   });
 
   @override
@@ -66,6 +74,14 @@ class LocalPublishAutomationPanel extends StatelessWidget {
           if (!available) ...[
             _BlockedInfo(platformInfo: platformInfo),
           ] else ...[
+            _NotificationSettings(
+              audience: notificationAudience,
+              onAudienceChanged: onNotificationAudienceChanged,
+              triggerWifi: triggerWifiCheck,
+              onTriggerWifiChanged: onTriggerWifiCheckChanged,
+              disabled: state.running || !canStart,
+            ),
+            const SizedBox(height: 13),
             _ActionBox(
               state: state,
               canStart: canStart,
@@ -90,6 +106,97 @@ class LocalPublishAutomationPanel extends StatelessWidget {
             _LogBox(logText: logText, onClearLog: onClearLog),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// Controle visual do lançamento: envio geral é SEMPRE uma escolha explícita.
+class _NotificationSettings extends StatelessWidget {
+  final String audience;
+  final ValueChanged<String> onAudienceChanged;
+  final bool triggerWifi;
+  final ValueChanged<bool> onTriggerWifiChanged;
+  final bool disabled;
+
+  const _NotificationSettings({
+    required this.audience,
+    required this.onAudienceChanged,
+    required this.triggerWifi,
+    required this.onTriggerWifiChanged,
+    required this.disabled,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.uai;
+    return Material(
+      color: t.cardAlt,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(t.cardRadius),
+        side: BorderSide(color: t.border.withAlpha(155)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.all(13),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Notificações da nova versão',
+              style: TextStyle(
+                color: t.textPrimary,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Somente administradores é o padrão. Um aviso geral exige seleção manual.',
+              style: TextStyle(color: t.textSecondary, fontSize: 12),
+            ),
+            const SizedBox(height: 10),
+            DropdownButtonFormField<String>(
+              initialValue: audience,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Avisar após publicar',
+              ),
+              items: const [
+                DropdownMenuItem(
+                  value: 'admins',
+                  child: Text('Somente administradores'),
+                ),
+                DropdownMenuItem(
+                  value: 'todos',
+                  child: Text('Todos os usuários (manual)'),
+                ),
+                DropdownMenuItem(
+                  value: 'nenhum',
+                  child: Text('Não enviar agora'),
+                ),
+              ],
+              onChanged: disabled
+                  ? null
+                  : (value) {
+                      if (value != null) onAudienceChanged(value);
+                    },
+            ),
+            const SizedBox(height: 8),
+            SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              value: triggerWifi,
+              onChanged: disabled ? null : onTriggerWifiChanged,
+              title: const Text(
+                'Sinalizar download pelo Wi-Fi',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+              ),
+              subtitle: const Text(
+                'Envia aviso técnico sem instalação. Só baixa quem autorizou no Android, quando houver Wi-Fi adequado.',
+                style: TextStyle(fontSize: 12),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -201,7 +308,7 @@ class _ActionBox extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Uma esteira completa: sincroniza versão/build, publica PWA, gera Android por arquitetura, instala a release Windows e publica o manifesto. A notificação continua manual para você testar primeiro.',
+                  'Automação completa: sincroniza versão/build, publica PWA, gera APKs por arquitetura, instala o Windows e publica o manifesto. Ao final, aplica a audiência de notificações escolhida acima.',
                   style: TextStyle(
                     color: t.textSecondary,
                     height: 1.35,

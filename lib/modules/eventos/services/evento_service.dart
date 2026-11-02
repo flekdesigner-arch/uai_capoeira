@@ -11,6 +11,15 @@ class EventoService {
 
   final String _collection = 'eventos';
 
+  // Metadados informados pelo cliente. A Function os valida contra authId
+  // quando o Firebase fornece o contexto autenticado.
+  Map<String, dynamic> _auditActor() {
+    final user = _auth.currentUser;
+    if (user == null) return const <String, dynamic>{};
+    return <String, dynamic>{'auditoria_ator_uid_declarado': user.uid};
+  }
+
+
   // O registro é secundário: nunca altera o resultado da operação principal.
   void _audit(String id, String operation, String result) {
     unawaited(SessionLogService.instance.recordEntityOperation(
@@ -28,14 +37,14 @@ class EventoService {
       if (evento.id == null) {
         final docRef = await _firestore
             .collection(_collection)
-            .add(evento.toMap());
+            .add({...evento.toMap(), ..._auditActor()});
         _audit(docRef.id, 'criou', 'sucesso');
         return docRef.id;
       } else {
         await _firestore
             .collection(_collection)
             .doc(evento.id)
-            .update(evento.toMap());
+            .update({...evento.toMap(), ..._auditActor()});
         _audit(evento.id!, 'atualizou', 'sucesso');
         return evento.id;
       }
@@ -51,6 +60,7 @@ class EventoService {
         'linkBanner': bannerUrl,
         'link_banner': bannerUrl,
         'atualizado_em': FieldValue.serverTimestamp(),
+        ..._auditActor(),
       });
       _audit(eventoId, 'atualizou', 'sucesso');
     } catch (e) {
@@ -70,6 +80,7 @@ class EventoService {
         'modelo_certificado_id': configuracoes.modeloPadrao,
         'configuracoes_certificado': configuracoes.toMap(),
         'atualizado_em': FieldValue.serverTimestamp(),
+        ..._auditActor(),
       });
     } catch (e) {
       developer.log('❌ Erro ao atualizar configurações do certificado: $e');
@@ -143,6 +154,7 @@ class EventoService {
       await _firestore.collection(_collection).doc(eventoId).update({
         'status': 'finalizado',
         'atualizado_em': FieldValue.serverTimestamp(),
+        ..._auditActor(),
       });
       _audit(eventoId, 'atualizou', 'sucesso');
     } catch (e) {

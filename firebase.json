@@ -33,6 +33,19 @@
     ],
     "headers": [
       {
+        "source": "/r/versao-android-0dbf0312593a734f90fc393a00269348",
+        "headers": [
+          {
+            "key": "X-Robots-Tag",
+            "value": "noindex, nofollow"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      },
+      {
         "source": "/**",
         "headers": [
           {
@@ -102,6 +115,7 @@
     "rules": "storage.rules"
   },
   "firestore": {
-    "rules": "firestore.rules"
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
   }
 }

@@ -164,7 +164,6 @@ class RastreioSiteService {
     }
   }
 
-  Future<void> _enviarEventosPendentes() => flush(force: true);
 
   Future<void> registrarDispositivo({
     required Map<String, dynamic> dispositivo,

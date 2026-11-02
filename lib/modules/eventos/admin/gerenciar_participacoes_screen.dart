@@ -1975,68 +1975,6 @@ class _GerenciarParticipacoesScreenState
     }
   }
 
-  Widget _avatarAluno(String nome, {String? fotoUrl, String? alunoId}) {
-    final t = context.uai;
-    final inicial = nome.trim().isEmpty ? '?' : nome.trim()[0].toUpperCase();
-    final onPrimary = _readableOn(t.primary);
-
-    Widget fallback() {
-      return Container(
-        width: 50,
-        height: 50,
-        decoration: BoxDecoration(
-          gradient: t.primaryGradient,
-          borderRadius: BorderRadius.circular(t.buttonRadius),
-        ),
-        child: Center(
-          child: Text(
-            inicial,
-            style: TextStyle(
-              color: onPrimary,
-              fontSize: 20,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ),
-      );
-    }
-
-    Widget image(String url) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(t.buttonRadius),
-        child: SizedBox(
-          width: 50,
-          height: 50,
-          child: CachedNetworkImage(
-            imageUrl: url,
-            fit: BoxFit.cover,
-            placeholder: (_, _) => fallback(),
-            errorWidget: (_, _, _) => fallback(),
-          ),
-        ),
-      );
-    }
-
-    if (fotoUrl != null) return image(fotoUrl);
-
-    final cleanAlunoId = alunoId?.trim();
-    if (cleanAlunoId == null || cleanAlunoId.isEmpty) return fallback();
-
-    if (_fotoAlunoCache.containsKey(cleanAlunoId)) {
-      final cached = _fotoAlunoCache[cleanAlunoId];
-      return cached == null ? fallback() : image(cached);
-    }
-
-    return FutureBuilder<String?>(
-      future: _buscarFotoAluno(cleanAlunoId),
-      builder: (context, snapshot) {
-        final url = snapshot.data;
-        if (url == null || url.trim().isEmpty) return fallback();
-        return image(url);
-      },
-    );
-  }
-
   Future<String?> _buscarFotoAluno(String alunoId) async {
     if (_fotoAlunoCache.containsKey(alunoId)) return _fotoAlunoCache[alunoId];
 
@@ -2079,39 +2017,6 @@ class _GerenciarParticipacoesScreenState
       'imagem_url',
       'foto',
     ]);
-  }
-
-  Widget _infoChip(IconData icon, String text, Color color) {
-    final t = context.uai;
-    final accent = _ensureVisible(color, t.cardAlt);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withAlpha(18), t.cardAlt),
-        borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: accent.withAlpha(33)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: accent, size: 13),
-          const SizedBox(width: 4),
-          Flexible(
-            child: Text(
-              text,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: accent,
-                fontSize: 10.8,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   Widget _buildFiltrosAtivos() {
@@ -2459,7 +2364,6 @@ class FormularioParticipacao extends StatefulWidget {
 class _FormularioParticipacaoState extends State<FormularioParticipacao> {
   final EventoParticipantesCacheService _cacheService =
       EventoParticipantesCacheService();
-  final ParticipacaoService _participacaoService = ParticipacaoService();
   final GraduacaoService _graduacaoService = GraduacaoService();
   final _formKey = GlobalKey<FormState>();
 

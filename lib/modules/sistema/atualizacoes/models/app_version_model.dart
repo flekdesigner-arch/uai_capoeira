@@ -341,6 +341,13 @@ class AppVersionModel {
       'atualizacao_obrigatoria': obrigatoria,
       'titulo_atualizacao': titulo,
       'mensagem_atualizacao': resumo,
+      // Changelog limitado a dados públicos da release de PRODUÇÃO.
+      // A página de APK nunca lê documentos privados de versoes_app.
+      'public_release_notes': {
+        'melhorias': melhorias,
+        'correcoes': correcoes,
+        'implementacoes': implementacoes,
+      },
       'apk_url': downloadUrl,
       'apk_path': storagePath,
       'apk_nome_arquivo': nomeArquivo,

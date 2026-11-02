@@ -5,12 +5,15 @@ import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/uniformes/services/uniformes_service.dart';
-import 'package:uai_capoeira/modules/uniformes/services/remessa_service.dart';
 import 'package:uai_capoeira/modules/uniformes/services/fornecedor_service.dart';
 import 'package:uai_capoeira/modules/uniformes/dialogs/selecionar_aluno_dialog.dart';
+import 'package:uai_capoeira/modules/uniformes/dialogs/selecionar_item_remessa_dialog.dart';
 
 class NovoPedidoScreen extends StatefulWidget {
-  const NovoPedidoScreen({super.key});
+  final String? remessaInicialId;
+  final Map<String, dynamic>? remessaInicial;
+
+  const NovoPedidoScreen({super.key, this.remessaInicialId, this.remessaInicial});
 
   @override
   State<NovoPedidoScreen> createState() => _NovoPedidoScreenState();
@@ -19,8 +22,6 @@ class NovoPedidoScreen extends StatefulWidget {
 class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
   final User? currentUser = FirebaseAuth.instance.currentUser;
   final UniformesService _uniformesService = UniformesService();
-  final RemessaService _remessaService = RemessaService();
-  final FornecedorService _fornecedorService = FornecedorService();
   final NumberFormat _realFormat = NumberFormat.currency(
     locale: 'pt_BR',
     symbol: 'R\$',
@@ -37,10 +38,30 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
   final TextEditingController _dataPrevisaoController = TextEditingController();
 
   bool _isLoading = false;
+  String? _idPedidoPendente;
 
   String? _remessaId;
   String? _remessaNome;
   String? _fornecedorRemessa;
+
+  bool get _remessaFixa => widget.remessaInicialId != null;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_remessaFixa) {
+      final data = widget.remessaInicial ?? const <String, dynamic>{};
+      _remessaId = widget.remessaInicialId;
+      _remessaNome = (data['nome'] ?? 'Remessa selecionada').toString();
+      _fornecedorRemessa = data['fornecedor_nome']?.toString();
+      final previsao = data['data_prevista'];
+      if (previsao is Timestamp) {
+        _dataPrevisaoController.text = DateFormat('dd/MM/yyyy', 'pt_BR').format(previsao.toDate());
+      } else if (previsao is String) {
+        _dataPrevisaoController.text = previsao;
+      }
+    }
+  }
 
   // Helpers de contraste
   Color _readableOn(Color background) {
@@ -49,8 +70,6 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
         : const Color(0xFFFFFFFF);
   }
 
-
-
   @override
   void dispose() {
     _observacoesController.dispose();
@@ -58,17 +77,36 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
     super.dispose();
   }
 
-  void _adicionarItem() async {
-    final itemSelecionado = await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (context) => const SelecionarItemPedidoDialog(),
-    );
-
-    if (itemSelecionado != null && mounted) {
+  Future<void> _adicionarItem() async {
+    if (_remessaId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Selecione primeiro uma remessa.')));
+      return;
+    }
+    try {
+      final remessa = await FirebaseFirestore.instance.collection('remessas')
+          .doc(_remessaId!).get();
+      final precos = remessa.data()?['precificacao_itens'] as List<dynamic>? ?? [];
+      if (!mounted) return;
+      if (precos.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('A remessa ainda não tem produtos e preços configurados. Solicite ao gestor que edite a remessa.')));
+        return;
+      }
+      final itemSelecionado = await showDialog<Map<String, dynamic>>(
+        context: context,
+        builder: (_) => SelecionarItemRemessaDialog(itens: precos),
+      );
+      if (itemSelecionado == null || !mounted) return;
       setState(() {
         _itensPedido.add(itemSelecionado);
         _calcularTotal();
       });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Não foi possível carregar os itens da remessa: $e')));
+      }
     }
   }
 
@@ -190,7 +228,7 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
     setState(() => _isLoading = true);
 
     try {
-      String idPedido = _uniformesService.gerarIdPedido();
+      final idPedido = _idPedidoPendente ??= _uniformesService.gerarIdPedido();
       final bool ehEstoque = _alunoSelecionadoId == null;
 
       final dadosPedido = {
@@ -199,8 +237,8 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
         'aluno_nome': _alunoSelecionadoNome ?? 'Item para Estoque',
         'foto_aluno_url': _fotoAlunoUrl ?? '',
         'foto_perfil_aluno': _fotoAlunoUrl ?? '',
-        'itens': _itensPedido,
-        'valor_total': _valorTotal,
+        'itens': ehEstoque ? _itensPedido.map((i) => {...i, 'preco_unitario': 0.0}).toList() : _itensPedido,
+        'valor_total': ehEstoque ? 0.0 : _valorTotal,
         'valor_pago': 0,
         'status': 'pendente',
         'status_pagamento': 'pendente',
@@ -212,8 +250,7 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
         'tipo_estoque': ehEstoque,
       };
 
-      final pedidoIdCriado = await _uniformesService.criarPedido(dadosPedido);
-      await _remessaService.vincularPedido(pedidoIdCriado, _remessaId!);
+      await _uniformesService.criarPedido(dadosPedido);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -302,9 +339,7 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: _remessaId == null
-                          ? error.withAlpha(13)
-                          : cardBg,
+                      color: _remessaId == null ? error.withAlpha(13) : cardBg,
                       borderRadius: BorderRadius.circular(
                         context.uai.cardRadius,
                       ),
@@ -337,7 +372,7 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
                         ),
                         const SizedBox(height: 8),
                         InkWell(
-                          onTap: _selecionarRemessa,
+                          onTap: _remessaFixa ? null : _selecionarRemessa,
                           borderRadius: BorderRadius.circular(8),
                           child: Container(
                             padding: const EdgeInsets.all(12),
@@ -362,14 +397,16 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
                                     ),
                                   ),
                                 ),
-                                if (_remessaId != null)
+                                if (_remessaId != null && !_remessaFixa)
                                   IconButton(
                                     icon: Icon(Icons.close, color: error),
                                     onPressed: _removerRemessa,
                                     tooltip: 'Remover vínculo',
                                   )
+                                else if (!_remessaFixa)
+                                  Icon(Icons.arrow_drop_down, color: textMuted)
                                 else
-                                  Icon(Icons.arrow_drop_down, color: textMuted),
+                                  Icon(Icons.lock_outline_rounded, color: primary),
                               ],
                             ),
                           ),
@@ -377,7 +414,7 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
                         if (_remessaNome != null) ...[
                           const SizedBox(height: 4),
                           Text(
-                            'O pedido será vinculado à remessa $_remessaNome.',
+                            _remessaFixa ? 'Pedido criado diretamente nesta remessa.' : 'O pedido será vinculado à remessa $_remessaNome.',
                             style: TextStyle(
                               fontSize: 11,
                               color: textSecondary,
@@ -658,7 +695,7 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              'TOTAL',
+                              _alunoSelecionadoId == null ? 'COBRANÇA AO ALUNO' : 'TOTAL',
                               style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
@@ -666,7 +703,7 @@ class _NovoPedidoScreenState extends State<NovoPedidoScreen> {
                               ),
                             ),
                             Text(
-                              _realFormat.format(_valorTotal),
+                              _realFormat.format(_alunoSelecionadoId == null ? 0 : _valorTotal),
                               style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
@@ -856,6 +893,45 @@ class _SelecionarRemessaDialogState extends State<_SelecionarRemessaDialog> {
   String _search = '';
   final TextEditingController _searchController = TextEditingController();
   final FornecedorService _fornecedorService = FornecedorService();
+  bool _cycleLoaded = false;
+  String? _cycleId;
+  String? _cycleError;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCycle();
+  }
+
+  Future<void> _loadCycle() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('uniformes_config').doc('ciclo_atual')
+          .get(const GetOptions(source: Source.server));
+      if (!mounted) return;
+      final data = doc.data();
+      setState(() {
+        _cycleLoaded = true;
+        _cycleId = null;
+        if (data?['estado'] == 'ativo') {
+          final id = data?['ciclo_id'];
+          if (id is String) {
+            _cycleId = id;
+          }
+        }
+        if (data?['estado'] == 'ativando') {
+          _cycleError = 'Virada de ciclo em andamento.';
+        }
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _cycleLoaded = true;
+          _cycleError = 'Não foi possível validar o ciclo no servidor: $e';
+        });
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -874,6 +950,13 @@ class _SelecionarRemessaDialogState extends State<_SelecionarRemessaDialog> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_cycleLoaded) return const Center(child: CircularProgressIndicator());
+    if (_cycleError != null) {
+      return AlertDialog(title: const Text('Ciclo indisponível'),
+        content: SelectableText(_cycleError!),
+        actions: [TextButton(onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Fechar'))]);
+    }
     final primary = context.uai.primary;
     final textPrimary = context.uai.textPrimary;
     final textSecondary = context.uai.textSecondary;
@@ -923,11 +1006,16 @@ class _SelecionarRemessaDialogState extends State<_SelecionarRemessaDialog> {
                     .orderBy('criado_em', descending: true)
                     .snapshots(),
                 builder: (context, snapshot) {
-                  if (!snapshot.hasData)
-                    { return Center(
+                  if (!snapshot.hasData) {
+                    return Center(
                       child: CircularProgressIndicator(color: primary),
-                    ); }
-                  var docs = snapshot.data!.docs;
+                    );
+                  }
+                  var docs = snapshot.data!.docs.where((d) {
+                    if (_cycleId == null) return true;
+                    final data = d.data() as Map<String, dynamic>;
+                    return data['ciclo_id'] == _cycleId;
+                  }).toList();
                   if (_search.isNotEmpty) {
                     docs = docs.where((d) {
                       final nome =
@@ -970,453 +1058,6 @@ class _SelecionarRemessaDialogState extends State<_SelecionarRemessaDialog> {
                               });
                             },
                           );
-                        },
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// =============================================================================
-// DIÁLOGO DE SELEÇÃO DE ITEM (COM VARIAÇÕES) – refatorado
-// =============================================================================
-class SelecionarItemPedidoDialog extends StatefulWidget {
-  const SelecionarItemPedidoDialog({super.key});
-
-  @override
-  State<SelecionarItemPedidoDialog> createState() =>
-      _SelecionarItemPedidoDialogState();
-}
-
-class _SelecionarItemPedidoDialogState
-    extends State<SelecionarItemPedidoDialog> {
-  String _searchQuery = '';
-  final TextEditingController _searchController = TextEditingController();
-  final NumberFormat _realFormat = NumberFormat.currency(
-    locale: 'pt_BR',
-    symbol: 'R\$',
-  );
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  Color _readableOn(Color background) {
-    return background.computeLuminance() > 0.48
-        ? const Color(0xFF111827)
-        : const Color(0xFFFFFFFF);
-  }
-
-  void _showQuantidadeDialog(
-    BuildContext context,
-    String itemId,
-    Map<String, dynamic> data, {
-    String? tamanho,
-  }) {
-    final quantidadeController = TextEditingController();
-    final primary = context.uai.primary;
-    final textPrimary = context.uai.textPrimary;
-    final border = context.uai.border;
-
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: Text(
-            data['nome'] ?? 'Item',
-            style: TextStyle(color: textPrimary),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Preço unitário: ${_realFormat.format(data['preco_venda'] ?? 0)}',
-                style: TextStyle(color: textPrimary),
-              ),
-              if (tamanho != null)
-                Text('Tamanho: $tamanho', style: TextStyle(color: textPrimary)),
-              if (data['cor'] != null && data['cor'].toString().isNotEmpty)
-                Text(
-                  'Cor: ${data['cor']}',
-                  style: TextStyle(color: textPrimary),
-                ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: quantidadeController,
-                keyboardType: TextInputType.number,
-                style: TextStyle(color: textPrimary),
-                decoration: InputDecoration(
-                  labelText: 'Quantidade',
-                  labelStyle: TextStyle(color: context.uai.textSecondary),
-                  filled: true,
-                  fillColor: context.uai.cardAlt,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(
-                      context.uai.inputRadius,
-                    ),
-                    borderSide: BorderSide(color: border),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(
-                      context.uai.inputRadius,
-                    ),
-                    borderSide: BorderSide(color: border),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(
-                      context.uai.inputRadius,
-                    ),
-                    borderSide: BorderSide(color: primary, width: 1.4),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text('Cancelar', style: TextStyle(color: primary)),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                int quantidade = int.tryParse(quantidadeController.text) ?? 1;
-                if (quantidade <= 0) quantidade = 1;
-
-                Navigator.pop(ctx);
-                Navigator.pop(context, {
-                  'item_id': itemId,
-                  'nome': data['nome'],
-                  'tamanho': tamanho,
-                  'quantidade': quantidade,
-                  'preco_unitario': data['preco_venda'] ?? 0,
-                  'cor': data['cor'] ?? '',
-                });
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: primary,
-                foregroundColor: _readableOn(primary),
-              ),
-              child: const Text('Adicionar'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _mostrarDialogoVariacoes(
-    BuildContext context,
-    String baseId,
-    Map<String, dynamic> baseData,
-  ) {
-    FirebaseFirestore.instance
-        .collection('uniformes_estoque')
-        .where('item_base_id', isEqualTo: baseId)
-        .get()
-        .then((snapshot) {
-          if (!mounted) return;
-
-          if (snapshot.docs.isEmpty) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: const Text(
-                  'Nenhuma variação encontrada para este item',
-                ),
-                backgroundColor: context.uai.warning,
-              ),
-            );
-            return;
-          }
-
-          showDialog(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              title: Text(
-                'Tamanhos disponíveis - ${baseData['nome']}',
-                style: TextStyle(color: context.uai.textPrimary),
-              ),
-              content: SizedBox(
-                width: double.maxFinite,
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: snapshot.docs.length,
-                  itemBuilder: (_, i) {
-                    final variacao = snapshot.docs[i].data();
-                    final tamanho = variacao['tamanho'] ?? '?';
-                    final quantidadeEstoque = variacao['quantidade'] ?? 0;
-                    final cor = variacao['cor']?.toString() ?? '';
-                    return ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: context.uai.primary.withAlpha(26),
-                        child: Text(
-                          tamanho.toString().toUpperCase(),
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: context.uai.primary,
-                          ),
-                        ),
-                      ),
-                      title: Text(
-                        'Tamanho $tamanho',
-                        style: TextStyle(color: context.uai.textPrimary),
-                      ),
-                      subtitle: Text(
-                        'Estoque: $quantidadeEstoque un${cor.isNotEmpty ? ' - Cor: $cor' : ''}',
-                        style: TextStyle(color: context.uai.textSecondary),
-                      ),
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        _showQuantidadeDialog(
-                          context,
-                          snapshot.docs[i].id,
-                          variacao,
-                          tamanho: tamanho.toString(),
-                        );
-                      },
-                    );
-                  },
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: Text(
-                    'Cancelar',
-                    style: TextStyle(color: context.uai.primary),
-                  ),
-                ),
-              ],
-            ),
-          );
-        })
-        .catchError((e) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Erro ao carregar variações: $e'),
-                backgroundColor: context.uai.error,
-              ),
-            );
-          }
-        });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final primary = context.uai.primary;
-    final onPrimary = _readableOn(primary);
-    final textPrimary = context.uai.textPrimary;
-    final textSecondary = context.uai.textSecondary;
-    final textMuted = context.uai.textMuted;
-    final cardAlt = context.uai.cardAlt;
-    final border = context.uai.border;
-
-    return Dialog(
-      insetPadding: const EdgeInsets.all(16),
-      backgroundColor: context.uai.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(context.uai.cardRadius),
-      ),
-      child: SizedBox(
-        width: double.maxFinite,
-        height: MediaQuery.of(context).size.height * 0.7,
-        child: Column(
-          children: [
-            // AppBar interna do diálogo
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: primary,
-                borderRadius: BorderRadius.vertical(
-                  top: Radius.circular(context.uai.cardRadius),
-                ),
-              ),
-              child: Row(
-                children: [
-                  IconButton(
-                    icon: Icon(Icons.arrow_back, color: onPrimary),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                  const Expanded(
-                    child: Text(
-                      'SELECIONAR ITEM',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.close, color: onPrimary),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: TextField(
-                controller: _searchController,
-                style: TextStyle(color: textPrimary),
-                decoration: InputDecoration(
-                  hintText: 'Pesquisar item...',
-                  hintStyle: TextStyle(color: textMuted),
-                  prefixIcon: Icon(Icons.search, color: textMuted),
-                  filled: true,
-                  fillColor: cardAlt,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(
-                      context.uai.inputRadius,
-                    ),
-                    borderSide: BorderSide(color: border),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(
-                      context.uai.inputRadius,
-                    ),
-                    borderSide: BorderSide(color: border),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(
-                      context.uai.inputRadius,
-                    ),
-                    borderSide: BorderSide(color: primary, width: 1.4),
-                  ),
-                  suffixIcon: _searchQuery.isNotEmpty
-                      ? IconButton(
-                          icon: Icon(Icons.clear, color: textMuted),
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() => _searchQuery = '');
-                          },
-                        )
-                      : null,
-                ),
-                onChanged: (value) => setState(() => _searchQuery = value),
-              ),
-            ),
-            Expanded(
-              child: StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('uniformes_estoque')
-                    .where('status', isEqualTo: 'ativo')
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData)
-                    { return Center(
-                      child: CircularProgressIndicator(color: primary),
-                    ); }
-
-                  var docs = snapshot.data!.docs.where((doc) {
-                    final data = doc.data() as Map<String, dynamic>;
-                    final tipo = data['tipo'] as String?;
-                    return (tipo == null || tipo == 'base');
-                  }).toList();
-
-                  if (_searchQuery.isNotEmpty) {
-                    docs = docs.where((doc) {
-                      final data = doc.data() as Map<String, dynamic>;
-                      final nome = data['nome']?.toString().toLowerCase() ?? '';
-                      return nome.contains(_searchQuery.toLowerCase());
-                    }).toList();
-                  }
-
-                  if (docs.isEmpty) {
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.inventory_2_outlined,
-                            size: 50,
-                            color: textMuted,
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            _searchQuery.isEmpty
-                                ? 'Nenhum item cadastrado'
-                                : 'Nenhum item encontrado',
-                            style: TextStyle(color: textSecondary),
-                          ),
-                          const SizedBox(height: 8),
-                          ElevatedButton(
-                            onPressed: () => Navigator.pop(context),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: primary,
-                              foregroundColor: onPrimary,
-                            ),
-                            child: const Text('Voltar'),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
-
-                  return ListView.builder(
-                    itemCount: docs.length,
-                    itemBuilder: (context, index) {
-                      var doc = docs[index];
-                      var data = doc.data() as Map<String, dynamic>;
-                      final bool possuiVariacoes =
-                          data['possui_variacoes'] == true;
-                      final String? fotoUrl = data['foto_url'];
-
-                      return ListTile(
-                        leading: Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: primary.withAlpha(26),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: fotoUrl != null && fotoUrl.isNotEmpty
-                              ? ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: CachedNetworkImage(
-                                    imageUrl: fotoUrl,
-                                    fit: BoxFit.cover,
-                                    placeholder: (_, _) => Icon(
-                                      Icons.shopping_bag,
-                                      color: primary,
-                                    ),
-                                    errorWidget: (_, _, _) => Icon(
-                                      Icons.shopping_bag,
-                                      color: primary,
-                                    ),
-                                  ),
-                                )
-                              : Icon(Icons.shopping_bag, color: primary),
-                        ),
-                        title: Text(
-                          data['nome'] ?? 'Sem nome',
-                          style: TextStyle(color: textPrimary),
-                        ),
-                        subtitle: Text(
-                          'Preço: ${_realFormat.format(data['preco_venda'] ?? 0)}',
-                          style: TextStyle(color: textSecondary),
-                        ),
-                        trailing: possuiVariacoes
-                            ? Icon(
-                                Icons.arrow_forward_ios,
-                                size: 14,
-                                color: textMuted,
-                              )
-                            : null,
-                        onTap: () {
-                          if (possuiVariacoes) {
-                            _mostrarDialogoVariacoes(context, doc.id, data);
-                          } else {
-                            _showQuantidadeDialog(context, doc.id, data);
-                          }
                         },
                       );
                     },

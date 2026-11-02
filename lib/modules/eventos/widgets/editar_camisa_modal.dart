@@ -664,8 +664,4 @@ class _EditarCamisaModalState extends State<EditarCamisaModal> {
     return 0;
   }
 
-  String _formatarValor(double value) {
-    if (value <= 0) return '';
-    return 'R\$ ${value.toStringAsFixed(2).replaceAll('.', ',')}';
-  }
 }

@@ -1022,10 +1022,6 @@ class _AreaAlunoFrequenciaScreenState extends State<AreaAlunoFrequenciaScreen> {
     return DateFormat('HH:mm').format(date);
   }
 
-  String _formatDataCurta(DateTime? date) {
-    if (date == null) return 'Nunca';
-    return DateFormat('dd/MM/yyyy').format(date);
-  }
 
   Color _colorFromHex(String value, {Color? fallback}) {
     try {

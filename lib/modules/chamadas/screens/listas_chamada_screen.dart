@@ -1,3 +1,4 @@
+import 'package:uai_capoeira/core/services/uai_callable_client.dart';
 import 'package:uai_capoeira/core/session_log/session_log_service.dart';
 import 'dart:async';
 
@@ -11,6 +12,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:uai_capoeira/modules/chamadas/services/aluno_foto_resolver.dart';
 import 'package:uai_capoeira/core/image_cache/uai_student_photo.dart';
+
+bool _impedimentoDisciplinar(Map<String, dynamic> aluno) =>
+    aluno['estado_frequencia'] == 'impedimento_disciplinar' ||
+    aluno['suspenso_na_aula'] == true;
 
 Color _readableOn(Color background) {
   return background.computeLuminance() > 0.48
@@ -85,15 +90,14 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   }
 
   Color _onCard([BuildContext? c]) => _readableOn((c ?? context).uai.card);
-  Color _onCardMuted([BuildContext? c]) =>
-      _onCard(c ?? context).withAlpha(173);
+  Color _onCardMuted([BuildContext? c]) => _onCard(c ?? context).withAlpha(173);
 
   Color _appButtonBg() =>
       Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
 
   Color _appButtonFg() =>
       Theme.of(context).appBarTheme.foregroundColor ??
-          _readableOn(_appButtonBg());
+      _readableOn(_appButtonBg());
 
   bool _temaPrimarioMuitoClaroEmFundoEscuro() {
     final primary = context.uai.primary;
@@ -123,10 +127,10 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
     final bgIsDark = base.computeLuminance() < 0.45;
     final end = hsl
         .withLightness(
-      bgIsDark
-          ? (hsl.lightness + 0.08).clamp(0.0, 1.0)
-          : (hsl.lightness - 0.08).clamp(0.0, 1.0),
-    )
+          bgIsDark
+              ? (hsl.lightness + 0.08).clamp(0.0, 1.0)
+              : (hsl.lightness - 0.08).clamp(0.0, 1.0),
+        )
         .withSaturation((hsl.saturation + 0.04).clamp(0.0, 1.0))
         .toColor();
 
@@ -354,7 +358,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
 
             final diasGrade = List.generate(
               42,
-                  (index) => DateTime(
+              (index) => DateTime(
                 primeiroDiaGrade.year,
                 primeiroDiaGrade.month,
                 primeiroDiaGrade.day + index,
@@ -419,8 +423,9 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                                         Container(
                                           padding: EdgeInsets.all(10),
                                           decoration: BoxDecoration(
-                                            color: context.uai.card.withAlpha((255.0 * (
-                                              0.15)).round()),
+                                            color: context.uai.card.withAlpha(
+                                              (255.0 * (0.15)).round(),
+                                            ),
                                             borderRadius: BorderRadius.circular(
                                               15,
                                             ),
@@ -526,9 +531,9 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                                         backgroundColor: context.uai.error
                                             .withAlpha(26),
                                         valueColor:
-                                        AlwaysStoppedAnimation<Color>(
-                                          context.uai.primary,
-                                        ),
+                                            AlwaysStoppedAnimation<Color>(
+                                              context.uai.primary,
+                                            ),
                                       ),
                                       const SizedBox(height: 12),
                                     ],
@@ -547,14 +552,14 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                                     GridView.builder(
                                       shrinkWrap: true,
                                       physics:
-                                      const NeverScrollableScrollPhysics(),
+                                          const NeverScrollableScrollPhysics(),
                                       gridDelegate:
-                                      const SliverGridDelegateWithFixedCrossAxisCount(
-                                        crossAxisCount: 7,
-                                        crossAxisSpacing: 5,
-                                        mainAxisSpacing: 5,
-                                        childAspectRatio: 0.94,
-                                      ),
+                                          const SliverGridDelegateWithFixedCrossAxisCount(
+                                            crossAxisCount: 7,
+                                            crossAxisSpacing: 5,
+                                            mainAxisSpacing: 5,
+                                            childAspectRatio: 0.94,
+                                          ),
                                       itemCount: diasGrade.length,
                                       itemBuilder: (context, index) {
                                         final dia = diasGrade[index];
@@ -563,17 +568,17 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                                         return _buildDiaCalendario(
                                           dia: dia,
                                           mesAtual:
-                                          dia.month == mesVisivel.month,
+                                              dia.month == mesVisivel.month,
                                           chamadasDia: chamadasDia,
                                           onTap: chamadasDia.isEmpty
                                               ? null
                                               : () =>
-                                              _abrirChamadasDoDiaCalendario(
-                                                dialogContext:
-                                                dialogContext,
-                                                dia: dia,
-                                                chamadasDia: chamadasDia,
-                                              ),
+                                                    _abrirChamadasDoDiaCalendario(
+                                                      dialogContext:
+                                                          dialogContext,
+                                                      dia: dia,
+                                                      chamadasDia: chamadasDia,
+                                                    ),
                                         );
                                       },
                                     ),
@@ -591,7 +596,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                                             onPressed: () {
                                               setState(() {
                                                 _dataSelecionadaCalendario =
-                                                null;
+                                                    null;
                                               });
                                               Navigator.pop(dialogContext);
                                             },
@@ -609,18 +614,18 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                                                 Navigator.pop(dialogContext),
                                             style: ElevatedButton.styleFrom(
                                               backgroundColor:
-                                              Theme.of(context)
-                                                  .appBarTheme
-                                                  .backgroundColor ??
+                                                  Theme.of(context)
+                                                      .appBarTheme
+                                                      .backgroundColor ??
                                                   context.uai.primary,
                                               foregroundColor:
-                                              Theme.of(context)
-                                                  .appBarTheme
-                                                  .foregroundColor ??
+                                                  Theme.of(context)
+                                                      .appBarTheme
+                                                      .foregroundColor ??
                                                   _readableOn(
                                                     Theme.of(context)
-                                                        .appBarTheme
-                                                        .backgroundColor ??
+                                                            .appBarTheme
+                                                            .backgroundColor ??
                                                         context.uai.primary,
                                                   ),
                                             ),
@@ -692,7 +697,6 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
     return chaves.any((chave) => _permissoes[chave] == true);
   }
 
-
   bool get _podeEditarChamada => _temPermissaoDiretaOuAlias(const [
     'pode_editar_chamada',
     'pode_editar_chamadas',
@@ -701,11 +705,11 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
 
   bool get _podeExcluirChamada =>
       _podeEditarChamada &&
-          _temPermissaoDiretaOuAlias(const [
-            'pode_excluir_chamada',
-            'pode_excluir_chamadas',
-            'podeExcluirChamada',
-          ]);
+      _temPermissaoDiretaOuAlias(const [
+        'pode_excluir_chamada',
+        'pode_excluir_chamadas',
+        'podeExcluirChamada',
+      ]);
 
   Query<Map<String, dynamic>> _queryBaseChamadas() {
     return _firestore
@@ -726,9 +730,9 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   }
 
   Future<void> _carregarChamadasDoMesCalendario(
-      DateTime mes, {
-        bool forceRefresh = false,
-      }) async {
+    DateTime mes, {
+    bool forceRefresh = false,
+  }) async {
     final chave = _chaveMes(mes);
 
     if (!forceRefresh && _cacheChamadasPorMes.containsKey(chave)) return;
@@ -749,9 +753,9 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
           .where('turma_id', isEqualTo: widget.turmaId)
           .where('academia_id', isEqualTo: widget.academiaId)
           .where(
-        'data_chamada',
-        isGreaterThanOrEqualTo: Timestamp.fromDate(inicio),
-      )
+            'data_chamada',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(inicio),
+          )
           .where('data_chamada', isLessThan: Timestamp.fromDate(fim))
           .orderBy('data_chamada', descending: true)
           .get(const GetOptions(source: Source.server));
@@ -904,8 +908,8 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
 
     final dataBusca = dataChamada is Timestamp
         ? '${DateFormat('dd/MM/yyyy').format(dataChamada.toDate())} '
-        '${DateFormat('EEEE', 'pt_BR').format(dataChamada.toDate())} '
-        '${DateFormat('MMMM', 'pt_BR').format(dataChamada.toDate())}'
+              '${DateFormat('EEEE', 'pt_BR').format(dataChamada.toDate())} '
+              '${DateFormat('MMMM', 'pt_BR').format(dataChamada.toDate())}'
         : '';
 
     final buffer = StringBuffer()
@@ -980,8 +984,8 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   }
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _chamadasDoDia(
-      DateTime dia,
-      ) {
+    DateTime dia,
+  ) {
     final dataFmt = DateFormat('yyyy-MM-dd').format(dia);
 
     return _chamadas.where((doc) {
@@ -1002,8 +1006,8 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   }
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _chamadasDoMes(
-      DateTime mes,
-      ) {
+    DateTime mes,
+  ) {
     final cached = _cacheChamadasPorMes[_chaveMes(mes)];
     final origem = cached ?? _chamadas;
 
@@ -1037,7 +1041,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
     final isHoje = _mesmoDia(dia, hoje);
     final isSelecionado =
         _dataSelecionadaCalendario != null &&
-            _mesmoDia(dia, _dataSelecionadaCalendario!);
+        _mesmoDia(dia, _dataSelecionadaCalendario!);
     final temChamada = chamadasDia.isNotEmpty;
     final tipoPrincipal = temChamada
         ? chamadasDia.first.data()['tipo_aula']?.toString() ?? 'OUTRO'
@@ -1114,15 +1118,15 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                           height: 5,
                           child: isHoje
                               ? Center(
-                            child: Container(
-                              width: 5,
-                              height: 5,
-                              decoration: BoxDecoration(
-                                color: context.uai.primaryDark,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                          )
+                                  child: Container(
+                                    width: 5,
+                                    height: 5,
+                                    decoration: BoxDecoration(
+                                      color: context.uai.primaryDark,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                )
                               : null,
                         ),
                       if (chamadasDia.length > 1) ...[
@@ -1356,8 +1360,8 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   }
 
   Widget _buildResumoCalendarioMes(
-      List<QueryDocumentSnapshot<Map<String, dynamic>>> chamadasDoMes,
-      ) {
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> chamadasDoMes,
+  ) {
     final porTipo = <String, int>{};
 
     for (final chamada in chamadasDoMes) {
@@ -1429,8 +1433,8 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   }
 
   Future<void> _confirmarExcluirChamadaLista(
-      QueryDocumentSnapshot<Map<String, dynamic>> chamada,
-      ) async {
+    QueryDocumentSnapshot<Map<String, dynamic>> chamada,
+  ) async {
     if (!_podeExcluirChamada || _excluindoChamadaId != null) return;
 
     final data = chamada.data();
@@ -1439,8 +1443,8 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
     final totalAlunos = _intFromDynamic(data['total_alunos']);
     final dataLabel =
         _formatarDataChamada(data['data_chamada']) ??
-            data['data_formatada']?.toString() ??
-            'Não informada';
+        data['data_formatada']?.toString() ??
+        'Não informada';
     final turmaLabel = data['turma_nome']?.toString().trim().isNotEmpty == true
         ? data['turma_nome'].toString()
         : widget.turmaNome;
@@ -1506,8 +1510,8 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   }
 
   Future<void> _excluirChamadaLista(
-      QueryDocumentSnapshot<Map<String, dynamic>> chamada,
-      ) async {
+    QueryDocumentSnapshot<Map<String, dynamic>> chamada,
+  ) async {
     if (!mounted || _excluindoChamadaId != null) return;
     final data = chamada.data();
     final turmaId = data['turma_id']?.toString().trim().isNotEmpty == true
@@ -1517,14 +1521,23 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
     setState(() => _excluindoChamadaId = chamada.id);
 
     try {
-      final callable = FirebaseFunctions.instance.httpsCallable(
-        'excluirChamada',
+      await UaiCallableClient.instance.call('excluirChamada', {
+        'chamadaId': chamada.id,
+        'criadoEmEsperado':
+            (data['criado_em'] as Timestamp?)?.millisecondsSinceEpoch,
+        'comandoId':
+            'excluir_${chamada.id}_${(data['criado_em'] as Timestamp?)?.millisecondsSinceEpoch ?? 0}',
+        'turmaId': turmaId,
+      });
+      unawaited(
+        SessionLogService.instance.recordEntityOperation(
+          module: 'chamadas',
+          entityType: 'chamada',
+          entityId: chamada.id,
+          operation: 'excluiu',
+          result: 'sucesso',
+        ),
       );
-      await callable.call({'chamadaId': chamada.id, 'turmaId': turmaId});
-      unawaited(SessionLogService.instance.recordEntityOperation(
-        module: 'chamadas', entityType: 'chamada',
-        entityId: chamada.id, operation: 'excluiu', result: 'sucesso',
-      ));
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1536,10 +1549,15 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
       );
       await _carregarPrimeirasChamadas();
     } catch (e) {
-      unawaited(SessionLogService.instance.recordEntityOperation(
-        module: 'chamadas', entityType: 'chamada',
-        entityId: chamada.id, operation: 'excluiu', result: 'falha',
-      ));
+      unawaited(
+        SessionLogService.instance.recordEntityOperation(
+          module: 'chamadas',
+          entityType: 'chamada',
+          entityId: chamada.id,
+          operation: 'excluiu',
+          result: 'falha',
+        ),
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1571,8 +1589,8 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   }
 
   Future<void> _editarChamada(
-      QueryDocumentSnapshot<Map<String, dynamic>> chamada,
-      ) async {
+    QueryDocumentSnapshot<Map<String, dynamic>> chamada,
+  ) async {
     if (!_podeEditarChamada) {
       _mostrarSnackBarSemPermissao();
       return;
@@ -1682,11 +1700,11 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
     final totalChamadas = chamadas.length;
     final totalAlunosSomados = chamadas.fold<int>(
       0,
-          (s, d) => s + _parseInt(d.data()['total_alunos']),
+      (s, d) => s + _parseInt(d.data()['total_alunos']),
     );
     final totalPresentes = chamadas.fold<int>(
       0,
-          (s, d) => s + _parseInt(d.data()['presentes']),
+      (s, d) => s + _parseInt(d.data()['presentes']),
     );
     final media = totalAlunosSomados > 0
         ? (totalPresentes / totalAlunosSomados)
@@ -1818,12 +1836,12 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   }
 
   Widget _buildResumoMini(
-      String label,
-      String value,
-      IconData icon,
-      Color headerFg,
-      Color headerBg,
-      ) {
+    String label,
+    String value,
+    IconData icon,
+    Color headerFg,
+    Color headerBg,
+  ) {
     final accent = _ensureVisible(headerFg, headerBg);
     return Expanded(
       child: Container(
@@ -1935,9 +1953,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
               decoration: BoxDecoration(
                 color: context.uai.success.withAlpha(26),
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: context.uai.success.withAlpha(41),
-                ),
+                border: Border.all(color: context.uai.success.withAlpha(41)),
               ),
               child: Row(
                 children: [
@@ -1980,7 +1996,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
             child: Row(
               children: [
                 ..._tiposAula.map(
-                      (tipo) => _buildFiltroChip(
+                  (tipo) => _buildFiltroChip(
                     label: tipo == 'TODOS' ? 'Todos tipos' : tipo,
                     selected: _filtroTipo == tipo,
                     icon: tipo == 'TODOS'
@@ -1998,7 +2014,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                   icon: Icons.warning_amber_rounded,
                   color: context.uai.warning,
                   onTap: () => setState(
-                        () => _filtroStatus = _filtroStatus == 'COM_FALTA'
+                    () => _filtroStatus = _filtroStatus == 'COM_FALTA'
                         ? 'TODOS'
                         : 'COM_FALTA',
                   ),
@@ -2009,7 +2025,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                   icon: Icons.verified_rounded,
                   color: context.uai.success,
                   onTap: () => setState(
-                        () => _filtroStatus = _filtroStatus == '100'
+                    () => _filtroStatus = _filtroStatus == '100'
                         ? 'TODOS'
                         : '100',
                   ),
@@ -2020,7 +2036,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                   icon: Icons.person_off_rounded,
                   color: context.uai.primaryDark,
                   onTap: () => setState(
-                        () => _filtroStatus = _filtroStatus == 'VAZIA'
+                    () => _filtroStatus = _filtroStatus == 'VAZIA'
                         ? 'TODOS'
                         : 'VAZIA',
                   ),
@@ -2064,9 +2080,9 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                 color: selected
                     ? _readableOn(context.uai.primary)
                     : _ensureVisible(
-                  context.uai.textSecondary,
-                  context.uai.card,
-                ),
+                        context.uai.textSecondary,
+                        context.uai.card,
+                      ),
               ),
               SizedBox(width: 6),
               Text(
@@ -2077,9 +2093,9 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                   color: selected
                       ? _readableOn(context.uai.primary)
                       : _ensureVisible(
-                    context.uai.textSecondary,
-                    context.uai.card,
-                  ),
+                          context.uai.textSecondary,
+                          context.uai.card,
+                        ),
                 ),
               ),
             ],
@@ -2090,9 +2106,9 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   }
 
   Widget _buildCardChamada(
-      QueryDocumentSnapshot<Map<String, dynamic>> chamada,
-      int index,
-      ) {
+    QueryDocumentSnapshot<Map<String, dynamic>> chamada,
+    int index,
+  ) {
     final data = chamada.data();
     final dataChamada = data['data_chamada'] as Timestamp?;
     final presentes = _parseInt(data['presentes']);
@@ -2113,15 +2129,15 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
     final tipoColor = _getTipoAulaColor(tipoAula);
     final chamadaEditada =
         data['chamada_editada'] == true ||
-            data['editado_em'] != null ||
-            data['edicao_origem'] != null;
+        data['editado_em'] != null ||
+        data['edicao_origem'] != null;
     final editadoPor =
-    (data['editado_por_nome'] ??
-        data['editado_por_email'] ??
-        data['editado_por_uid'] ??
-        '')
-        .toString()
-        .trim();
+        (data['editado_por_nome'] ??
+                data['editado_por_email'] ??
+                data['editado_por_uid'] ??
+                '')
+            .toString()
+            .trim();
     final editadoEm = data['editado_em'] as Timestamp?;
 
     return Container(
@@ -2238,9 +2254,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                     decoration: BoxDecoration(
                       color: context.uai.info.withAlpha(26),
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: context.uai.info.withAlpha(41),
-                      ),
+                      border: Border.all(color: context.uai.info.withAlpha(41)),
                     ),
                     child: IconButton(
                       icon: Icon(
@@ -2267,18 +2281,18 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                     child: IconButton(
                       icon: excluindoEstaChamada
                           ? SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.2,
-                          color: context.uai.error,
-                        ),
-                      )
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.2,
+                                color: context.uai.error,
+                              ),
+                            )
                           : Icon(
-                        Icons.delete_rounded,
-                        size: 19,
-                        color: context.uai.error,
-                      ),
+                              Icons.delete_rounded,
+                              size: 19,
+                              color: context.uai.error,
+                            ),
                       onPressed: _excluindoChamadaId == null
                           ? () => _confirmarExcluirChamadaLista(chamada)
                           : null,
@@ -2475,7 +2489,6 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
         .trim();
   }
 
-
   String? _fotoAlunoChamada(Map<String, dynamic> alunoMap) {
     return AlunoFotoResolver.resolverSincrono(alunoMap);
   }
@@ -2503,8 +2516,8 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   }
 
   Future<void> _carregarFotosFallbackDasChamadas(
-      Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> chamadas,
-      ) async {
+    Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> chamadas,
+  ) async {
     final ids = <String>{};
 
     for (final chamada in chamadas) {
@@ -2540,10 +2553,7 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
   }) {
     final statusBase = presente ? context.uai.success : context.uai.error;
     final statusAccent = _ensureVisible(statusBase, background);
-    final avatarBg = Color.alphaBlend(
-      statusAccent.withAlpha(46),
-      background,
-    );
+    final avatarBg = Color.alphaBlend(statusAccent.withAlpha(46), background);
     final avatarFg = _readableOn(avatarBg);
 
     return Container(
@@ -2727,7 +2737,11 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                     border: Border.all(color: statusAccent.withAlpha(46)),
                   ),
                   child: Text(
-                    presente ? 'PRESENTE' : 'AUSENTE',
+                    presente
+                        ? 'PRESENTE'
+                        : _impedimentoDisciplinar(alunoMap)
+                        ? 'IMPEDIDO'
+                        : 'AUSENTE',
                     style: TextStyle(
                       fontSize: 8.5,
                       fontWeight: FontWeight.w900,
@@ -2788,7 +2802,6 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
     );
   }
 
-
   @override
   Widget build(BuildContext context) {
     final chamadasFiltradas = _chamadasFiltradas;
@@ -2809,21 +2822,21 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color:
-                (Theme.of(context).appBarTheme.foregroundColor ??
-                    _readableOn(
-                      Theme.of(context).appBarTheme.backgroundColor ??
-                          context.uai.primary,
-                    ))
-                    .withAlpha(184),
+                    (Theme.of(context).appBarTheme.foregroundColor ??
+                            _readableOn(
+                              Theme.of(context).appBarTheme.backgroundColor ??
+                                  context.uai.primary,
+                            ))
+                        .withAlpha(184),
               ),
             ),
           ],
         ),
         backgroundColor:
-        Theme.of(context).appBarTheme.backgroundColor ??
+            Theme.of(context).appBarTheme.backgroundColor ??
             context.uai.primary,
         foregroundColor:
-        Theme.of(context).appBarTheme.foregroundColor ??
+            Theme.of(context).appBarTheme.foregroundColor ??
             _readableOn(
               Theme.of(context).appBarTheme.backgroundColor ??
                   context.uai.primary,
@@ -2852,105 +2865,105 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
           : _chamadas.isEmpty
           ? _buildEmptyScreen()
           : RefreshIndicator(
-        onRefresh: _carregarPrimeirasChamadas,
-        color: context.uai.primary,
-        backgroundColor: context.uai.surface,
-        displacement: 40,
-        child: CustomScrollView(
-          controller: _scrollController,
-          physics: BouncingScrollPhysics(
-            parent: AlwaysScrollableScrollPhysics(),
-          ),
-          slivers: [
-            SliverToBoxAdapter(child: _buildHeaderResumo()),
-            SliverToBoxAdapter(child: _buildFiltros()),
-            if (chamadasFiltradas.isEmpty)
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(30),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.search_off_rounded,
-                          size: 70,
-                          color: context.uai.textMuted,
-                        ),
-                        SizedBox(height: 12),
-                        Text(
-                          'Nenhuma chamada nesse filtro',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: context.uai.textSecondary,
+              onRefresh: _carregarPrimeirasChamadas,
+              color: context.uai.primary,
+              backgroundColor: context.uai.surface,
+              displacement: 40,
+              child: CustomScrollView(
+                controller: _scrollController,
+                physics: BouncingScrollPhysics(
+                  parent: AlwaysScrollableScrollPhysics(),
+                ),
+                slivers: [
+                  SliverToBoxAdapter(child: _buildHeaderResumo()),
+                  SliverToBoxAdapter(child: _buildFiltros()),
+                  if (chamadasFiltradas.isEmpty)
+                    SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(30),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.search_off_rounded,
+                                size: 70,
+                                color: context.uai.textMuted,
+                              ),
+                              SizedBox(height: 12),
+                              Text(
+                                'Nenhuma chamada nesse filtro',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: context.uai.textSecondary,
+                                ),
+                              ),
+                              SizedBox(height: 6),
+                              Text(
+                                'Limpe a busca ou altere os filtros.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: context.uai.textMuted),
+                              ),
+                            ],
                           ),
                         ),
-                        SizedBox(height: 6),
-                        Text(
-                          'Limpe a busca ou altere os filtros.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: context.uai.textMuted),
-                        ),
-                      ],
+                      ),
+                    )
+                  else
+                    SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                          if (index == chamadasFiltradas.length) {
+                            return _buildLoadingMaisItem();
+                          }
+
+                          _acionarPaginacaoPorIndice(
+                            index,
+                            chamadasFiltradas.length,
+                          );
+
+                          return _buildCardChamada(
+                            chamadasFiltradas[index],
+                            index,
+                          );
+                        },
+                        childCount:
+                            chamadasFiltradas.length + (_isLoadingMais ? 1 : 0),
+                      ),
                     ),
-                  ),
-                ),
-              )
-            else
-              SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    if (index == chamadasFiltradas.length) {
-                      return _buildLoadingMaisItem();
-                    }
-
-                    _acionarPaginacaoPorIndice(
-                      index,
-                      chamadasFiltradas.length,
-                    );
-
-                    return _buildCardChamada(
-                      chamadasFiltradas[index],
-                      index,
-                    );
-                  },
-                  childCount:
-                      chamadasFiltradas.length + (_isLoadingMais ? 1 : 0),
-                ),
+                  SliverToBoxAdapter(child: SizedBox(height: 90)),
+                ],
               ),
-            SliverToBoxAdapter(child: SizedBox(height: 90)),
-          ],
-        ),
-      ),
+            ),
       floatingActionButton: _chamadas.isNotEmpty
           ? FloatingActionButton.extended(
-        onPressed: () {
-          if (_scrollController.hasClients) {
-            _scrollController.animateTo(
-              0,
-              duration: Duration(milliseconds: 450),
-              curve: Curves.easeInOut,
-            );
-          }
-        },
-        backgroundColor:
-        Theme.of(context).appBarTheme.backgroundColor ??
-            context.uai.primary,
-        foregroundColor:
-        Theme.of(context).appBarTheme.foregroundColor ??
-            _readableOn(
-              Theme.of(context).appBarTheme.backgroundColor ??
+              onPressed: () {
+                if (_scrollController.hasClients) {
+                  _scrollController.animateTo(
+                    0,
+                    duration: Duration(milliseconds: 450),
+                    curve: Curves.easeInOut,
+                  );
+                }
+              },
+              backgroundColor:
+                  Theme.of(context).appBarTheme.backgroundColor ??
                   context.uai.primary,
-            ),
-        elevation: 4,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        icon: Icon(Icons.arrow_upward_rounded),
-        label: Text('Topo'),
-      )
+              foregroundColor:
+                  Theme.of(context).appBarTheme.foregroundColor ??
+                  _readableOn(
+                    Theme.of(context).appBarTheme.backgroundColor ??
+                        context.uai.primary,
+                  ),
+              elevation: 4,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              icon: Icon(Icons.arrow_upward_rounded),
+              label: Text('Topo'),
+            )
           : null,
     );
   }
@@ -3089,10 +3102,10 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
               onPressed: _carregarPrimeirasChamadas,
               style: ElevatedButton.styleFrom(
                 backgroundColor:
-                Theme.of(context).appBarTheme.backgroundColor ??
+                    Theme.of(context).appBarTheme.backgroundColor ??
                     context.uai.primary,
                 foregroundColor:
-                Theme.of(context).appBarTheme.foregroundColor ??
+                    Theme.of(context).appBarTheme.foregroundColor ??
                     _readableOn(
                       Theme.of(context).appBarTheme.backgroundColor ??
                           context.uai.primary,
@@ -3155,10 +3168,10 @@ class _ListasChamadaScreenState extends State<ListasChamadaScreen> {
               onPressed: () => Navigator.pop(context),
               style: ElevatedButton.styleFrom(
                 backgroundColor:
-                Theme.of(context).appBarTheme.backgroundColor ??
+                    Theme.of(context).appBarTheme.backgroundColor ??
                     context.uai.primary,
                 foregroundColor:
-                Theme.of(context).appBarTheme.foregroundColor ??
+                    Theme.of(context).appBarTheme.foregroundColor ??
                     _readableOn(
                       Theme.of(context).appBarTheme.backgroundColor ??
                           context.uai.primary,
@@ -3271,7 +3284,6 @@ class _DiaSemanaHeader extends StatelessWidget {
 
   const _DiaSemanaHeader(this.label);
 
-
   @override
   Widget build(BuildContext context) {
     return Expanded(
@@ -3325,8 +3337,9 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
   late String _tipoAulaOriginal;
   late String _tipoAulaEdit;
   late String _professorNomeOriginal;
-  late String _professorIdOriginal;
 
+  final String _comandoEdicao =
+      'editar_${DateTime.now().microsecondsSinceEpoch}';
   bool _isSaving = false;
   bool _isDeleting = false;
   bool _mostrarProgresso = false;
@@ -3369,8 +3382,8 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
       aluno['aluno_id'] = alunoId;
       aluno['aluno_nome'] =
           aluno['aluno_nome']?.toString() ??
-              aluno['nome']?.toString() ??
-              'Sem nome';
+          aluno['nome']?.toString() ??
+          'Sem nome';
       aluno['presente'] = aluno['presente'] == true;
       _observacaoControllers[alunoId] = TextEditingController(
         text: aluno['observacao']?.toString() ?? '',
@@ -3379,7 +3392,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
 
     _dataChamadaOriginal =
         (widget.chamadaData['data_chamada'] as Timestamp?)?.toDate() ??
-            DateTime.now();
+        DateTime.now();
     _dataChamadaEdit = _dataChamadaOriginal;
     _tipoAulaOriginal =
         widget.chamadaData['tipo_aula']?.toString() ?? 'OBJETIVA';
@@ -3388,7 +3401,6 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
         : 'OUTRO';
     _professorNomeOriginal =
         widget.chamadaData['professor_nome']?.toString() ?? 'Professor';
-    _professorIdOriginal = widget.chamadaData['professor_id']?.toString() ?? '';
     _professorController.text = _professorNomeOriginal;
 
     _buscaController.addListener(() {
@@ -3428,7 +3440,8 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
       if (_filtroAluno == 'PRESENTES' && !presente) return false;
       if (_filtroAluno == 'AUSENTES' && presente) return false;
       if (_filtroAluno == 'COM_OBS' &&
-          (_observacaoControllers[a['aluno_id']]?.text.trim().isEmpty ?? true)) {
+          (_observacaoControllers[a['aluno_id']]?.text.trim().isEmpty ??
+              true)) {
         return false;
       }
 
@@ -3453,37 +3466,6 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
   }
 
   String _dataFormatada(DateTime data) => DateFormat('yyyy-MM-dd').format(data);
-  String _mesKey(DateTime data) => DateFormat('yyyy-MM').format(data);
-
-  String _semanaKey(DateTime date) {
-    final d = DateTime.utc(date.year, date.month, date.day);
-    final thursday = d.add(Duration(days: 4 - d.weekday));
-    final yearStart = DateTime.utc(thursday.year, 1, 1);
-    final week = ((thursday.difference(yearStart).inDays) / 7).floor() + 1;
-    return '${thursday.year}-W${week.toString().padLeft(2, '0')}';
-  }
-
-  String _diaSemanaAbrev(DateTime data) {
-    switch (data.weekday) {
-      case DateTime.monday:
-        return 'seg';
-      case DateTime.tuesday:
-        return 'ter';
-      case DateTime.wednesday:
-        return 'qua';
-      case DateTime.thursday:
-        return 'qui';
-      case DateTime.friday:
-        return 'sex';
-      case DateTime.saturday:
-        return 'sab';
-      case DateTime.sunday:
-        return 'dom';
-      default:
-        return 'seg';
-    }
-  }
-
   Color _ensureVisible(Color color, Color background) {
     final diff = (color.computeLuminance() - background.computeLuminance())
         .abs();
@@ -3504,7 +3486,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
 
   Color _appButtonFg() =>
       Theme.of(context).appBarTheme.foregroundColor ??
-          _readableOn(_appButtonBg());
+      _readableOn(_appButtonBg());
 
   bool _temaPrimarioMuitoClaroEmFundoEscuro() {
     final primary = context.uai.primary;
@@ -3534,10 +3516,10 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
     final bgIsDark = base.computeLuminance() < 0.45;
     final end = hsl
         .withLightness(
-      bgIsDark
-          ? (hsl.lightness + 0.08).clamp(0.0, 1.0)
-          : (hsl.lightness - 0.08).clamp(0.0, 1.0),
-    )
+          bgIsDark
+              ? (hsl.lightness + 0.08).clamp(0.0, 1.0)
+              : (hsl.lightness - 0.08).clamp(0.0, 1.0),
+        )
         .withSaturation((hsl.saturation + 0.04).clamp(0.0, 1.0))
         .toColor();
 
@@ -3546,121 +3528,6 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
       end: Alignment.bottomRight,
       colors: [base, end],
     );
-  }
-
-  bool _mesAtual(DateTime data) {
-    final now = DateTime.now();
-    return data.year == now.year && data.month == now.month;
-  }
-
-  bool _semanaAtual(DateTime data) {
-    final now = DateTime.now();
-    return _semanaKey(data) == _semanaKey(now);
-  }
-
-  Map<String, dynamic> _materializarIncrements(
-      Map<String, dynamic> raw, {
-        bool incrementContext = false,
-      }) {
-    final result = <String, dynamic>{};
-
-    raw.forEach((key, value) {
-      final shouldIncrementThisInt =
-          incrementContext || key == 'total' || key == 'mes' || key == 'semana';
-
-      final childIncrementContext =
-          incrementContext ||
-              key == 'porAno' ||
-              key == 'porMes' ||
-              key == 'porSemana' ||
-              key == 'contadores';
-
-      if (value is int) {
-        if (shouldIncrementThisInt) {
-          if (value != 0) result[key] = FieldValue.increment(value);
-        } else {
-          result[key] = value;
-        }
-      } else if (value is Map<String, dynamic>) {
-        final child = _materializarIncrements(
-          value,
-          incrementContext: childIncrementContext,
-        );
-        if (child.isNotEmpty) result[key] = child;
-      } else {
-        result[key] = value;
-      }
-    });
-
-    return result;
-  }
-
-  void _addNestedDelta(Map<String, dynamic> map, List<String> path, int delta) {
-    if (delta == 0 || path.isEmpty) return;
-    if (path.length == 1) {
-      final key = path.first;
-      final atual = map[key];
-      if (atual is int) {
-        map[key] = atual + delta;
-      } else {
-        map[key] = delta;
-      }
-      return;
-    }
-    final key = path.first;
-    final child = Map<String, dynamic>.from((map[key] as Map?) ?? {});
-    map[key] = child;
-    _addNestedDelta(child, path.sublist(1), delta);
-  }
-
-  void _aplicarDeltaContador(
-      Map<String, dynamic> contador,
-      DateTime data,
-      int delta,
-      ) {
-    if (delta == 0) return;
-    final ano = data.year.toString();
-    final mes = _mesKey(data);
-    final semana = _semanaKey(data);
-
-    _addNestedDelta(contador, ['total'], delta);
-    _addNestedDelta(contador, ['porAno', ano], delta);
-    _addNestedDelta(contador, ['porMes', mes], delta);
-    _addNestedDelta(contador, ['porSemana', semana], delta);
-
-    if (_mesAtual(data)) _addNestedDelta(contador, ['mes'], delta);
-    if (_semanaAtual(data)) _addNestedDelta(contador, ['semana'], delta);
-  }
-
-  Map<String, dynamic> _montarLogData(
-      Map<String, dynamic> aluno,
-      DateTime dataChamada,
-      String chamadaId,
-      ) {
-    final alunoId = aluno['aluno_id']?.toString() ?? '';
-    return {
-      'log_id':
-      'log_${widget.chamadaData['turma_id']}_${alunoId}_${_dataFormatada(dataChamada)}',
-      'chamada_id': chamadaId,
-      'aluno_id': alunoId,
-      'aluno_nome': aluno['aluno_nome']?.toString() ?? 'Sem nome',
-      'turma_id': widget.chamadaData['turma_id'],
-      'turma_nome': widget.chamadaData['turma_nome'],
-      'academia_id': widget.chamadaData['academia_id'],
-      'academia_nome': widget.chamadaData['academia_nome'],
-      'data_aula': Timestamp.fromDate(dataChamada),
-      'data_formatada': _dataFormatada(dataChamada),
-      'dia_semana_abrev': _diaSemanaAbrev(dataChamada),
-      'presente': aluno['presente'] == true,
-      'tipo_aula': _tipoAulaEdit,
-      'observacao': _observacaoControllers[alunoId]?.text.trim() ?? '',
-      'professor_id': _professorIdOriginal,
-      'professor_nome': _professorController.text.trim().isEmpty
-          ? 'Professor'
-          : _professorController.text.trim(),
-      'atualizado_em': FieldValue.serverTimestamp(),
-      'tipo_registro': 'chamada_turma_editada',
-    };
   }
 
   Future<void> _selecionarData() async {
@@ -3709,7 +3576,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
   Future<bool> _confirmarAlteracoesImportantes() async {
     final mudouData =
         _dataFormatada(_dataChamadaEdit) !=
-            _dataFormatada(_dataChamadaOriginal);
+        _dataFormatada(_dataChamadaOriginal);
     final mudouTipo = _tipoAulaEdit != _tipoAulaOriginal.toUpperCase();
     final mudouProfessor =
         _professorController.text.trim() != _professorNomeOriginal;
@@ -3730,57 +3597,57 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
     }
 
     return await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Confirmar edição da chamada'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Serão atualizados:'),
-            SizedBox(height: 12),
-            if (mudouData) _buildBulletPoint('Data/hora da chamada'),
-            if (mudouTipo) _buildBulletPoint('Tipo da aula'),
-            if (mudouProfessor) _buildBulletPoint('Professor registrado'),
-            _buildBulletPoint(
-              '$mudancasAlunos aluno(s) com presença/observação alterada',
-            ),
-            SizedBox(height: 12),
-            Container(
-              padding: EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: context.uai.warning.withAlpha(26),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: context.uai.warning.withAlpha(71),
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text('Confirmar edição da chamada'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Serão atualizados:'),
+                SizedBox(height: 12),
+                if (mudouData) _buildBulletPoint('Data/hora da chamada'),
+                if (mudouTipo) _buildBulletPoint('Tipo da aula'),
+                if (mudouProfessor) _buildBulletPoint('Professor registrado'),
+                _buildBulletPoint(
+                  '$mudancasAlunos aluno(s) com presença/observação alterada',
                 ),
-              ),
-              child: Text(
-                'Os logs e contadores de frequência serão ajustados automaticamente.',
-                style: TextStyle(
-                  color: context.uai.warning,
-                  fontWeight: FontWeight.w600,
+                SizedBox(height: 12),
+                Container(
+                  padding: EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: context.uai.warning.withAlpha(26),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: context.uai.warning.withAlpha(71),
+                    ),
+                  ),
+                  child: Text(
+                    'Os logs e contadores de frequência serão ajustados automaticamente.',
+                    style: TextStyle(
+                      color: context.uai.warning,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text('Cancelar'),
               ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text('Cancelar'),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _appButtonBg(),
+                  foregroundColor: _appButtonFg(),
+                ),
+                child: const Text('Salvar edição'),
+              ),
+            ],
           ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _appButtonBg(),
-              foregroundColor: _appButtonFg(),
-            ),
-            child: const Text('Salvar edição'),
-          ),
-        ],
-      ),
-    ) ??
+        ) ??
         false;
   }
 
@@ -3800,10 +3667,10 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
   String? _fotoAlunoFromMap(Map<String, dynamic> alunoMap) {
     final value =
         alunoMap['foto_perfil_aluno'] ??
-            alunoMap['foto_url'] ??
-            alunoMap['foto'] ??
-            alunoMap['imagem_url'] ??
-            alunoMap['avatar_url'];
+        alunoMap['foto_url'] ??
+        alunoMap['foto'] ??
+        alunoMap['imagem_url'] ??
+        alunoMap['avatar_url'];
 
     final foto = value?.toString().trim();
     if (foto == null || foto.isEmpty) return null;
@@ -3811,8 +3678,8 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
   }
 
   Future<Map<String, String>> _buscarFotosAlunosCadastroEmLote(
-      List<String> alunoIds,
-      ) async {
+    List<String> alunoIds,
+  ) async {
     final resultado = <String, String>{};
     final pendentes = alunoIds
         .where((id) => id.trim().isNotEmpty)
@@ -3899,171 +3766,35 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
       }
 
       await _enriquecerAlunosComFotosAntesDeSalvar();
-
-      final presentes = _alunosEdit.where((a) => a['presente'] == true).length;
-      final totalAlunos = _alunosEdit.length;
-      final ausentes = totalAlunos - presentes;
-      final porcentagem = totalAlunos > 0
-          ? ((presentes / totalAlunos) * 100).round()
-          : 0;
-      final dataFormatadaNova = _dataFormatada(_dataChamadaEdit);
-      final dataFormatadaAntiga = _dataFormatada(_dataChamadaOriginal);
-      final turmaId = widget.chamadaData['turma_id']?.toString() ?? '';
-
-      final batch = _firestore.batch();
-      final chamadaRef = _firestore
-          .collection('chamadas')
-          .doc(widget.chamadaId);
-      final originalPorId = {
-        for (final a in _alunosOriginal) (a['aluno_id'] ?? '').toString(): a,
-      };
-
-      batch.update(chamadaRef, {
-        'data_chamada': Timestamp.fromDate(_dataChamadaEdit),
-        'data_formatada': dataFormatadaNova,
-        'dia_semana_abrev': _diaSemanaAbrev(_dataChamadaEdit),
-        'tipo_aula': _tipoAulaEdit,
-        'professor_nome': _professorController.text.trim().isEmpty
-            ? 'Professor'
-            : _professorController.text.trim(),
-        'professor_id': _professorIdOriginal,
-        'alunos': _alunosEdit,
-        'presentes': presentes,
-        'ausentes': ausentes,
-        'total_alunos': totalAlunos,
-        'porcentagem_frequencia': porcentagem,
-        'atualizado_em': FieldValue.serverTimestamp(),
-        'editado_em': FieldValue.serverTimestamp(),
+      await UaiCallableClient.instance.call('editarChamada', {
+        'chamadaId': widget.chamadaId,
+        'criadoEmEsperado': (widget.chamadaData['criado_em'] as Timestamp?)
+            ?.millisecondsSinceEpoch,
+        'turmaId': widget.chamadaData['turma_id'],
+        'comandoId': _comandoEdicao,
+        'versaoEsperada': widget.chamadaData['versao'] ?? 0,
+        'dataChamada': DateFormat('yyyy-MM-dd').format(_dataChamadaEdit),
+        'tipoAula': _tipoAulaEdit,
+        'professorNome': _professorController.text.trim(),
+        'alunos': _alunosEdit
+            .map(
+              (a) => {
+                'id': a['aluno_id'],
+                'presente': a['presente'],
+                'observacao': a['observacao'],
+              },
+            )
+            .toList(),
       });
-
-      setState(() {
-        _etapaAtual = 1;
-        _operacaoAtual = 'Chamada principal atualizada';
-      });
-
-      final Set<String> alunosAfetados = {};
-
-      for (int i = 0; i < _alunosEdit.length; i++) {
-        final aluno = _alunosEdit[i];
-        final alunoId = aluno['aluno_id']?.toString() ?? '';
-        if (alunoId.isEmpty) continue;
-        alunosAfetados.add(alunoId);
-
-        setState(() {
-          _etapaAtual = i + 2;
-          _operacaoAtual = 'Atualizando aluno ${i + 1}/$_totalEtapas';
-          _detalheOperacao = aluno['aluno_nome']?.toString() ?? 'Aluno';
-        });
-
-        final original = originalPorId[alunoId];
-        final presenteAntes = original?['presente'] == true;
-        final presenteDepois = aluno['presente'] == true;
-
-        final contadorRaw = <String, dynamic>{
-          'aluno_id': alunoId,
-          'aluno_nome': aluno['aluno_nome']?.toString() ?? 'Sem nome',
-          'turma_id_atual': turmaId,
-          'turma_nome_atual': widget.chamadaData['turma_nome'],
-          'academia_id_atual': widget.chamadaData['academia_id'],
-          'academia_nome_atual': widget.chamadaData['academia_nome'],
-          'cache_versao': 5,
-          'atualizado_em': FieldValue.serverTimestamp(),
-          'ultima_sync_logs': FieldValue.serverTimestamp(),
-          'periodo_mes_atual': _mesKey(DateTime.now()),
-          'periodo_semana_atual': _semanaKey(DateTime.now()),
-        };
-
-        final legacyRaw = <String, dynamic>{};
-
-        if (presenteAntes) {
-          _aplicarDeltaContador(contadorRaw, _dataChamadaOriginal, -1);
-          _addNestedDelta(legacyRaw, [
-            'contadores',
-            _mesKey(_dataChamadaOriginal),
-          ], -1);
-        }
-        if (presenteDepois) {
-          _aplicarDeltaContador(contadorRaw, _dataChamadaEdit, 1);
-          _addNestedDelta(legacyRaw, [
-            'contadores',
-            _mesKey(_dataChamadaEdit),
-          ], 1);
-        }
-
-        final contadorUpdate = _materializarIncrements(contadorRaw);
-        if (contadorUpdate.isNotEmpty) {
-          batch.set(
-            _firestore
-                .collection('alunos')
-                .doc(alunoId)
-                .collection('contadores')
-                .doc('frequencia_dashboard'),
-            contadorUpdate,
-            SetOptions(merge: true),
-          );
-        }
-
-        final legacyUpdate = _materializarIncrements(legacyRaw);
-        if (legacyUpdate.isNotEmpty) {
-          batch.set(
-            _firestore.collection('alunos').doc(alunoId),
-            legacyUpdate,
-            SetOptions(merge: true),
-          );
-        }
-
-        final logsAntigos = await _firestore
-            .collection('log_presenca_alunos')
-            .where('turma_id', isEqualTo: turmaId)
-            .where('aluno_id', isEqualTo: alunoId)
-            .where('data_formatada', isEqualTo: dataFormatadaAntiga)
-            .get();
-
-        final logData = _montarLogData(
-          aluno,
-          _dataChamadaEdit,
-          widget.chamadaId,
-        );
-
-        if (logsAntigos.docs.isNotEmpty) {
-          batch.set(
-            logsAntigos.docs.first.reference,
-            logData,
-            SetOptions(merge: true),
-          );
-          for (final extra in logsAntigos.docs.skip(1)) {
-            batch.delete(extra.reference);
-          }
-        } else {
-          final logId = 'log_${turmaId}_${alunoId}_$dataFormatadaNova';
-          batch.set(
-            _firestore.collection('log_presenca_alunos').doc(logId),
-            {...logData, 'registrado_em': FieldValue.serverTimestamp()},
-            SetOptions(merge: true),
-          );
-        }
-      }
-
-      setState(() {
-        _etapaAtual = _totalEtapas - 1;
-        _operacaoAtual = 'Gravando alterações no Firebase...';
-        _detalheOperacao = 'Quase pronto';
-      });
-
-      await batch.commit();
-      unawaited(SessionLogService.instance.recordEntityOperation(
-        module: 'chamadas', entityType: 'chamada',
-        entityId: widget.chamadaId, operation: 'atualizou', result: 'sucesso',
-      ));
-
-      setState(() {
-        _operacaoAtual = 'Recalculando últimas presenças...';
-        _detalheOperacao = 'Conferindo histórico dos alunos';
-      });
-
-      for (final alunoId in alunosAfetados) {
-        await _recalcularUltimosDoAluno(alunoId);
-      }
+      unawaited(
+        SessionLogService.instance.recordEntityOperation(
+          module: 'chamadas',
+          entityType: 'chamada',
+          entityId: widget.chamadaId,
+          operation: 'atualizou',
+          result: 'sucesso',
+        ),
+      );
 
       if (!mounted) return;
       setState(() {
@@ -4096,10 +3827,15 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
         );
       }
     } catch (e) {
-      unawaited(SessionLogService.instance.recordEntityOperation(
-        module: 'chamadas', entityType: 'chamada',
-        entityId: widget.chamadaId, operation: 'atualizou', result: 'falha',
-      ));
+      unawaited(
+        SessionLogService.instance.recordEntityOperation(
+          module: 'chamadas',
+          entityType: 'chamada',
+          entityId: widget.chamadaId,
+          operation: 'atualizou',
+          result: 'falha',
+        ),
+      );
       debugPrint('Erro ao salvar edição completa: $e');
       if (mounted) {
         setState(() {
@@ -4121,66 +3857,6 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
           _mostrarProgresso = false;
         });
       }
-    }
-  }
-
-  Future<void> _recalcularUltimosDoAluno(String alunoId) async {
-    try {
-      final alunoRef = _firestore.collection('alunos').doc(alunoId);
-      final contadorRef = alunoRef
-          .collection('contadores')
-          .doc('frequencia_dashboard');
-
-      final ultimaPresencaQuery = await _firestore
-          .collection('log_presenca_alunos')
-          .where('aluno_id', isEqualTo: alunoId)
-          .where('presente', isEqualTo: true)
-          .orderBy('data_aula', descending: true)
-          .limit(1)
-          .get();
-
-      final ultimaChamadaQuery = await _firestore
-          .collection('log_presenca_alunos')
-          .where('aluno_id', isEqualTo: alunoId)
-          .orderBy('data_aula', descending: true)
-          .limit(1)
-          .get();
-
-      final updatesAluno = <String, dynamic>{};
-      final updatesContador = <String, dynamic>{};
-
-      if (ultimaPresencaQuery.docs.isNotEmpty) {
-        final d = ultimaPresencaQuery.docs.first.data();
-        updatesAluno['ultima_presenca'] = d['data_aula'];
-        updatesAluno['ultimo_dia_presente'] = d['data_formatada'];
-        updatesContador['ultima_presenca'] = d['data_aula'];
-        updatesContador['ultimo_dia_presente'] = d['data_formatada'];
-      } else {
-        updatesAluno['ultima_presenca'] = null;
-        updatesAluno['ultimo_dia_presente'] = null;
-        updatesContador['ultima_presenca'] = null;
-        updatesContador['ultimo_dia_presente'] = null;
-      }
-
-      if (ultimaChamadaQuery.docs.isNotEmpty) {
-        final d = ultimaChamadaQuery.docs.first.data();
-        updatesAluno['ultima_chamada'] = d['data_aula'];
-        updatesAluno['ultima_chamada_por'] = d['professor_nome'];
-        updatesAluno['ultima_chamada_por_id'] = d['professor_id'];
-      } else {
-        updatesAluno['ultima_chamada'] = null;
-        updatesAluno['ultima_chamada_por'] = null;
-        updatesAluno['ultima_chamada_por_id'] = null;
-      }
-
-      updatesAluno['atualizado_em'] = FieldValue.serverTimestamp();
-      updatesContador['atualizado_em'] = FieldValue.serverTimestamp();
-      updatesContador['ultima_sync_logs'] = FieldValue.serverTimestamp();
-
-      await alunoRef.set(updatesAluno, SetOptions(merge: true));
-      await contadorRef.set(updatesContador, SetOptions(merge: true));
-    } catch (e) {
-      debugPrint('Erro ao recalcular aluno $alunoId: $e');
     }
   }
 
@@ -4331,17 +4007,23 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
     _animationController.forward();
 
     try {
-      final HttpsCallable callable = FirebaseFunctions.instance.httpsCallable(
-        'excluirChamada',
-      );
-      await callable.call({
+      await UaiCallableClient.instance.call('excluirChamada', {
         'chamadaId': widget.chamadaId,
+        'criadoEmEsperado': (widget.chamadaData['criado_em'] as Timestamp?)
+            ?.millisecondsSinceEpoch,
+        'comandoId':
+            'excluir_${widget.chamadaId}_${(widget.chamadaData['criado_em'] as Timestamp?)?.millisecondsSinceEpoch ?? 0}',
         'turmaId': widget.chamadaData['turma_id'],
       });
-      unawaited(SessionLogService.instance.recordEntityOperation(
-        module: 'chamadas', entityType: 'chamada',
-        entityId: widget.chamadaId, operation: 'excluiu', result: 'sucesso',
-      ));
+      unawaited(
+        SessionLogService.instance.recordEntityOperation(
+          module: 'chamadas',
+          entityType: 'chamada',
+          entityId: widget.chamadaId,
+          operation: 'excluiu',
+          result: 'sucesso',
+        ),
+      );
 
       if (!mounted) return;
       setState(() {
@@ -4372,10 +4054,15 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
         );
       }
     } catch (e) {
-      unawaited(SessionLogService.instance.recordEntityOperation(
-        module: 'chamadas', entityType: 'chamada',
-        entityId: widget.chamadaId, operation: 'excluiu', result: 'falha',
-      ));
+      unawaited(
+        SessionLogService.instance.recordEntityOperation(
+          module: 'chamadas',
+          entityType: 'chamada',
+          entityId: widget.chamadaId,
+          operation: 'excluiu',
+          result: 'falha',
+        ),
+      );
       debugPrint('Erro ao excluir chamada: $e');
       if (mounted) {
         setState(() {
@@ -4400,7 +4087,6 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
     final presentes = _alunosEdit.where((a) => a['presente'] == true).length;
@@ -4414,12 +4100,12 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
       ),
       child: _mostrarProgresso
           ? FadeTransition(
-        opacity: _fadeAnimation,
-        child: SlideTransition(
-          position: _slideAnimation,
-          child: _buildProgressScreen(),
-        ),
-      )
+              opacity: _fadeAnimation,
+              child: SlideTransition(
+                position: _slideAnimation,
+                child: _buildProgressScreen(),
+              ),
+            )
           : _buildEditScreen(presentes, ausentes),
     );
   }
@@ -4497,7 +4183,7 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
                     IconButton(
                       icon: Icon(Icons.delete_rounded, color: headerFg),
                       onPressed:
-                      _isSaving || _isDeleting || !widget.podeExcluirChamada
+                          _isSaving || _isDeleting || !widget.podeExcluirChamada
                           ? null
                           : _mostrarPreviewExclusao,
                       tooltip: 'Excluir chamada',
@@ -4585,13 +4271,13 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
   }
 
   Widget _buildHeaderStat(
-      String label,
-      String value,
-      IconData icon,
-      Color color,
-      Color headerFg,
-      Color headerBg,
-      ) {
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+    Color headerFg,
+    Color headerBg,
+  ) {
     final accent = _ensureVisible(color, headerBg);
 
     return Expanded(
@@ -4728,10 +4414,10 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
             items: _tiposAula
                 .map(
                   (e) => DropdownMenuItem(
-                value: e,
-                child: Text(e, style: TextStyle(color: fieldFg)),
-              ),
-            )
+                    value: e,
+                    child: Text(e, style: TextStyle(color: fieldFg)),
+                  ),
+                )
                 .toList(),
             onChanged: _isSaving || _isDeleting
                 ? null
@@ -4761,13 +4447,13 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
           'Marcar filtrados',
           Icons.check_circle_rounded,
           context.uai.success,
-              () => _marcarTodos(true),
+          () => _marcarTodos(true),
         ),
         _buildActionChip(
           'Desmarcar filtrados',
           Icons.cancel_rounded,
           context.uai.error,
-              () => _marcarTodos(false),
+          () => _marcarTodos(false),
         ),
         _buildActionChip(
           'Inverter filtrados',
@@ -4780,11 +4466,11 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
   }
 
   Widget _buildActionChip(
-      String label,
-      IconData icon,
-      Color color,
-      VoidCallback onTap,
-      ) {
+    String label,
+    IconData icon,
+    Color color,
+    VoidCallback onTap,
+  ) {
     final base = context.uai.card;
     final accent = _ensureVisible(color, base);
     final fill = Color.alphaBlend(accent.withAlpha(26), base);
@@ -4836,9 +4522,9 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
             suffixIcon: _buscaAluno.isEmpty
                 ? null
                 : IconButton(
-              icon: Icon(Icons.close, color: fieldFg.withAlpha(184)),
-              onPressed: () => _buscaController.clear(),
-            ),
+                    icon: Icon(Icons.close, color: fieldFg.withAlpha(184)),
+                    onPressed: () => _buscaController.clear(),
+                  ),
             filled: true,
             fillColor: fieldBg,
             border: OutlineInputBorder(
@@ -4953,7 +4639,11 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
                         overflow: TextOverflow.ellipsis,
                       ),
                       Text(
-                        presente ? 'Presente' : 'Ausente',
+                        presente
+                            ? 'Presente'
+                            : _impedimentoDisciplinar(aluno)
+                            ? 'Impedido'
+                            : 'Ausente',
                         style: TextStyle(
                           fontSize: 11,
                           color: cardFg.withAlpha(184),
@@ -4971,14 +4661,14 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
                   onPressed: _isSaving || _isDeleting
                       ? null
                       : () {
-                    setState(() {
-                      final atual =
-                          _observacaoControllers[alunoId]?.text ?? '';
-                      if (atual.isEmpty) {
-                        _observacaoControllers[alunoId]?.text = '';
-                      }
-                    });
-                  },
+                          setState(() {
+                            final atual =
+                                _observacaoControllers[alunoId]?.text ?? '';
+                            if (atual.isEmpty) {
+                              _observacaoControllers[alunoId]?.text = '';
+                            }
+                          });
+                        },
                 ),
               ],
             ),
@@ -5083,13 +4773,13 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
               ),
               icon: _isSaving
                   ? SizedBox(
-                height: 18,
-                width: 18,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: buttonFg,
-                ),
-              )
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: buttonFg,
+                      ),
+                    )
                   : Icon(Icons.save_rounded),
               label: Text(
                 _isSaving ? 'Salvando...' : 'Salvar tudo',
@@ -5228,13 +4918,13 @@ class _EditarChamadaDialogState extends State<_EditarChamadaDialog>
                           : Icons.cloud_sync_rounded,
                       color: _operacaoAtual.startsWith('✅')
                           ? _ensureVisible(
-                        context.uai.success,
-                        context.uai.card,
-                      )
+                              context.uai.success,
+                              context.uai.card,
+                            )
                           : _ensureVisible(
-                        context.uai.primary,
-                        context.uai.card,
-                      ),
+                              context.uai.primary,
+                              context.uai.card,
+                            ),
                       size: 72,
                     ),
                   ),
@@ -5293,7 +4983,6 @@ class DetalhesChamadaScreen extends StatefulWidget {
 
 class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
   final TextEditingController _buscaController = TextEditingController();
-
 
   bool _abrindoPerfilAluno = false;
   String _busca = '';
@@ -5371,10 +5060,10 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
     final bgIsDark = base.computeLuminance() < 0.45;
     final end = hsl
         .withLightness(
-      bgIsDark
-          ? (hsl.lightness + 0.08).clamp(0.0, 1.0)
-          : (hsl.lightness - 0.08).clamp(0.0, 1.0),
-    )
+          bgIsDark
+              ? (hsl.lightness + 0.08).clamp(0.0, 1.0)
+              : (hsl.lightness - 0.08).clamp(0.0, 1.0),
+        )
         .withSaturation((hsl.saturation + 0.04).clamp(0.0, 1.0))
         .toColor();
 
@@ -5414,7 +5103,6 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
         .trim();
   }
 
-
   String? _fotoAlunoDetalhes(Map<String, dynamic> alunoMap) {
     return AlunoFotoResolver.resolverSincrono(alunoMap);
   }
@@ -5449,8 +5137,8 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
   }
 
   List<Map<String, dynamic>> _alunosFiltrados(
-      List<Map<String, dynamic>> alunos,
-      ) {
+    List<Map<String, dynamic>> alunos,
+  ) {
     final termo = _normalizar(_busca);
 
     return alunos.where((aluno) {
@@ -5554,21 +5242,21 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
                 color:
-                (Theme.of(context).appBarTheme.foregroundColor ??
-                    _readableOn(
-                      Theme.of(context).appBarTheme.backgroundColor ??
-                          context.uai.primary,
-                    ))
-                    .withAlpha(184),
+                    (Theme.of(context).appBarTheme.foregroundColor ??
+                            _readableOn(
+                              Theme.of(context).appBarTheme.backgroundColor ??
+                                  context.uai.primary,
+                            ))
+                        .withAlpha(184),
               ),
             ),
           ],
         ),
         backgroundColor:
-        Theme.of(context).appBarTheme.backgroundColor ??
+            Theme.of(context).appBarTheme.backgroundColor ??
             context.uai.primary,
         foregroundColor:
-        Theme.of(context).appBarTheme.foregroundColor ??
+            Theme.of(context).appBarTheme.foregroundColor ??
             _readableOn(
               Theme.of(context).appBarTheme.backgroundColor ??
                   context.uai.primary,
@@ -5884,12 +5572,12 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
               suffixIcon: _busca.isEmpty
                   ? null
                   : IconButton(
-                icon: Icon(
-                  Icons.close_rounded,
-                  color: fieldFg.withAlpha(184),
-                ),
-                onPressed: () => _buscaController.clear(),
-              ),
+                      icon: Icon(
+                        Icons.close_rounded,
+                        color: fieldFg.withAlpha(184),
+                      ),
+                      onPressed: () => _buscaController.clear(),
+                    ),
               filled: true,
               fillColor: fieldBg,
               border: OutlineInputBorder(
@@ -5952,12 +5640,12 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
   }
 
   Widget _buildFiltroDetalhes(
-      String value,
-      String label,
-      int count,
-      IconData icon,
-      Color color,
-      ) {
+    String value,
+    String label,
+    int count,
+    IconData icon,
+    Color color,
+  ) {
     final selected = _filtro == value;
     final bg = selected ? color : context.uai.card;
     final fg = selected
@@ -6000,11 +5688,11 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
   }
 
   Widget _buildInfoPill(
-      BuildContext context,
-      IconData icon,
-      String text,
-      Color color,
-      ) {
+    BuildContext context,
+    IconData icon,
+    String text,
+    Color color,
+  ) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
       decoration: BoxDecoration(
@@ -6033,11 +5721,11 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
   }
 
   Widget _buildSectionTitle(
-      BuildContext context,
-      String title,
-      int total,
-      Color color,
-      ) {
+    BuildContext context,
+    String title,
+    int total,
+    Color color,
+  ) {
     final accent = _ensureVisible(color, context.uai.background);
     return Row(
       children: [
@@ -6238,7 +5926,11 @@ class _DetalhesChamadaScreenState extends State<DetalhesChamadaScreen> {
                       border: Border.all(color: statusAccent.withAlpha(36)),
                     ),
                     child: Text(
-                      presente ? 'PRESENTE' : 'AUSENTE',
+                      presente
+                          ? 'PRESENTE'
+                          : _impedimentoDisciplinar(aluno)
+                          ? 'IMPEDIDO'
+                          : 'AUSENTE',
                       style: TextStyle(
                         fontSize: 9,
                         fontWeight: FontWeight.w900,

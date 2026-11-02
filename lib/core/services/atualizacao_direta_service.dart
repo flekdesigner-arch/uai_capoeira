@@ -27,21 +27,27 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'package:uai_capoeira/core/theme/app_theme.dart';
+import 'package:uai_capoeira/core/services/app_update_check_service.dart';
+import 'package:uai_capoeira/core/services/update_wifi_service.dart';
+import 'package:uai_capoeira/core/services/official_apk_website_service.dart';
 import 'package:uai_capoeira/core/services/update_storage_service.dart';
 import 'package:uai_capoeira/core/services/update_telemetry_service.dart';
 import 'package:uai_capoeira/modules/sistema/atualizacoes/models/app_version_model.dart';
 
 class AtualizacaoDiretaService {
+  static bool _downloadManualAtivo = false;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseStorage _storage = FirebaseStorage.instance;
   final DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
@@ -137,11 +143,7 @@ class AtualizacaoDiretaService {
     String abi,
   ) {
     if (artifacts.isEmpty) return null;
-    return artifacts[abi] ??
-        artifacts['arm64-v8a'] ??
-        artifacts['armeabi-v7a'] ??
-        artifacts['x86_64'] ??
-        artifacts.values.first;
+    return artifacts[abi] ?? artifacts['universal'];
   }
 
   Map<String, AppReleaseArtifact> _artifactsFromConfig(dynamic raw) {
@@ -168,7 +170,9 @@ class AtualizacaoDiretaService {
     if (historico != null) {
       final artifact = _escolherArtifact(historico.androidArtifacts, abi);
       if (artifact != null && artifact.storagePath.trim().isNotEmpty) {
-        debugPrint('🎯 APK selecionado automaticamente: $abi -> ${artifact.nomeArquivo}');
+        debugPrint(
+          '🎯 APK selecionado automaticamente: $abi -> ${artifact.nomeArquivo}',
+        );
         return _ApkInfo(
           versao: versaoLimpa,
           nomeArquivo: artifact.nomeArquivo,
@@ -177,6 +181,9 @@ class AtualizacaoDiretaService {
           tamanhoBytes: artifact.tamanhoBytes,
           sha256: artifact.sha256,
         );
+      }
+      if (historico.androidArtifacts.isNotEmpty) {
+        throw StateError('Esta release não possui APK compatível com $abi.');
       }
       // Compatibilidade com releases antigas de APK único.
       if (historico.storagePath.trim().isNotEmpty) {
@@ -195,7 +202,8 @@ class AtualizacaoDiretaService {
     final config = await _buscarConfigApp();
     final configVersao = (config['versao_atual'] ?? '').toString().trim();
     if (configVersao == versaoLimpa) {
-      final artifact = _escolherArtifact(_artifactsFromConfig(config['android_artifacts']), abi);
+      final configArtifacts = _artifactsFromConfig(config['android_artifacts']);
+      final artifact = _escolherArtifact(configArtifacts, abi);
       if (artifact != null && artifact.storagePath.isNotEmpty) {
         return _ApkInfo(
           versao: versaoLimpa,
@@ -207,11 +215,17 @@ class AtualizacaoDiretaService {
         );
       }
 
+      if (configArtifacts.isNotEmpty) {
+        throw StateError('Esta release não possui APK compatível com $abi.');
+      }
       final configPath = (config['apk_path'] ?? '').toString().trim();
       if (configPath.isNotEmpty) {
         return _ApkInfo(
           versao: versaoLimpa,
-          nomeArquivo: (config['apk_nome_arquivo'] ?? AppVersionModel.gerarNomeArquivo(versaoLimpa)).toString(),
+          nomeArquivo:
+              (config['apk_nome_arquivo'] ??
+                      AppVersionModel.gerarNomeArquivo(versaoLimpa))
+                  .toString(),
           storagePath: configPath,
           downloadUrl: (config['apk_url'] ?? '').toString(),
           tamanhoBytes: _asInt(config['apk_tamanho_bytes']),
@@ -227,6 +241,156 @@ class AtualizacaoDiretaService {
       downloadUrl: '',
       tamanhoBytes: 0,
     );
+  }
+
+  /// Artefato verificado antes de agendar download durável do Android.
+  /// Releases sem SHA-256/tamanho declarados continuam com o fluxo manual;
+  /// não habilitamos download silencioso de pacote sem integridade conhecida.
+  Future<WifiApkArtifact?> obterArtefatoVerificadoParaWifi(
+    String versao,
+  ) async {
+    if (!Platform.isAndroid) return null;
+    final info = await _resolverApkInfo(versao);
+    final hash = info.sha256.trim();
+    if (!RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(hash) ||
+        info.tamanhoBytes < 1024 * 1024) {
+      return null;
+    }
+    final reference = _storage.ref().child(info.storagePath);
+    final metadata = await reference.getMetadata();
+    if (metadata.size != info.tamanhoBytes) return null;
+    final url = await reference.getDownloadURL();
+    if (url.isEmpty) return null;
+    return WifiApkArtifact(url: url, sha256: hash, bytes: info.tamanhoBytes);
+  }
+
+  /// Reserva manualmente a rede disponível; só acompanha um worker realmente
+  /// ativo no Wi-Fi. O nativo coordena a parada antes de liberar a reserva.
+  /// Retorna null quando o instalador do cache já foi aberto.
+  Future<String?> _aproveitarAtualizacaoWifi({
+    required String versao,
+    required String? uid,
+    required void Function() verificarSessao,
+    required Function(double progress) onProgress,
+    required Function(String status) onStatus,
+  }) async {
+    final wifi = UpdateWifiService.instance;
+    final deadline = DateTime.now().add(const Duration(minutes: 8));
+    ManualUpdatePreparation? preparation;
+    while (DateTime.now().isBefore(deadline)) {
+      verificarSessao();
+      preparation ??= await wifi.beginManualDownload(versao, expectedUid: uid);
+      // O token precisa ser devolvido ao finally mesmo se o cancelamento ocorreu
+      // durante a coordenação nativa.
+      if (preparation.status == 'manual' && preparation.token.isNotEmpty) {
+        return preparation.token;
+      }
+      verificarSessao();
+      if (preparation.status == 'ready') {
+        onProgress(1);
+        onStatus('🔐 Conferindo versão e APK já baixado...');
+        final outcome = await wifi.installReady(
+          versao,
+          isCancelled: () {
+            try {
+              verificarSessao();
+              return false;
+            } catch (_) {
+              return true;
+            }
+          },
+        );
+        verificarSessao();
+        if (outcome == 'installer_opened') {
+          onStatus('✅ Instalador do Android iniciado!');
+          return null;
+        }
+        throw StateError(
+          'O APK em cache não pôde ser instalado ($outcome). '
+          'Confira a conexão, a permissão e a release antes de tentar novamente.',
+        );
+      }
+      if (preparation.status != 'reuse') {
+        throw StateError(switch (preparation.status) {
+          'busy' => 'Já existe um download manual em andamento.',
+          'not_authorized' => 'A conta mudou durante a atualização.',
+          'superseded' =>
+            'Uma release mais recente substituiu este APK. Reabra a atualização.',
+          _ =>
+            'Não foi possível confirmar ou coordenar a atualização '
+                '(${preparation.status}). Verifique a conexão e tente novamente.',
+        });
+      }
+      final state = await wifi.getState(versao);
+      verificarSessao();
+      if (state.ready) {
+        preparation = const ManualUpdatePreparation('ready', '');
+        continue;
+      }
+      if (!state.reusable) {
+        preparation = null;
+        continue;
+      }
+      onStatus(
+        state.phase == 'verifying'
+            ? '🔐 Validando integridade e assinatura do APK...'
+            : '📥 Baixando APK pelo Wi-Fi...',
+      );
+      if (state.progress >= 0) onProgress(state.progress / 100.0);
+      await Future<void>.delayed(const Duration(seconds: 1));
+    }
+    throw TimeoutException(
+      'O Android ainda não concluiu o download. Tente novamente.',
+    );
+  }
+
+  String _mensagemVerificacaoApk(String resultado) {
+    return switch (resultado) {
+      'signature_mismatch' =>
+        'A assinatura do novo APK é diferente da assinatura '
+            'da versão instalada. Gere o release com a mesma chave original.',
+      'apk_signature_unreadable' =>
+        'O Android não conseguiu ler a assinatura '
+            'do APK baixado. Confira o arquivo e a assinatura da compilação.',
+      'installed_signature_unreadable' =>
+        'O Android não conseguiu confirmar '
+            'a assinatura do aplicativo instalado. Não é seguro prosseguir.',
+      'apk_unreadable' =>
+        'O Android não reconheceu o arquivo como APK válido. '
+            'Baixe novamente e confira o APK publicado.',
+      'apk_corrupt' =>
+        'O APK está corrompido ou incompleto. '
+            'Verifique o SHA-256 e publique novamente.',
+      'build_metadata_missing' =>
+        'A release não informa um build Android válido. '
+            'Corrija o campo build na publicação.',
+      'integrity_metadata_missing' =>
+        'A release não possui tamanho e SHA-256 '
+            'verificáveis para este aparelho. Corrija o manifesto dos APKs.',
+      'build_mismatch' =>
+        'O código de build do APK não corresponde à release '
+            'publicada. Confira a ABI e os metadados da publicação.',
+      'not_newer' =>
+        'O APK recebido não é mais recente que o aplicativo instalado.',
+      'abi_mismatch' =>
+        'O APK baixado não é compatível com a arquitetura deste celular.',
+      'version_mismatch' =>
+        'A versão interna do APK difere da versão publicada.',
+      'package_mismatch' =>
+        'O APK possui um identificador de aplicativo diferente.',
+      'hash_mismatch' =>
+        'A verificação SHA-256 falhou. O arquivo foi rejeitado.',
+      'size_mismatch' =>
+        'O tamanho do APK não corresponde ao manifesto da release.',
+      'verification_unavailable' =>
+        'O servidor não pôde confirmar a release. '
+            'Verifique a conexão e tente novamente.',
+      'superseded' => 'O APK foi substituído por uma versão mais recente.',
+      'invalid_path' => 'O APK está fora da pasta segura de atualizações.',
+      _ =>
+        'Não foi possível validar o APK ($resultado). '
+            'A instalação foi bloqueada por segurança.',
+    };
   }
 
   // =====================================================
@@ -426,7 +590,21 @@ class AtualizacaoDiretaService {
     required String versao,
     required Function(double progress) onProgress,
     required Function(String status) onStatus,
+    bool Function()? isCancelled,
   }) async {
+    if (_downloadManualAtivo) {
+      throw StateError('Já existe um download manual em andamento.');
+    }
+    _downloadManualAtivo = true;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    String? manualToken;
+    void verificarSessao() {
+      if (isCancelled?.call() == true) throw StateError('Download cancelado.');
+      if (FirebaseAuth.instance.currentUser?.uid != uid) {
+        throw StateError('A conta mudou durante a atualização.');
+      }
+    }
+
     try {
       if (!Platform.isAndroid) {
         throw Exception(
@@ -449,7 +627,9 @@ class AtualizacaoDiretaService {
       onStatus('🔍 Verificando permissões...');
 
       if (!context.mounted) {
-        throw StateError('A tela de atualização foi fechada antes da solicitação de permissões.');
+        throw StateError(
+          'A tela de atualização foi fechada antes da solicitação de permissões.',
+        );
       }
       if (!await _solicitarPermissoes(context)) {
         throw Exception(
@@ -460,7 +640,8 @@ class AtualizacaoDiretaService {
       onStatus('🔍 Verificando disponibilidade...');
 
       final info = await _resolverApkInfo(versao);
-      final downloadSessionId = UpdateTelemetryService.instance.newDownloadSessionId();
+      final downloadSessionId = UpdateTelemetryService.instance
+          .newDownloadSessionId();
       await UpdateTelemetryService.instance.recordEvent(
         tipo: 'download_iniciado',
         version: info.versao,
@@ -474,12 +655,25 @@ class AtualizacaoDiretaService {
         throw Exception('APK versão ${info.versao} não encontrado no servidor');
       }
 
+      manualToken = await _aproveitarAtualizacaoWifi(
+        versao: info.versao,
+        uid: uid,
+        verificarSessao: verificarSessao,
+        onProgress: onProgress,
+        onStatus: onStatus,
+      );
+      if (manualToken == null) return;
+      verificarSessao();
+
       onStatus('📥 Preparando download...');
 
-      final cleanup = await UpdateStorageService.instance.cleanupBeforeDownload();
+      final cleanup = await UpdateStorageService.instance
+          .cleanupBeforeDownload();
       if (cleanup.bytesFreed > 0) {
         final mb = cleanup.bytesFreed / 1024 / 1024;
-        debugPrint('🧹 Limpeza pré-download liberou ${mb.toStringAsFixed(2)} MB');
+        debugPrint(
+          '🧹 Limpeza pré-download liberou ${mb.toStringAsFixed(2)} MB',
+        );
       }
 
       final downloadDir = await _getDownloadDirectory();
@@ -501,23 +695,37 @@ class AtualizacaoDiretaService {
 
       final ref = _storage.ref().child(info.storagePath);
 
-      final downloadCompleter = Completer<void>();
-      Timer? timeoutTimer;
+      Timer? downloadGuard;
+      StreamSubscription<TaskSnapshot>? progressSubscription;
+      Object? interruption;
+      DownloadTask? task;
 
       try {
-        timeoutTimer = Timer(const Duration(minutes: 5), () {
-          if (!downloadCompleter.isCompleted) {
-            downloadCompleter.completeError(
-              TimeoutException(
-                'Tempo limite excedido. Verifique sua conexão com a internet.',
+        verificarSessao();
+        final deadline = DateTime.now().add(const Duration(minutes: 5));
+        task = ref.writeToFile(partialFile);
+        downloadGuard = Timer.periodic(const Duration(milliseconds: 250), (_) {
+          if (interruption != null) return;
+          try {
+            verificarSessao();
+            if (DateTime.now().isAfter(deadline)) {
+              throw TimeoutException(
+                'Tempo limite excedido. Verifique sua conexão.',
+              );
+            }
+          } catch (e) {
+            interruption = e;
+            unawaited(
+              task!.cancel().then<void>(
+                (_) {},
+                onError: (Object e, StackTrace stack) {
+                  debugPrint('Não foi possível cancelar a transferência: $e');
+                },
               ),
             );
           }
         });
-
-        final task = ref.writeToFile(partialFile);
-
-        task.snapshotEvents.listen(
+        progressSubscription = task.snapshotEvents.listen(
           (event) {
             if (event.totalBytes > 0) {
               final progress = event.bytesTransferred / event.totalBytes;
@@ -527,30 +735,24 @@ class AtualizacaoDiretaService {
               );
             }
           },
-          onError: (error) {
-            if (!downloadCompleter.isCompleted) {
-              downloadCompleter.completeError(error);
-            }
-          },
+          onError: (Object _) {}, // O próprio task propaga a falha abaixo.
         );
 
         await task;
 
-        if (!downloadCompleter.isCompleted) {
-          downloadCompleter.complete();
-        }
-
-        await downloadCompleter.future;
-
-        timeoutTimer.cancel();
+        if (interruption != null) throw interruption!;
+        verificarSessao();
       } catch (_) {
-        timeoutTimer?.cancel();
         if (await partialFile.exists()) {
           try {
             await partialFile.delete();
           } catch (_) {}
         }
+        if (interruption != null) throw interruption!;
         rethrow;
+      } finally {
+        downloadGuard?.cancel();
+        await progressSubscription?.cancel();
       }
 
       onStatus('✅ Download concluído!');
@@ -582,7 +784,9 @@ class AtualizacaoDiretaService {
 
       if (info.sha256.trim().isNotEmpty) {
         onStatus('🔐 Validando integridade SHA-256...');
-        final digest = crypto.sha256.convert(await partialFile.readAsBytes()).toString();
+        final digest = crypto.sha256
+            .convert(await partialFile.readAsBytes())
+            .toString();
         if (digest.toLowerCase() != info.sha256.trim().toLowerCase()) {
           await UpdateTelemetryService.instance.recordEvent(
             tipo: 'hash_invalido',
@@ -592,8 +796,12 @@ class AtualizacaoDiretaService {
             fileName: info.nomeArquivo,
             sessionId: downloadSessionId,
           );
-          try { await partialFile.delete(); } catch (_) {}
-          throw Exception('Falha de integridade: SHA-256 do APK não confere com a release publicada.');
+          try {
+            await partialFile.delete();
+          } catch (_) {}
+          throw Exception(
+            'Falha de integridade: SHA-256 do APK não confere com a release publicada.',
+          );
         }
       }
 
@@ -618,15 +826,65 @@ class AtualizacaoDiretaService {
 
       await Future.delayed(const Duration(milliseconds: 500));
 
-      onStatus('📱 Solicitando instalação...');
+      onStatus('🔐 Confirmando que esta ainda é a release mais recente...');
+      verificarSessao();
+      if (Platform.isAndroid) {
+        // Uma versão mais nova pode ter sido publicada ENQUANTO este APK baixava.
+        // A instalação manual segue a mesma política de elegibilidade do Worker.
+        if (FirebaseAuth.instance.currentUser != null) {
+          final latest = await UpdateWifiService.instance.validateLatest(
+            info.versao,
+          );
+          if (latest != 'current') {
+            throw StateError(
+              'A release foi substituída ou a verificação online falhou. '
+              'Abra novamente a atualização para obter a última versão.',
+            );
+          }
+        } else {
+          final latest = await AppUpdateCheckService().verificarStatus();
+          if (!latest.carregou ||
+              latest.canal != 'producao' ||
+              latest.versaoDestino != info.versao ||
+              (!latest.precisaAtualizar && !latest.deveBloquear)) {
+            throw StateError(
+              'Não foi possível confirmar a versão oficial antes de instalar.',
+            );
+          }
+        }
+      }
 
+      if (Platform.isAndroid) {
+        final verification = await const MethodChannel('uai/updates_wifi')
+            .invokeMethod<String>('verifyManualApk', {
+              'uid': FirebaseAuth.instance.currentUser?.uid ?? '',
+              'version': info.versao,
+              'path': filePath,
+            });
+        if (verification != 'verified') {
+          throw Exception(
+            _mensagemVerificacaoApk(verification ?? 'verification_failed'),
+          );
+        }
+      }
+
+      onStatus('📱 Solicitando instalação...');
+      verificarSessao();
       await UpdateStorageService.instance.registerPendingInstallation(
         targetVersion: info.versao,
         apkPath: filePath,
       );
 
+      verificarSessao();
       final result = await OpenFilex.open(filePath);
-      await UpdateTelemetryService.instance.recordEvent(tipo: 'instalador_aberto', version: info.versao, abi: _abiFromStoragePath(info.storagePath), artifactPath: info.storagePath, fileName: info.nomeArquivo, sessionId: downloadSessionId);
+      await UpdateTelemetryService.instance.recordEvent(
+        tipo: 'instalador_aberto',
+        version: info.versao,
+        abi: _abiFromStoragePath(info.storagePath),
+        artifactPath: info.storagePath,
+        fileName: info.nomeArquivo,
+        sessionId: downloadSessionId,
+      );
 
       if (result.type == ResultType.done) {
         onStatus('✅ Instalação iniciada!');
@@ -635,6 +893,7 @@ class AtualizacaoDiretaService {
         debugPrint('⚠️ Falha ao abrir com OpenFilex: ${result.message}');
 
         if (Platform.isAndroid) {
+          verificarSessao();
           onStatus('📱 Tentando método alternativo...');
           await _abrirComIntentAlternativa(filePath);
         } else {
@@ -665,6 +924,18 @@ class AtualizacaoDiretaService {
         );
       } catch (_) {}
       rethrow;
+    } finally {
+      try {
+        if (manualToken != null) {
+          await UpdateWifiService.instance.endManualDownload(
+            versao,
+            manualToken,
+            expectedUid: uid,
+          );
+        }
+      } finally {
+        _downloadManualAtivo = false;
+      }
     }
   }
 
@@ -856,6 +1127,18 @@ class AtualizacaoDiretaService {
 // =====================================================
 // 📦 INFO DO APK
 // =====================================================
+class WifiApkArtifact {
+  final String url;
+  final String sha256;
+  final int bytes;
+
+  const WifiApkArtifact({
+    required this.url,
+    required this.sha256,
+    required this.bytes,
+  });
+}
+
 class _ApkInfo {
   final String versao;
   final String nomeArquivo;
@@ -896,8 +1179,16 @@ class _DownloadProgressDialogState extends State<_DownloadProgressDialog>
   double _progress = 0.0;
   String _status = 'Preparando o motor de atualização...';
   bool _concluido = false;
+  bool _cancelado = false;
   bool _erro = false;
   String? _erroMensagem;
+  bool _recoveryBusy = false;
+  int _recoveryPercent = -1;
+  String _recoveryStage = '';
+  String? _recoveryLocation;
+  String? _recoveryError;
+  bool _recoveryDifferentSignature = false;
+  Timer? _recoveryPoller;
 
   late final AnimationController _pulseController;
   late final AnimationController _orbitController;
@@ -923,6 +1214,7 @@ class _DownloadProgressDialogState extends State<_DownloadProgressDialog>
 
   @override
   void dispose() {
+    _recoveryPoller?.cancel();
     _pulseController.dispose();
     _orbitController.dispose();
     _scanController.dispose();
@@ -934,6 +1226,7 @@ class _DownloadProgressDialogState extends State<_DownloadProgressDialog>
       await widget.service.baixarEInstalar(
         context: context,
         versao: widget.versao,
+        isCancelled: () => _cancelado || !mounted,
         onProgress: (progress) {
           if (mounted) setState(() => _progress = progress.clamp(0.0, 1.0));
         },
@@ -961,6 +1254,81 @@ class _DownloadProgressDialogState extends State<_DownloadProgressDialog>
     }
   }
 
+  Future<void> _exportRecovery() async {
+    if (_recoveryBusy || !UpdateWifiService.instance.isSupported) return;
+    setState(() {
+      _recoveryBusy = true;
+      _recoveryError = null;
+      _recoveryLocation = null;
+      _recoveryPercent = 0;
+      _recoveryStage = 'Conferindo release oficial...';
+    });
+    try {
+      // Android 9 ou anterior: acesso à pasta Downloads pública precisa
+      // ser autorizado explicitamente. Android 10+ usa MediaStore.
+      final android = await DeviceInfoPlugin().androidInfo;
+      if (android.version.sdkInt <= 28) {
+        final permission = await Permission.storage.request();
+        if (!permission.isGranted) {
+          throw StateError(
+            'Autorize o acesso ao armazenamento para salvar o APK em Downloads.',
+          );
+        }
+      }
+      _recoveryPoller?.cancel();
+      _recoveryPoller = Timer.periodic(const Duration(milliseconds: 650), (
+        timer,
+      ) async {
+        if (!mounted || !_recoveryBusy) {
+          timer.cancel();
+          return;
+        }
+        final info = await UpdateWifiService.instance.recoveryState();
+        if (!mounted || !_recoveryBusy) return;
+        final phase = (info['phase'] ?? '').toString();
+        final progress = info['progress'];
+        setState(() {
+          _recoveryPercent = progress is num
+              ? progress.toInt().clamp(0, 100).toInt()
+              : -1;
+          _recoveryStage = switch (phase) {
+            'resolving' => 'Conferindo a release oficial...',
+            'using_cache' => 'Reutilizando APK já baixado...',
+            'downloading' => 'Baixando APK para recuperação...',
+            'verifying' => 'Verificando assinatura, integridade e ABI...',
+            'rechecking' => 'Confirmando a versão mais recente...',
+            'saving' => 'Salvando em Downloads...',
+            _ => 'Preparando recuperação...',
+          };
+        });
+      });
+      final response = await UpdateWifiService.instance.saveRecoveryApk(
+        widget.versao,
+      );
+      if (!mounted) return;
+      if (response['ok'] != true) {
+        throw StateError(
+          (response['error'] ?? 'Não foi possível salvar o APK.').toString(),
+        );
+      }
+      setState(() {
+        _recoveryLocation = (response['location'] ?? 'Downloads').toString();
+        _recoveryDifferentSignature = response['signatureMismatch'] == true;
+        _recoveryPercent = 100;
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(
+          () => _recoveryError = e.toString().replaceFirst('Bad state: ', ''),
+        );
+      }
+    } finally {
+      _recoveryPoller?.cancel();
+      _recoveryPoller = null;
+      if (mounted) setState(() => _recoveryBusy = false);
+    }
+  }
+
   int get _stageIndex {
     final s = _status.toLowerCase();
     if (_concluido || s.contains('instalação iniciada')) return 4;
@@ -979,7 +1347,8 @@ class _DownloadProgressDialogState extends State<_DownloadProgressDialog>
   }
 
   Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance()).abs();
+    final diff = (color.computeLuminance() - background.computeLuminance())
+        .abs();
     if (diff >= 0.24) return color;
     final hsl = HSLColor.fromColor(color);
     return hsl
@@ -1040,10 +1409,16 @@ class _DownloadProgressDialogState extends State<_DownloadProgressDialog>
                             const SizedBox(height: 18),
                             _buildStages(t, accent, compact),
                             const SizedBox(height: 20),
-                            if (_erro) _buildErrorActions(t, error),
+                            if (_erro) ...[
+                              _buildErrorActions(t, error),
+                              const SizedBox(height: 16),
+                              _buildRecoveryCard(t),
+                            ],
                             if (!_erro && !_concluido)
                               Text(
-                                'Mantenha o UAI Capoeira aberto. O instalador será chamado automaticamente assim que o pacote estiver pronto.',
+                                _status.toLowerCase().contains('wi-fi')
+                                    ? 'O Android pode continuar o download pelo Wi-Fi em segundo plano. A instalação exigirá sua confirmação.'
+                                    : 'Mantenha o UAI Capoeira aberto. O instalador será chamado quando o pacote estiver pronto.',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   color: t.textMuted,
@@ -1051,6 +1426,23 @@ class _DownloadProgressDialogState extends State<_DownloadProgressDialog>
                                   height: 1.4,
                                   fontWeight: FontWeight.w700,
                                 ),
+                              ),
+                            if (!_erro && !_concluido)
+                              TextButton.icon(
+                                onPressed: _cancelado
+                                    ? null
+                                    : () {
+                                        setState(() {
+                                          _cancelado = true;
+                                          _status = 'Cancelando download...';
+                                        });
+                                        unawaited(
+                                          UpdateWifiService.instance
+                                              .cancelReadyInstallation(),
+                                        );
+                                      },
+                                icon: const Icon(Icons.close_rounded),
+                                label: const Text('Cancelar'),
                               ),
                             if (_concluido)
                               Text(
@@ -1088,7 +1480,11 @@ class _DownloadProgressDialogState extends State<_DownloadProgressDialog>
             color: accent.withAlpha(26),
             border: Border.all(color: accent.withAlpha(56)),
           ),
-          child: Icon(Icons.sports_martial_arts_rounded, color: accent, size: compact ? 23 : 27),
+          child: Icon(
+            Icons.sports_martial_arts_rounded,
+            color: accent,
+            size: compact ? 23 : 27,
+          ),
         ),
         const SizedBox(width: 13),
         Expanded(
@@ -1151,7 +1547,10 @@ class _DownloadProgressDialogState extends State<_DownloadProgressDialog>
                     border: Border.all(color: accent.withAlpha(41)),
                     boxShadow: [
                       BoxShadow(
-                        color: accent.withAlpha((255.0 * (.13 + (_pulseController.value * .09))).round()),
+                        color: accent.withAlpha(
+                          (255.0 * (.13 + (_pulseController.value * .09)))
+                              .round(),
+                        ),
                         blurRadius: 42,
                         spreadRadius: 4,
                       ),
@@ -1164,11 +1563,17 @@ class _DownloadProgressDialogState extends State<_DownloadProgressDialog>
                         width: size * .58,
                         height: size * .58,
                         child: CircularProgressIndicator(
-                          value: _erro ? null : (_concluido ? 1 : (_progress <= 0 ? null : _progress)),
+                          value: _erro
+                              ? null
+                              : (_concluido
+                                    ? 1
+                                    : (_progress <= 0 ? null : _progress)),
                           strokeWidth: compact ? 7 : 8,
                           strokeCap: StrokeCap.round,
                           color: accent,
-                          backgroundColor: t.border.withAlpha((255.0 * (.42)).round()),
+                          backgroundColor: t.border.withAlpha(
+                            (255.0 * (.42)).round(),
+                          ),
                         ),
                       ),
                       Column(
@@ -1178,8 +1583,8 @@ class _DownloadProgressDialogState extends State<_DownloadProgressDialog>
                             _erro
                                 ? Icons.error_outline_rounded
                                 : _concluido
-                                    ? Icons.verified_rounded
-                                    : Icons.system_update_alt_rounded,
+                                ? Icons.verified_rounded
+                                : Icons.system_update_alt_rounded,
                             color: accent,
                             size: compact ? 31 : 37,
                           ),
@@ -1196,7 +1601,9 @@ class _DownloadProgressDialogState extends State<_DownloadProgressDialog>
                           ),
                           const SizedBox(height: 5),
                           Text(
-                            _erro ? 'ATENÇÃO' : (_concluido ? 'PRONTO' : 'PROCESSANDO'),
+                            _erro
+                                ? 'ATENÇÃO'
+                                : (_concluido ? 'PRONTO' : 'PROCESSANDO'),
                             style: TextStyle(
                               color: accent,
                               fontSize: compact ? 9.5 : 10.5,
@@ -1325,6 +1732,142 @@ class _DownloadProgressDialogState extends State<_DownloadProgressDialog>
     );
   }
 
+  Widget _buildRecoveryCard(dynamic t) {
+    if (!UpdateWifiService.instance.isSupported) return const SizedBox.shrink();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: t.card,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: t.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.save_alt_rounded, color: t.primary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Recuperação manual segura',
+                  style: TextStyle(
+                    color: t.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Se a instalação automática falhou, salve o APK oficial na pasta Downloads. '
+            'O arquivo continuará lá mesmo se você precisar reinstalar o aplicativo.',
+            style: TextStyle(
+              color: t.textSecondary,
+              fontSize: 12,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (_recoveryBusy) ...[
+            LinearProgressIndicator(
+              value: _recoveryPercent < 0 ? null : _recoveryPercent / 100,
+            ),
+            const SizedBox(height: 7),
+            Text(
+              '$_recoveryStage${_recoveryPercent >= 0 ? ' • $_recoveryPercent%' : ''}',
+              style: TextStyle(
+                color: t.textSecondary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ] else if (_recoveryLocation != null) ...[
+            Text(
+              'APK validado e salvo em: $_recoveryLocation',
+              style: TextStyle(color: t.success, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '1. Abra o gerenciador de arquivos do celular e entre em Downloads.\n'
+              '2. Toque no APK salvo e tente atualizar por cima, sem desinstalar.\n'
+              '3. Se o Android recusar, confirme que seus dados estão sincronizados. '
+              'Só então considere desinstalar e instalar pelo arquivo salvo.',
+              style: TextStyle(
+                color: t.textPrimary,
+                height: 1.55,
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () async {
+                final opened = await UpdateWifiService.instance
+                    .openRecoveryDownloads();
+                if (!opened && mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Abra o gerenciador de arquivos do celular e entre na pasta Downloads.',
+                      ),
+                    ),
+                  );
+                }
+              },
+              icon: const Icon(Icons.folder_open_rounded),
+              label: const Text('Abrir pasta Downloads'),
+            ),
+            if (_recoveryDifferentSignature) ...[
+              const SizedBox(height: 8),
+              Text(
+                'ATENÇÃO: a assinatura é diferente da instalada. A instalação por cima deve falhar. '
+                'Não desinstale sem garantir backup/sincronização dos seus dados.',
+                style: TextStyle(
+                  color: t.error,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ] else ...[
+            if (_recoveryError != null) ...[
+              Text(
+                _recoveryError!,
+                style: TextStyle(color: t.error, fontSize: 12),
+              ),
+              const SizedBox(height: 8),
+            ],
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _exportRecovery,
+                icon: const Icon(Icons.download_rounded),
+                label: const Text('Salvar APK oficial em Downloads'),
+              ),
+            ),
+          ],
+          const SizedBox(height: 9),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => OfficialApkWebsiteService.open(context),
+              icon: const Icon(Icons.public_rounded),
+              label: const Text('Ou baixar pelo site oficial'),
+            ),
+          ),
+          const SizedBox(height: 7),
+          Text(
+            'Nunca desinstale antes de salvar o APK e conferir seus dados. '
+            'APK sem hash válido, incompatível ou não autorizado não será exportado.',
+            style: TextStyle(color: t.textMuted, fontSize: 11, height: 1.4),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildErrorActions(dynamic t, Color error) {
     return Row(
       children: [
@@ -1346,6 +1889,7 @@ class _DownloadProgressDialogState extends State<_DownloadProgressDialog>
             onPressed: () {
               setState(() {
                 _erro = false;
+                _cancelado = false;
                 _erroMensagem = null;
                 _progress = 0;
                 _status = 'Reiniciando atualização...';
@@ -1356,7 +1900,9 @@ class _DownloadProgressDialogState extends State<_DownloadProgressDialog>
             label: const Text('Tentar novamente'),
             style: ElevatedButton.styleFrom(
               backgroundColor: error,
-              foregroundColor: error.computeLuminance() > .48 ? Colors.black : Colors.white,
+              foregroundColor: error.computeLuminance() > .48
+                  ? Colors.black
+                  : Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 14),
             ),
           ),
@@ -1371,7 +1917,11 @@ class _LiveChip extends StatelessWidget {
   final bool done;
   final bool error;
 
-  const _LiveChip({required this.color, required this.done, required this.error});
+  const _LiveChip({
+    required this.color,
+    required this.done,
+    required this.error,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1434,19 +1984,31 @@ class _UpdateStageChip extends StatelessWidget {
       duration: const Duration(milliseconds: 260),
       padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
       decoration: BoxDecoration(
-        color: active ? Color.alphaBlend(color.withAlpha(19), card) : card.withAlpha(209),
+        color: active
+            ? Color.alphaBlend(color.withAlpha(19), card)
+            : card.withAlpha(209),
         borderRadius: BorderRadius.circular(13),
-        border: Border.all(color: active || done ? color.withAlpha(64) : border.withAlpha(184)),
+        border: Border.all(
+          color: active || done ? color.withAlpha(64) : border.withAlpha(184),
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(done ? Icons.check_circle_rounded : icon, color: visibleColor, size: 18),
+          Icon(
+            done ? Icons.check_circle_rounded : icon,
+            color: visibleColor,
+            size: 18,
+          ),
           const SizedBox(width: 7),
           Text(
             label,
-            style: TextStyle(color: visibleColor, fontSize: 11, fontWeight: FontWeight.w900),
+            style: TextStyle(
+              color: visibleColor,
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+            ),
           ),
         ],
       ),
@@ -1541,7 +2103,8 @@ class _UpdateGridPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _UpdateGridPainter oldDelegate) => oldDelegate.color != color;
+  bool shouldRepaint(covariant _UpdateGridPainter oldDelegate) =>
+      oldDelegate.color != color;
 }
 
 class _UpdateOrbitPainter extends CustomPainter {
@@ -1562,7 +2125,10 @@ class _UpdateOrbitPainter extends CustomPainter {
     final dot = Paint()..color = color;
     for (final angle in <double>[0, 1.57, 3.14, 4.71]) {
       canvas.drawCircle(
-        Offset(c.dx + (r * .98 * math.cos(angle)), c.dy + (r * .98 * math.sin(angle))),
+        Offset(
+          c.dx + (r * .98 * math.cos(angle)),
+          c.dy + (r * .98 * math.sin(angle)),
+        ),
         3.2,
         dot,
       );
@@ -1570,6 +2136,6 @@ class _UpdateOrbitPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _UpdateOrbitPainter oldDelegate) => oldDelegate.color != color;
+  bool shouldRepaint(covariant _UpdateOrbitPainter oldDelegate) =>
+      oldDelegate.color != color;
 }
-

@@ -19,8 +19,6 @@ class CertificadoPdfDiretoService {
 
   final CertificadoSvgService _svgService;
 
-  static const double _viewBoxWidth = 297.0;
-  static const double _viewBoxHeight = 210.0;
   static const String relatorioNomePadrao =
       'RELATORIO_CERTIFICADOS_GRAFICA.pdf';
 

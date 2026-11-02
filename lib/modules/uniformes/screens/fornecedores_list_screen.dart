@@ -1,4 +1,6 @@
+import '../dialogs/uniformes_motivo_dialog.dart';
 import 'package:flutter/material.dart';
+import 'fornecedor_dashboard_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/uniformes/services/fornecedor_service.dart';
@@ -30,8 +32,6 @@ class _FornecedoresListScreenState extends State<FornecedoresListScreen> {
         ? const Color(0xFF111827)
         : const Color(0xFFFFFFFF);
   }
-
-
 
   // ---------------------------------------------------------------------------
   // Ações
@@ -76,7 +76,13 @@ class _FornecedoresListScreenState extends State<FornecedoresListScreen> {
     if (confirmar != true) return;
 
     try {
-      await _fornecedorService.excluirFornecedor(fornecedorId);
+      if (!mounted) return;
+      final motivo = await solicitarMotivoUniformes(
+        context,
+        'Justificativa para desativar fornecedor',
+      );
+      if (motivo == null) return;
+      await _fornecedorService.excluirFornecedor(fornecedorId, motivo: motivo);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -262,6 +268,9 @@ class _FornecedoresListScreenState extends State<FornecedoresListScreen> {
                               border: Border.all(color: context.uai.border),
                             ),
                             child: ListTile(
+                              onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                                builder: (_) => FornecedorDashboardScreen(fornecedorId: doc.id, nome: nome.toString()),
+                              )),
                               leading: CircleAvatar(
                                 backgroundColor: context.uai.primary,
                                 child: Icon(

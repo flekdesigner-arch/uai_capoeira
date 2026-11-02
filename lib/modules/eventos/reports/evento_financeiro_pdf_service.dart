@@ -1610,9 +1610,7 @@ class EventoFinanceiroPdfService {
     );
   }
 
-  static pw.PageTheme _pageTheme({
-    pw.PageOrientation orientation = pw.PageOrientation.portrait,
-  }) {
+  static pw.PageTheme _pageTheme() {
     return pw.PageTheme(
       pageFormat: PdfPageFormat.a4,
       margin: const pw.EdgeInsets.fromLTRB(28, 28, 28, 32),

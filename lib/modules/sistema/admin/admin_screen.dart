@@ -1,6 +1,12 @@
 // lib/modules/sistema/admin/admin_screen.dart
 
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'admin_panel_organization.dart';
+import 'package:uai_capoeira/modules/disciplina/disciplina_admin_screen.dart';
+import 'configurar_aniversariantes_screen.dart';
+import 'package:uai_capoeira/modules/uniformes/admin/uniformes_configuracoes_screen.dart';
 
 import 'package:uai_capoeira/core/permissions/permissao_service.dart';
 import 'package:uai_capoeira/dev_tools/creative_mode/creative_mode_launcher.dart';
@@ -39,11 +45,115 @@ class AdminScreen extends StatefulWidget {
 class _AdminScreenState extends State<AdminScreen> {
   final PermissaoService _permissaoService = PermissaoService();
   late Future<_AdminPermissionState> _permissionFuture;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  List<String> _favoriteIds = <String>[];
+  Set<AdminPanelArea> _expandedAreas = {AdminPanelArea.essencial};
+
+  String get _preferencesPrefix {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? 'sem_sessao';
+    return 'uai_admin_painel_181_$uid';
+  }
+
+  Future<void> _loadPreferences() async {
+    final prefix = _preferencesPrefix;
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final savedFavorites = preferences.getStringList('${prefix}_favoritos');
+      final savedAreas = preferences.getStringList('${prefix}_secoes');
+      if (!mounted || prefix != _preferencesPrefix) return;
+      setState(() {
+        _favoriteIds = savedFavorites ?? <String>[];
+        if (savedAreas != null) {
+          _expandedAreas = AdminPanelArea.values
+              .where((area) => savedAreas.contains(area.name))
+              .toSet();
+        }
+      });
+    } catch (_) {
+      // Preferências são opcionais; as rotas e permissões continuam operantes.
+    }
+  }
+
+  Future<void> _saveFavorites() async {
+    final prefix = _preferencesPrefix;
+    final currentFavorites = List<String>.of(_favoriteIds);
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setStringList('${prefix}_favoritos', currentFavorites);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Não foi possível salvar os favoritos neste aparelho.'),
+      ));
+    }
+  }
+
+  Future<void> _saveExpandedAreas() async {
+    final prefix = _preferencesPrefix;
+    final currentAreas = _expandedAreas.map((area) => area.name).toList();
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setStringList(
+        '${prefix}_secoes',
+        currentAreas,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Não foi possível salvar a organização das seções.'),
+      ));
+    }
+  }
+
+  void _toggleFavorite(String id, _AdminPermissionState access) {
+    final allowedIds = [
+      ..._siteCards(context.uai),
+      ..._appCards(context.uai),
+    ].where((item) => _podeVerCard(item, access)).map((item) => item.id);
+    final current = AdminPanelOrganization.safeFavorites(
+      saved: _favoriteIds,
+      allowed: allowedIds,
+    );
+    if (!allowedIds.contains(id)) return;
+    final alreadyFavorite = current.contains(id);
+    if (!alreadyFavorite &&
+        current.length >= AdminPanelOrganization.maxFavorites) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Você pode fixar até quatro ferramentas favoritas.'),
+        behavior: SnackBarBehavior.floating,
+      ));
+      return;
+    }
+    setState(() {
+      _favoriteIds = current;
+      if (alreadyFavorite) {
+        _favoriteIds.remove(id);
+      } else {
+        _favoriteIds.add(id);
+      }
+    });
+    _saveFavorites();
+  }
+
+  void _toggleSection(AdminPanelArea area) {
+    setState(() {
+      if (!_expandedAreas.add(area)) _expandedAreas.remove(area);
+    });
+    _saveExpandedAreas();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
     super.initState();
     _permissionFuture = _carregarPermissoes();
+    _loadPreferences();
   }
 
   Future<_AdminPermissionState> _carregarPermissoes() async {
@@ -56,12 +166,6 @@ class _AdminScreenState extends State<AdminScreen> {
       adminMaster: results[0] == true,
       permissions: Map<String, bool>.from(results[1] as Map<String, bool>),
     );
-  }
-
-  Color _readableOn(Color background) {
-    return background.computeLuminance() > 0.48
-        ? const Color(0xFF111827)
-        : const Color(0xFFFFFFFF);
   }
 
   Color _ensureVisible(Color color, Color background) {
@@ -80,17 +184,6 @@ class _AdminScreenState extends State<AdminScreen> {
 
   Color _softFill(Color color, Color base, [double opacity = 0.11]) {
     return Color.alphaBlend(color.withValues(alpha: opacity), base);
-  }
-
-  Color _onGradient() {
-    final t = context.uai;
-    final temaEscuro =
-        t.background.computeLuminance() < 0.45 ||
-        t.surface.computeLuminance() < 0.45;
-
-    if (temaEscuro) return const Color(0xFFFFFFFF);
-
-    return _readableOn(t.primary);
   }
 
   bool get _isWideDashboard {
@@ -692,6 +785,7 @@ class _AdminScreenState extends State<AdminScreen> {
     return [
       _AdminCardData(
         icon: Icons.web_rounded,
+        id: 'site',
         title: 'Gerenciar Site',
         subtitle: 'Regimento, biografia, graduações e inscrição',
         color: t.associacao,
@@ -700,6 +794,7 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
       _AdminCardData(
         icon: Icons.image_rounded,
+        id: 'logo_site',
         title: 'Logo do Site',
         subtitle: 'Troque a logo da página inicial',
         color: t.inscricoes,
@@ -712,7 +807,23 @@ class _AdminScreenState extends State<AdminScreen> {
   List<_AdminCardData> _appCards(UaiThemeTokens t) {
     return [
       _AdminCardData(
+        icon: Icons.gavel_rounded,
+        id: 'disciplina',
+        title: 'Disciplina e Suspensões',
+        subtitle: 'Advertências, pontos, prazos e regras globais',
+        color: t.warning,
+        tela: const DisciplinaAdminScreen(),
+        permissions: const [],
+        adminOnly: true,
+        critical: true,
+      ),
+      _AdminCardData(icon: Icons.inventory_2_rounded, id: 'uniformes',
+        title: 'Configurar Uniformes', subtitle: 'Professores, permissões, catálogo, auditoria e manutenção protegida', color: t.associacao, tela: const UniformesConfiguracoesScreen(), permissions: const [], adminOnly: true, critical: true),
+      _AdminCardData(icon: Icons.cake_rounded, id: 'aniversariantes',
+        title: 'Configurar Aniversariantes', subtitle: 'Robô, notificações, artes e mensagens', color: t.primary, tela: const ConfigurarAniversariantesScreen(), permissions: const [], adminOnly: true),
+      _AdminCardData(
         icon: Icons.graphic_eq_rounded,
+        id: 'rhythm',
         title: 'UAI Rhythm Studio',
         subtitle: 'Crie beats, partituras e treinos musicais de capoeira',
         color: t.success,
@@ -722,6 +833,7 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
       _AdminCardData(
         icon: Icons.manage_accounts_rounded,
+        id: 'usuarios',
         title: 'Gerenciar Usuários',
         subtitle: 'Usuários, cargos e permissões do sistema',
         color: t.primary,
@@ -731,6 +843,7 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
       _AdminCardData(
         icon: Icons.palette_rounded,
+        id: 'temas',
         title: 'Central de Temas',
         subtitle: 'Defina o tema global e os temas disponíveis para usuários',
         color: t.associacao,
@@ -739,6 +852,7 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
       _AdminCardData(
         icon: Icons.health_and_safety_rounded,
+        id: 'firebase',
         title: 'Saúde Firebase',
         subtitle: 'Banco, storage, funções, uso e integridade',
         color: t.info,
@@ -749,6 +863,7 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
       _AdminCardData(
         icon: Icons.system_update_alt_rounded,
+        id: 'atualizacoes',
         title: 'Controle de Atualizações',
         subtitle: 'Upload de APK, versões, histórico e obrigatoriedade',
         color: t.success,
@@ -759,6 +874,7 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
       _AdminCardData(
         icon: Icons.bug_report_rounded,
+        id: 'caca_bug',
         title: 'Caça Bug',
         subtitle: 'Diagnóstico temporário de sessão e erros',
         color: t.warning,
@@ -772,6 +888,7 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
       _AdminCardData(
         icon: Icons.rule_rounded,
+        id: 'ausencias',
         title: 'Indicadores de Ausência',
         subtitle: 'Configure dias e cores do alerta de frequência',
         color: t.info,
@@ -780,6 +897,7 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
       _AdminCardData(
         icon: Icons.psychology_alt_rounded,
+        id: 'brincadeiras',
         title: 'Brincadeiras da Chamada',
         subtitle: 'Telepatia e chamada inversa com controle seguro',
         color: t.warning,
@@ -788,6 +906,7 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
       _AdminCardData(
         icon: Icons.workspace_premium_rounded,
+        id: 'graduacoes',
         title: 'Gerenciar Graduações',
         subtitle: 'Crie, edite e organize as graduações do app',
         color: t.warning,
@@ -796,6 +915,7 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
       _AdminCardData(
         icon: Icons.business_rounded,
+        id: 'academias',
         title: 'Gerenciar Academias',
         subtitle: 'Academias, núcleos, turmas e horários',
         color: t.info,
@@ -804,6 +924,7 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
       _AdminCardData(
         icon: Icons.event_rounded,
+        id: 'eventos',
         title: 'Gerenciar Eventos',
         subtitle: 'Cadastre, edite e acompanhe eventos',
         color: t.eventos,
@@ -818,6 +939,7 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
       _AdminCardData(
         icon: Icons.directions_bus_filled_rounded,
+        id: 'transportes',
         title: 'Configurar Transportes',
         subtitle: 'Tipos de veículo e capacidade padrão',
         color: t.warning,
@@ -826,6 +948,7 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
       _AdminCardData(
         icon: Icons.history_edu_rounded,
+        id: 'estudos',
         title: 'Estudos e Fundamentos',
         subtitle: 'Ciclos, estudos, artigos, vídeos e avaliações teóricas',
         color: t.info,
@@ -834,6 +957,7 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
       _AdminCardData(
         icon: Icons.history_edu_rounded,
+        id: 'certificados',
         title: 'Central de Certificados',
         subtitle: 'Studio, templates, emissão, QR e autenticidade',
         color: t.inscricoes,
@@ -851,7 +975,8 @@ class _AdminScreenState extends State<AdminScreen> {
   _AdminCardData _migrationLauncherCard(UaiThemeTokens t) {
     return _AdminCardData(
       icon: Icons.sync_alt_rounded,
-      title: 'Ferramentas de Migração',
+      id: 'migracoes',
+        title: 'Ferramentas de Migração',
       subtitle: 'Importações e correções de dados antigos',
       color: t.primary,
       tela: const SizedBox.shrink(),
@@ -884,14 +1009,47 @@ class _AdminScreenState extends State<AdminScreen> {
     _AdminPermissionState access,
   ) {
     final t = context.uai;
-    final siteCards = _siteCards(t);
-    final appCards = _appCards(t);
-    final migrationLauncher = _migrationLauncherCard(t);
-    final visibleCount = [
-      ...siteCards,
-      ...appCards,
-      migrationLauncher,
-    ].where((item) => _podeVerCard(item, access)).length;
+    // Todas as decisões de visibilidade continuam passando pelo mesmo serviço.
+    final cards = [..._siteCards(t), ..._appCards(t)];
+    final visibleCards = cards
+        .where((item) => _podeVerCard(item, access))
+        .toList(growable: false);
+    final migration = _migrationLauncherCard(t);
+    final showMigration = _podeVerCard(migration, access);
+    final allCount = visibleCards.length + (showMigration ? 1 : 0);
+    final favoriteIds = AdminPanelOrganization.safeFavorites(
+      saved: _favoriteIds,
+      allowed: visibleCards.map((item) => item.id),
+    );
+    final favorites = [
+      for (final id in favoriteIds)
+        ...visibleCards.where((item) => item.id == id),
+    ];
+    final searching = _searchQuery.trim().isNotEmpty;
+    final hasSearchResults = visibleCards.any(
+      (item) {
+        final area = AdminPanelOrganization.cardAreas[item.id] ?? AdminPanelArea.avancado;
+        return AdminPanelOrganization.matches(
+          query: _searchQuery,
+          title: item.title,
+          subtitle: item.subtitle,
+          extra: '${_areaTitle(area)} ${_areaSubtitle(area)}',
+        );
+      },
+    ) || (showMigration && AdminPanelOrganization.matches(
+      query: _searchQuery,
+      title: migration.title,
+      subtitle: migration.subtitle,
+      extra: '${_areaTitle(AdminPanelArea.avancado)} '
+          '${_areaSubtitle(AdminPanelArea.avancado)}',
+    )) || (CreativeModeLauncher.isAvailable &&
+        AdminPanelOrganization.matches(
+          query: _searchQuery,
+          title: 'Modo Criativo',
+          subtitle: 'Laboratório visual Windows Debug',
+          extra: '${_areaTitle(AdminPanelArea.avancado)} '
+              '${_areaSubtitle(AdminPanelArea.avancado)}',
+        ));
 
     return Scaffold(
       backgroundColor: t.background,
@@ -919,44 +1077,157 @@ class _AdminScreenState extends State<AdminScreen> {
         ],
       ),
       body: ListView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: _dashboardPagePadding,
         children: [
           _dashboardWidthLimiter(
             Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _buildHeaderResumo(context, access),
-                if (CreativeModeLauncher.isAvailable) ...[
-                  const SizedBox(height: 12),
-                  _buildCreativeModeCard(context),
-                ],
-                const SizedBox(height: 16),
-                if (visibleCount == 0) ...[
-                  _buildEmptyAdminState(context),
+                _buildHeaderResumo(context, access, allCount),
+                const SizedBox(height: 14),
+                _buildAdminSearch(context),
+                if (allCount == 0 && !CreativeModeLauncher.isAvailable) ...[
                   const SizedBox(height: 14),
+                  _buildEmptyAdminState(context),
+                ] else ...[
+                  if (!searching && favorites.isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    _buildFavoriteSection(context, favorites, access),
+                  ],
+                  if (searching && !hasSearchResults) ...[
+                    const SizedBox(height: 14),
+                    _buildNoSearchResults(context),
+                  ],
+                  for (final area in AdminPanelArea.values) ...[
+                    _buildOrganizedSection(
+                      context: context,
+                      area: area,
+                      children: visibleCards
+                          .where((item) =>
+                              (AdminPanelOrganization.cardAreas[item.id] ??
+                                  AdminPanelArea.avancado) == area)
+                          .toList(growable: false),
+                      access: access,
+                      migration: area == AdminPanelArea.avancado && showMigration
+                          ? migration
+                          : null,
+                      showCreative: area == AdminPanelArea.avancado &&
+                          CreativeModeLauncher.isAvailable,
+                    ),
+                  ],
                 ],
-                _buildSection(
-                  context: context,
-                  icon: Icons.public_rounded,
-                  title: 'Gerenciamento do Site',
-                  subtitle: 'Conteúdo público, logo e páginas do site.',
-                  children: siteCards,
-                  access: access,
-                ),
-                const SizedBox(height: 14),
-                _buildSection(
-                  context: context,
-                  icon: Icons.phone_android_rounded,
-                  title: 'Gerenciamento do App',
-                  subtitle: 'Usuários, eventos, academias e dados internos.',
-                  children: appCards,
-                  access: access,
-                ),
-                const SizedBox(height: 14),
-                if (_podeVerCard(migrationLauncher, access))
-                  _buildMigrationButton(context, migrationLauncher, access),
+                const SizedBox(height: 12),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAdminSearch(BuildContext context) {
+    final t = context.uai;
+    return TextField(
+      controller: _searchController,
+      textInputAction: TextInputAction.search,
+      onChanged: (value) => setState(() => _searchQuery = value),
+      style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w600),
+      decoration: InputDecoration(
+        hintText: 'Buscar módulo ou ferramenta...',
+        hintStyle: TextStyle(color: t.textSecondary),
+        prefixIcon: Icon(Icons.search_rounded, color: t.textSecondary),
+        suffixIcon: _searchQuery.isEmpty
+            ? null
+            : IconButton(
+                tooltip: 'Limpar busca',
+                onPressed: () {
+                  _searchController.clear();
+                  setState(() => _searchQuery = '');
+                },
+                icon: Icon(Icons.close_rounded, color: t.textSecondary),
+              ),
+        filled: true,
+        fillColor: t.card,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 16),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(t.cardRadius - 3),
+          borderSide: BorderSide(color: t.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(t.cardRadius - 3),
+          borderSide: BorderSide(color: t.border),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNoSearchResults(BuildContext context) {
+    final t = context.uai;
+    return Container(
+      padding: const EdgeInsets.all(26),
+      decoration: _sectionDecoration(context),
+      child: Column(
+        children: [
+          Icon(Icons.search_off_rounded, size: 35, color: t.textSecondary),
+          const SizedBox(height: 9),
+          Text(
+            'Nenhuma ferramenta encontrada',
+            style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Tente outro termo. A busca mostra somente módulos autorizados.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: t.textSecondary, fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFavoriteSection(
+    BuildContext context,
+    List<_AdminCardData> favorites,
+    _AdminPermissionState access,
+  ) {
+    final t = context.uai;
+    return Container(
+      padding: EdgeInsets.all(_isDesktopDashboard ? 17 : 14),
+      decoration: _sectionDecoration(context),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.star_rounded, color: _ensureVisible(t.warning, t.card), size: 22),
+              const SizedBox(width: 9),
+              Text(
+                'Favoritos',
+                style: TextStyle(
+                  color: t.textPrimary,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 15.5,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '${favorites.length}/${AdminPanelOrganization.maxFavorites}',
+                style: TextStyle(color: t.textSecondary, fontSize: 12),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _dashboardResponsiveWrap(
+            children: favorites
+                .map((item) => _buildAdminCard(
+                      context: context,
+                      item: item,
+                      access: access,
+                    ))
+                .toList(),
+            minItemWidth: 390,
+            maxColumns: _isDesktopDashboard ? 3 : 2,
           ),
         ],
       ),
@@ -1050,202 +1321,224 @@ class _AdminScreenState extends State<AdminScreen> {
   Widget _buildHeaderResumo(
     BuildContext context,
     _AdminPermissionState access,
+    int visibleCount,
   ) {
     final t = context.uai;
-    final onPrimary = _onGradient();
-
+    final accent = _ensureVisible(t.primary, t.card);
     return Container(
-      padding: EdgeInsets.all(_isDesktopDashboard ? 22 : 18),
-      decoration: BoxDecoration(
-        gradient: t.primaryGradient,
-        borderRadius: BorderRadius.circular(t.cardRadius + 6),
-        border: Border.all(color: onPrimary.withValues(alpha: 0.13)),
-        boxShadow: t.cardShadow,
-      ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final narrow = constraints.maxWidth < 560;
-
-          final icon = Container(
-            width: 64,
-            height: 64,
-            decoration: BoxDecoration(
-              color: onPrimary.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(t.cardRadius - 2),
-              border: Border.all(color: onPrimary.withValues(alpha: 0.16)),
-            ),
-            child: Icon(
-              Icons.admin_panel_settings_rounded,
-              color: onPrimary,
-              size: 34,
-            ),
-          );
-
-          final text = Column(
-            crossAxisAlignment: narrow
-                ? CrossAxisAlignment.center
-                : CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Admin Uai Capoeira',
-                textAlign: narrow ? TextAlign.center : TextAlign.left,
-                style: TextStyle(
-                  color: onPrimary,
-                  fontSize: narrow ? 23 : 28,
-                  fontWeight: FontWeight.w900,
-                  height: 1.05,
-                ),
-              ),
-              const SizedBox(height: 7),
-              Text(
-                'Site, app, eventos, usuários, academias e migrações em um só lugar.',
-                textAlign: narrow ? TextAlign.center : TextAlign.left,
-                style: TextStyle(
-                  color: onPrimary.withValues(alpha: 0.82),
-                  fontSize: 13,
-                  height: 1.32,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                alignment: narrow ? WrapAlignment.center : WrapAlignment.start,
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  _whiteChip(
-                    context: context,
-                    icon: Icons.security_rounded,
-                    label: access.adminMaster
-                        ? 'Acesso completo'
-                        : 'Acesso personalizado',
-                  ),
-                  _whiteChip(
-                    context: context,
-                    icon: Icons.tune_rounded,
-                    label: 'Configurações',
-                  ),
-                  _whiteChip(
-                    context: context,
-                    icon: Icons.sync_alt_rounded,
-                    label: 'Migrações',
-                  ),
-                ],
-              ),
-            ],
-          );
-
-          if (narrow) {
-            return Column(children: [icon, const SizedBox(height: 14), text]);
-          }
-
-          return Row(
-            children: [
-              icon,
-              const SizedBox(width: 16),
-              Expanded(child: text),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildSection({
-    required BuildContext context,
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required List<_AdminCardData> children,
-    required _AdminPermissionState access,
-  }) {
-    final visibleChildren = children
-        .where((item) => _podeVerCard(item, access))
-        .toList(growable: false);
-
-    if (visibleChildren.isEmpty) return const SizedBox.shrink();
-
-    return Container(
-      padding: EdgeInsets.all(_isDesktopDashboard ? 18 : 15),
+      padding: const EdgeInsets.symmetric(horizontal: 17, vertical: 14),
       decoration: _sectionDecoration(context),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          _buildSectionTitle(
-            context: context,
-            icon: icon,
-            title: title,
-            subtitle: subtitle,
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: _softFill(accent, t.cardAlt, 0.12),
+              borderRadius: BorderRadius.circular(t.buttonRadius),
+            ),
+            child: Icon(Icons.admin_panel_settings_rounded, color: accent),
           ),
-          const SizedBox(height: 14),
-          _dashboardResponsiveWrap(
-            children: visibleChildren.map((item) {
-              return _buildAdminCard(
-                context: context,
-                item: item,
-                access: access,
-              );
-            }).toList(),
-            minItemWidth: 390,
-            maxColumns: _isDesktopDashboard ? 3 : 2,
-            spacing: 12,
-            runSpacing: 12,
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Central de administração',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: t.textPrimary,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  access.adminMaster
+                      ? '$visibleCount ferramentas • Acesso de administrador'
+                      : '$visibleCount ferramentas liberadas para sua conta',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: t.textSecondary,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 11.5,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildSectionTitle({
+  String _areaTitle(AdminPanelArea area) => switch (area) {
+    AdminPanelArea.essencial => '01  Gestão essencial',
+    AdminPanelArea.operacoes => '02  Operações e acompanhamento',
+    AdminPanelArea.sistema => '03  Sistema e segurança',
+    AdminPanelArea.conteudo => '04  Site e personalização',
+    AdminPanelArea.experiencias => '05  Experiências e criatividade',
+    AdminPanelArea.avancado => '06  Ferramentas avançadas',
+  };
+
+  String _areaSubtitle(AdminPanelArea area) => switch (area) {
+    AdminPanelArea.essencial => 'Estrutura e administração diária',
+    AdminPanelArea.operacoes => 'Rotinas e acompanhamento de atividades',
+    AdminPanelArea.sistema => 'Versões, estabilidade e diagnóstico',
+    AdminPanelArea.conteudo => 'Identidade, conteúdo e apresentação',
+    AdminPanelArea.experiencias => 'Aprendizagem e experiências interativas',
+    AdminPanelArea.avancado => 'Migrações e utilitários de desenvolvimento',
+  };
+
+  IconData _areaIcon(AdminPanelArea area) => switch (area) {
+    AdminPanelArea.essencial => Icons.shield_outlined,
+    AdminPanelArea.operacoes => Icons.fact_check_outlined,
+    AdminPanelArea.sistema => Icons.security_rounded,
+    AdminPanelArea.conteudo => Icons.palette_outlined,
+    AdminPanelArea.experiencias => Icons.auto_awesome_outlined,
+    AdminPanelArea.avancado => Icons.build_outlined,
+  };
+
+  Widget _buildOrganizedSection({
     required BuildContext context,
-    required IconData icon,
-    required String title,
-    required String subtitle,
+    required AdminPanelArea area,
+    required List<_AdminCardData> children,
+    required _AdminPermissionState access,
+    _AdminCardData? migration,
+    bool showCreative = false,
   }) {
+    final searchActive = _searchQuery.trim().isNotEmpty;
+    final matchesArea = searchActive && AdminPanelOrganization.matches(
+      query: _searchQuery,
+      title: _areaTitle(area),
+      subtitle: _areaSubtitle(area),
+    );
+    final visibleChildren = children.where((item) =>
+        matchesArea || AdminPanelOrganization.matches(
+          query: _searchQuery,
+          title: item.title,
+          subtitle: item.subtitle,
+        )).toList(growable: false);
+    final matchesMigration = migration != null &&
+        (matchesArea || AdminPanelOrganization.matches(
+          query: _searchQuery,
+          title: migration.title,
+          subtitle: migration.subtitle,
+        ));
+    final matchesCreative = showCreative &&
+        (matchesArea || AdminPanelOrganization.matches(
+          query: _searchQuery,
+          title: 'Modo Criativo',
+          subtitle: 'Laboratório visual Windows Debug',
+        ));
+    if (visibleChildren.isEmpty && !matchesMigration && !matchesCreative) {
+      return const SizedBox.shrink();
+    }
+    final count = visibleChildren.length +
+        (matchesMigration ? 1 : 0) + (matchesCreative ? 1 : 0);
     final t = context.uai;
     final accent = _ensureVisible(t.primary, t.card);
+    final expanded = searchActive || _expandedAreas.contains(area);
 
-    return Row(
-      children: [
-        Container(
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(
-            color: _softFill(accent, t.cardAlt, 0.12),
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Container(
+      padding: EdgeInsets.all(_isDesktopDashboard ? 17 : 14),
+      decoration: _sectionDecoration(context),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Material(
+            color: Colors.transparent,
             borderRadius: BorderRadius.circular(t.buttonRadius),
-            border: Border.all(color: accent.withValues(alpha: 0.12)),
+            child: InkWell(
+              onTap: searchActive ? null : () => _toggleSection(area),
+              borderRadius: BorderRadius.circular(t.buttonRadius),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: _softFill(accent, t.cardAlt, 0.10),
+                        borderRadius: BorderRadius.circular(t.buttonRadius),
+                        border: Border.all(color: accent.withValues(alpha: 0.10)),
+                      ),
+                      child: Icon(_areaIcon(area), color: accent, size: 22),
+                    ),
+                    const SizedBox(width: 11),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _areaTitle(area),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: t.textPrimary,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 15,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            _areaSubtitle(area),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: t.textSecondary,
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 7),
+                    Text('$count', style: TextStyle(color: t.textSecondary, fontSize: 12)),
+                    const SizedBox(width: 6),
+                    Icon(
+                      expanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                      color: t.textSecondary,
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
-          child: Icon(icon, color: accent),
-        ),
-        const SizedBox(width: 11),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 15.5,
-                  fontWeight: FontWeight.w900,
-                  color: t.textPrimary,
-                ),
+          if (expanded) ...[
+            const SizedBox(height: 14),
+            if (visibleChildren.isNotEmpty)
+              _dashboardResponsiveWrap(
+                children: visibleChildren.map((item) => _buildAdminCard(
+                  context: context,
+                  item: item,
+                  access: access,
+                )).toList(),
+                minItemWidth: 390,
+                maxColumns: _isDesktopDashboard ? 3 : 2,
+                spacing: 12,
+                runSpacing: 12,
               ),
-              const SizedBox(height: 2),
-              Text(
-                subtitle,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: t.textSecondary,
-                  fontSize: 11.5,
-                  height: 1.25,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+            if (matchesMigration) ...[
+              if (visibleChildren.isNotEmpty) const SizedBox(height: 12),
+              _buildMigrationButton(context, migration, access),
             ],
-          ),
-        ),
-      ],
+            if (matchesCreative) ...[
+              if (visibleChildren.isNotEmpty || matchesMigration)
+                const SizedBox(height: 12),
+              _buildCreativeModeCard(context),
+            ],
+          ],
+        ],
+      ),
+      ),
     );
   }
 
@@ -1321,8 +1614,25 @@ class _AdminScreenState extends State<AdminScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(width: 8),
-                Icon(Icons.chevron_right_rounded, color: visibleColor),
+                const SizedBox(width: 5),
+                IconButton(
+                  icon: Icon(
+                    _favoriteIds.contains(item.id)
+                        ? Icons.star_rounded
+                        : Icons.star_border_rounded,
+                    size: 21,
+                    color: _favoriteIds.contains(item.id)
+                        ? _ensureVisible(t.warning, t.card)
+                        : t.textSecondary,
+                  ),
+                  tooltip: _favoriteIds.contains(item.id)
+                      ? 'Remover ${item.title} dos favoritos'
+                      : 'Fixar ${item.title} nos favoritos',
+                  onPressed: () => _toggleFavorite(item.id, access),
+                  visualDensity: VisualDensity.compact,
+                  constraints: const BoxConstraints(minHeight: 38, minWidth: 38),
+                ),
+                Icon(Icons.chevron_right_rounded, color: visibleColor, size: 20),
               ],
             ),
           ),
@@ -1392,38 +1702,6 @@ class _AdminScreenState extends State<AdminScreen> {
     );
   }
 
-  Widget _whiteChip({
-    required BuildContext context,
-    required IconData icon,
-    required String label,
-  }) {
-    final onPrimary = _onGradient();
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: onPrimary.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(99),
-        border: Border.all(color: onPrimary.withValues(alpha: 0.16)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: onPrimary, size: 14),
-          const SizedBox(width: 5),
-          Text(
-            label,
-            style: TextStyle(
-              color: onPrimary,
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   BoxDecoration _sectionDecoration(BuildContext context) {
     final t = context.uai;
 
@@ -1437,6 +1715,7 @@ class _AdminScreenState extends State<AdminScreen> {
 }
 
 class _AdminCardData {
+  final String id;
   final IconData icon;
   final String title;
   final String subtitle;
@@ -1445,9 +1724,10 @@ class _AdminCardData {
   final List<String> permissions;
   final bool critical;
   final bool adminOnly;
-  final String? deniedMessage;
+  final String? deniedMessage = null;
 
   const _AdminCardData({
+    required this.id,
     required this.icon,
     required this.title,
     required this.subtitle,
@@ -1456,7 +1736,7 @@ class _AdminCardData {
     this.permissions = const [],
     this.critical = false,
     this.adminOnly = false,
-    this.deniedMessage,
+
   });
 }
 
@@ -1481,6 +1761,7 @@ class _MigrationItem {
 
   _AdminCardData asCardData() {
     return _AdminCardData(
+      id: 'migracao_${title.toLowerCase().replaceAll(' ', '_')}',
       icon: icon,
       title: title,
       subtitle: subtitle,

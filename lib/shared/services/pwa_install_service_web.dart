@@ -1,5 +1,19 @@
 import 'dart:async';
-import 'dart:html' as html;
+import 'dart:js_interop';
+import 'package:web/web.dart' as web;
+
+extension type _StandaloneNavigator(JSObject _) implements JSObject {
+  external JSBoolean? get standalone;
+}
+
+extension type _InstallPrompt(JSObject _) implements JSObject {
+  external JSPromise<JSAny?> prompt();
+  external JSPromise<_InstallChoice> get userChoice;
+}
+
+extension type _InstallChoice(JSObject _) implements JSObject {
+  external JSString? get outcome;
+}
 
 /// Serviço Web responsável pela instalação do PWA.
 ///
@@ -16,7 +30,7 @@ class PwaInstallService {
   final StreamController<bool> _installAvailableController =
       StreamController<bool>.broadcast();
 
-  html.Event? _fallbackDeferredPrompt;
+  web.Event? _fallbackDeferredPrompt;
   bool _bridgeInstallAvailable = false;
   bool _initialized = false;
   int _requestSequence = 0;
@@ -29,7 +43,7 @@ class PwaInstallService {
       !isInstalled;
 
   bool get isInstalled {
-    return html.window.matchMedia('(display-mode: standalone)').matches ||
+    return web.window.matchMedia('(display-mode: standalone)').matches ||
         _navigatorStandalone;
   }
 
@@ -37,16 +51,15 @@ class PwaInstallService {
     // iOS/Safari expõe navigator.standalone apenas em runtime.
     // O acesso dinâmico fica protegido para não afetar outros navegadores.
     try {
-      final navigator = html.window.navigator as dynamic;
-      return navigator.standalone == true;
+      return _StandaloneNavigator(web.window.navigator).standalone?.toDart == true;
     } catch (_) {
       return false;
     }
   }
 
-  bool _eventDetailIsTrue(html.Event event) {
-    if (event is! html.CustomEvent) return false;
-    final value = event.detail;
+  bool _eventDetailIsTrue(web.Event event) {
+    if (!event.isA<web.CustomEvent>()) return false;
+    final value = (event as web.CustomEvent).detail.dartify();
     return value == true || value?.toString() == '1' || value?.toString() == 'true';
   }
 
@@ -55,8 +68,8 @@ class PwaInstallService {
   }
 
   void _requestBridgeState() {
-    html.window.dispatchEvent(
-      html.CustomEvent('uai-pwa-install-state-request'),
+    web.window.dispatchEvent(
+      web.CustomEvent('uai-pwa-install-state-request'),
     );
   }
 
@@ -65,32 +78,32 @@ class PwaInstallService {
     _initialized = true;
 
     // Evento emitido sempre que o index.html captura/perde o prompt.
-    html.window.addEventListener('uai-pwa-install-available', (event) {
+    web.window.addEventListener('uai-pwa-install-available', ((web.Event event) {
       _bridgeInstallAvailable = _eventDetailIsTrue(event);
       _emitCurrentAvailability();
-    });
+    }).toJS);
 
     // Resposta explícita para serviços lazy que nasceram depois do
     // beforeinstallprompt original.
-    html.window.addEventListener('uai-pwa-install-state', (event) {
+    web.window.addEventListener('uai-pwa-install-state', ((web.Event event) {
       _bridgeInstallAvailable = _eventDetailIsTrue(event);
       _emitCurrentAvailability();
-    });
+    }).toJS);
 
     // Fallback: se o bridge do index não existir por algum motivo, o próprio
     // serviço ainda tenta preservar beforeinstallprompt quando já estiver vivo.
-    html.window.addEventListener('beforeinstallprompt', (event) {
+    web.window.addEventListener('beforeinstallprompt', ((web.Event event) {
       event.preventDefault();
       _fallbackDeferredPrompt = event;
       _bridgeInstallAvailable = true;
       _emitCurrentAvailability();
-    });
+    }).toJS);
 
-    html.window.addEventListener('appinstalled', (_) {
+    web.window.addEventListener('appinstalled', ((web.Event _) {
       _fallbackDeferredPrompt = null;
       _bridgeInstallAvailable = false;
       _installAvailableController.add(false);
-    });
+    }).toJS);
 
     // Como esta biblioteca pode ser deferred/lazy, pergunta imediatamente ao
     // index.html se um prompt já foi capturado antes dela existir.
@@ -111,31 +124,31 @@ class PwaInstallService {
     if (_bridgeInstallAvailable) {
       final requestId = '${DateTime.now().microsecondsSinceEpoch}-${_requestSequence++}';
       final completer = Completer<bool>();
-      late html.EventListener listener;
+      late JSFunction listener;
 
-      listener = (html.Event event) {
-        if (event is! html.CustomEvent) return;
-        final detail = event.detail?.toString() ?? '';
+      listener = ((web.Event event) {
+        if (!event.isA<web.CustomEvent>()) return;
+        final detail = (event as web.CustomEvent).detail.dartify()?.toString() ?? '';
         final separator = detail.lastIndexOf('|');
         if (separator <= 0) return;
 
         final id = detail.substring(0, separator);
         if (id != requestId) return;
 
-        html.window.removeEventListener('uai-pwa-install-result', listener);
+        web.window.removeEventListener('uai-pwa-install-result', listener);
         final accepted = detail.substring(separator + 1) == '1';
         _bridgeInstallAvailable = false;
         _fallbackDeferredPrompt = null;
         _emitCurrentAvailability();
 
         if (!completer.isCompleted) completer.complete(accepted);
-      };
+      }).toJS;
 
-      html.window.addEventListener('uai-pwa-install-result', listener);
-      html.window.dispatchEvent(
-        html.CustomEvent(
+      web.window.addEventListener('uai-pwa-install-result', listener);
+      web.window.dispatchEvent(
+        web.CustomEvent(
           'uai-pwa-install-request',
-          detail: requestId,
+          web.CustomEventInit(detail: requestId.toJS),
         ),
       );
 
@@ -143,13 +156,13 @@ class PwaInstallService {
         return await completer.future.timeout(
           const Duration(seconds: 15),
           onTimeout: () {
-            html.window.removeEventListener('uai-pwa-install-result', listener);
+            web.window.removeEventListener('uai-pwa-install-result', listener);
             _requestBridgeState();
             return false;
           },
         );
       } catch (_) {
-        html.window.removeEventListener('uai-pwa-install-result', listener);
+        web.window.removeEventListener('uai-pwa-install-result', listener);
         _requestBridgeState();
         return false;
       }
@@ -164,14 +177,15 @@ class PwaInstallService {
     }
 
     try {
-      await (prompt as dynamic).prompt();
-      final choiceRaw = await (prompt as dynamic).userChoice;
+      final installPrompt = _InstallPrompt(prompt);
+      await installPrompt.prompt().toDart;
+      final choiceRaw = await installPrompt.userChoice.toDart;
 
       _fallbackDeferredPrompt = null;
       _bridgeInstallAvailable = false;
       _installAvailableController.add(false);
 
-      final outcome = (choiceRaw as dynamic).outcome?.toString();
+      final outcome = choiceRaw.outcome?.toDart;
       return outcome == 'accepted';
     } catch (_) {
       _fallbackDeferredPrompt = null;

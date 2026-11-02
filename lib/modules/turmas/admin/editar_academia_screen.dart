@@ -46,8 +46,6 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
   String? _responsavelSelecionadoId;
   String _responsavelNome = '';
   List<String> _professoresSelecionadosIds = [];
-  List<String> _professoresSelecionadosNomes = [];
-
   List<String> _professoresAnterioresIds = [];
   String? _responsavelAnteriorId;
 
@@ -244,8 +242,6 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
       _observacoesController.text = data['observacoes']?.toString() ?? '';
 
       final professoresIds = data['professores_ids'] as List<dynamic>? ?? [];
-      final professoresNomes =
-          data['professores_nomes'] as List<dynamic>? ?? [];
       final responsavelId = data['responsavel_id']?.toString();
 
       if (!mounted) return;
@@ -271,9 +267,6 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
         _professoresAnterioresIds = List<String>.from(
           _professoresSelecionadosIds,
         );
-        _professoresSelecionadosNomes = professoresNomes
-            .map((nome) => nome.toString())
-            .toList();
       });
 
       if (_responsavelSelecionadoId != null &&
@@ -382,88 +375,6 @@ class _EditarAcademiaScreenState extends State<EditarAcademiaScreen> {
     setState(() {
       _professoresSelecionadosIds = List<String>.from(selecionados);
     });
-  }
-
-  Widget _dialogEmptyProfessores() {
-    final t = context.uai;
-
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.person_off_rounded, size: 58, color: t.textMuted),
-            const SizedBox(height: 14),
-            Text(
-              'Nenhum professor disponível',
-              style: TextStyle(
-                fontSize: 16,
-                color: t.textPrimary,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Não há professores com peso_permissao ≥ 50 e conta ativa.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 12,
-                color: t.textSecondary,
-                height: 1.3,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _professorAvatar({
-    required Map<String, dynamic> professor,
-    required bool selected,
-    required Color accent,
-  }) {
-    final t = context.uai;
-    final fotoUrl = professor['foto_url']?.toString();
-
-    return Container(
-      width: 50,
-      height: 50,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(
-          color: selected ? accent : t.border,
-          width: selected ? 2 : 1,
-        ),
-      ),
-      child: ClipOval(
-        child: fotoUrl != null && fotoUrl.isNotEmpty
-            ? Image.network(
-                fotoUrl,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return _avatarFallback(selected: selected, accent: accent);
-                },
-              )
-            : _avatarFallback(selected: selected, accent: accent),
-      ),
-    );
-  }
-
-  Widget _avatarFallback({required bool selected, required Color accent}) {
-    final t = context.uai;
-
-    return Container(
-      color: selected
-          ? Color.alphaBlend(accent.withAlpha(36), t.cardAlt)
-          : t.cardAlt,
-      child: Icon(
-        Icons.person_rounded,
-        color: selected ? accent : t.textMuted,
-        size: 28,
-      ),
-    );
   }
 
   Widget _miniBadge({

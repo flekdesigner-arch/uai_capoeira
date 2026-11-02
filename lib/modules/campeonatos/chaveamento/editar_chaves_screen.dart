@@ -156,7 +156,7 @@ class _EditarChavesScreenState extends State<EditarChavesScreen> {
                   child: ReorderableListView.builder(
                     padding: const EdgeInsets.all(16),
                     itemCount: _chaves.length,
-                    onReorder: (oldIndex, newIndex) {
+                    onReorderItem: (oldIndex, newIndex) {
                       _trocarCompetidores(oldIndex, newIndex);
                     },
                     itemBuilder: (context, index) {

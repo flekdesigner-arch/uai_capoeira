@@ -1,4 +1,6 @@
+import '../models/evento_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 class ParticipacaoService {
@@ -115,7 +117,34 @@ class ParticipacaoService {
       final modelagemFinal = _normalizarModelagem(modelagemCamisa);
       final tipoFinal = _normalizarTipoCamisa(tipoCamisa);
 
+      final eventoDoc = await _firestore
+          .collection('eventos')
+          .doc(eventoId)
+          .get();
+      if (!eventoDoc.exists) throw StateError('Evento não encontrado.');
+      final contrato = EventoModel.fromFirestore(eventoDoc);
+      if (!contrato.temCobrancaInscricao) valorInscricao = 0;
+      final selecionouCamisa = (tamanhoCamisa?.trim().isNotEmpty ?? false);
+      if (!contrato.temCamisa ||
+          (!contrato.camisaObrigatoria && !selecionouCamisa)) {
+        valorCamisa = 0;
+      }
+      if (contrato.temCamisa &&
+          contrato.camisaObrigatoria &&
+          !selecionouCamisa) {
+        throw StateError('Selecione o tamanho da camisa obrigatória.');
+      }
+      if (![valorInscricao, valorCamisa].every(
+        (v) =>
+            v.isFinite &&
+            v >= 0 &&
+            ((v * 100).round() / 100 - v).abs() < .000001,
+      )) {
+        throw StateError('Valores da participação inválidos.');
+      }
+      final auditoriaUid = FirebaseAuth.instance.currentUser?.uid;
       final participacao = <String, dynamic>{
+        'auditoria_ator_uid_declarado': ?auditoriaUid,
         'aluno_id': alunoId,
         'aluno_nome': alunoNome,
         'aluno_foto': alunoFoto,
@@ -130,6 +159,13 @@ class ParticipacaoService {
         'tipo_camisa': tipoFinal,
         'presente': presente,
         'status': status,
+        'contrato_financeiro': {
+          'valor_inscricao': valorInscricao,
+          'valor_camisa': valorCamisa,
+          'permite_parcelamento': contrato.permiteParcelamento,
+          'max_parcelas': contrato.maxParcelas,
+          'desconto_a_vista_percentual': contrato.descontoAVista,
+        },
         'valor_inscricao': valorInscricao,
         'valor_camisa': valorCamisa,
         'camisa_entregue': camisaEntregue,
@@ -172,6 +208,7 @@ class ParticipacaoService {
           .collection('participacoes')
           .doc(docRef.id)
           .set({
+            'auditoria_ator_uid_declarado': ?auditoriaUid,
             'participacao_id': docRef.id,
             'aluno_id': alunoId,
             'aluno_nome': alunoNome,
@@ -277,7 +314,9 @@ class ParticipacaoService {
     required String eventoId,
   }) async {
     final batch = _firestore.batch();
-    batch.delete(_firestore.collection(_finalizadasCollection).doc(participacaoId));
+    batch.delete(
+      _firestore.collection(_finalizadasCollection).doc(participacaoId),
+    );
     batch.delete(
       _firestore
           .collection('eventos')
@@ -286,7 +325,9 @@ class ParticipacaoService {
           .doc(participacaoId),
     );
     await batch.commit();
-    debugPrint('✅ Participação finalizada $participacaoId removida do evento $eventoId');
+    debugPrint(
+      '✅ Participação finalizada $participacaoId removida do evento $eventoId',
+    );
   }
 
   /// Lista todos os participantes FINALIZADOS de um evento
@@ -432,88 +473,52 @@ class ParticipacaoService {
     // pelo evento: Manga, Manga Longa ou Regata.
     double? valorCamisa,
   }) async {
-    try {
-      final Map<String, dynamic> updates = {
-        'atualizado_em': FieldValue.serverTimestamp(),
-      };
-
-      if (tamanho != null) {
-        updates['tamanho_camisa'] = tamanho;
-      }
-
-      if (entregue != null) {
-        updates['camisa_entregue'] = entregue;
-      }
-
-      if (modelagemCamisa != null) {
-        updates['modelagem_camisa'] = _normalizarModelagem(modelagemCamisa);
-      }
-
-      if (tipoCamisa != null) {
-        updates['tipo_camisa'] = _normalizarTipoCamisa(tipoCamisa);
-      }
-
-      if (valorCamisa != null) {
-        updates['valor_camisa'] = valorCamisa;
-      }
-
-      await _firestore
-          .collection(_emAndamentoCollection)
-          .doc(participacaoId)
-          .update(updates);
-
-      // 🔥 Mantém a referência da subcoleção do evento sincronizada quando possível.
-      // Não é crítico para certificado/graduação, mas ajuda relatórios e buscas leves.
-      try {
-        final doc = await _firestore
-            .collection(_emAndamentoCollection)
-            .doc(participacaoId)
-            .get();
-
-        final data = doc.data();
-        final eventoId = data?['evento_id']?.toString();
-
-        if (eventoId != null && eventoId.trim().isNotEmpty) {
-          final refUpdates = <String, dynamic>{
-            'atualizado_em': FieldValue.serverTimestamp(),
-          };
-
-          if (updates.containsKey('tamanho_camisa')) {
-            refUpdates['tamanho_camisa'] = updates['tamanho_camisa'];
-          }
-          if (updates.containsKey('modelagem_camisa')) {
-            refUpdates['modelagem_camisa'] = updates['modelagem_camisa'];
-          }
-          if (updates.containsKey('tipo_camisa')) {
-            refUpdates['tipo_camisa'] = updates['tipo_camisa'];
-          }
-          if (updates.containsKey('valor_camisa')) {
-            refUpdates['valor_camisa'] = updates['valor_camisa'];
-
-            final valorInscricao = _asDouble(data?['valor_inscricao']);
-            final valorCamisaAtualizado = _asDouble(
-              data?['valor_camisa'] ?? updates['valor_camisa'],
-            );
-
-            refUpdates['valor_total'] = valorInscricao + valorCamisaAtualizado;
-          }
-
-          await _firestore
-              .collection('eventos')
-              .doc(eventoId)
-              .collection('participacoes')
-              .doc(participacaoId)
-              .set(refUpdates, SetOptions(merge: true));
-        }
-      } catch (e) {
-        debugPrint(
-          '⚠️ Camisa atualizada, mas erro ao sincronizar referência do evento: $e',
-        );
-      }
-    } catch (e) {
-      debugPrint('Erro ao atualizar camisa: $e');
-      rethrow;
+    final ref = _firestore
+        .collection(_emAndamentoCollection)
+        .doc(participacaoId);
+    final doc = await ref.get();
+    if (!doc.exists) throw StateError('Participação não encontrada.');
+    final data = doc.data()!;
+    final previousValue = _asDouble(data['valor_camisa']);
+    if (valorCamisa != null && (!valorCamisa.isFinite || valorCamisa < 0)) {
+      throw StateError('Valor da camisa inválido.');
     }
+    if (valorCamisa != null &&
+        (valorCamisa - previousValue).abs() > .001 &&
+        _asDouble(data['total_pago']) > 0) {
+      throw StateError(
+        'Participação com pagamento confirmado exige revisão financeira antes de alterar o valor contratado da camisa.',
+      );
+    }
+    final updates = <String, dynamic>{
+      'atualizado_em': FieldValue.serverTimestamp(),
+      'auditoria_ator_uid_declarado': FirebaseAuth.instance.currentUser?.uid,
+      'tamanho_camisa': ?tamanho,
+      'camisa_entregue': ?entregue,
+      if (modelagemCamisa != null)
+        'modelagem_camisa': _normalizarModelagem(modelagemCamisa),
+      if (tipoCamisa != null) 'tipo_camisa': _normalizarTipoCamisa(tipoCamisa),
+      'valor_camisa': ?valorCamisa,
+    };
+    final batch = _firestore.batch();
+    batch.update(ref, updates);
+    final eventoId = data['evento_id']?.toString() ?? '';
+    if (eventoId.isNotEmpty) {
+      batch.set(
+        _firestore
+            .collection('eventos')
+            .doc(eventoId)
+            .collection('participacoes')
+            .doc(participacaoId),
+        {
+          ...updates,
+          if (valorCamisa != null)
+            'valor_total': _asDouble(data['valor_inscricao']) + valorCamisa,
+        },
+        SetOptions(merge: true),
+      );
+    }
+    await batch.commit();
   }
 
   /// Atualiza graduação nova
@@ -588,8 +593,11 @@ class ParticipacaoService {
         // 1. Link enviado pela tela, se existir.
         // 2. Link já salvo no documento em andamento.
         // 3. Não salva campo vazio.
-        final pdfImportado = data['certificado_origem'] == 'pdf_importado' ||
-            '${data['certificado_storage_path'] ?? ''}'.contains('/importados/');
+        final pdfImportado =
+            data['certificado_origem'] == 'pdf_importado' ||
+            '${data['certificado_storage_path'] ?? ''}'.contains(
+              '/importados/',
+            );
         final linkFinal = pdfImportado && linkAtualFirestore.isNotEmpty
             ? linkAtualFirestore
             : linkRecebidoTela.isNotEmpty

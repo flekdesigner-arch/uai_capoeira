@@ -14,7 +14,7 @@ Future<Map<String, dynamic>> callNotifyNewAppVersion(
 ) async {
   final callable = FirebaseFunctions.instanceFor(
     region: 'us-central1',
-  ).httpsCallable('notifyNewAppVersion');
+  ).httpsCallable('notifyNewAppVersionV183');
   final result = await callable.call<Map<String, dynamic>>(data);
   return Map<String, dynamic>.from(result.data);
 }

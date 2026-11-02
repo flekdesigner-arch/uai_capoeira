@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:uai_capoeira/modules/campeonatos/services/campeonato_service.dart';
 import 'detalhe_inscricao_screen.dart';
 
 class ListaInscricoesScreen extends StatefulWidget {
@@ -22,7 +21,6 @@ class ListaInscricoesScreen extends StatefulWidget {
 class _ListaInscricoesScreenState extends State<ListaInscricoesScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  final CampeonatoService _campeonatoService = CampeonatoService();
   final DateFormat _dateFormat = DateFormat('dd/MM/yyyy HH:mm');
 
   String _filtroCategoria = 'Todas';

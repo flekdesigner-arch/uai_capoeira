@@ -1,0 +1,7 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="UAI CAPOEIRA DEV" type="FlutterRunConfigurationType" factoryName="Flutter">
+    <option name="additionalArgs" value="--dart-define=UAI_DEV_PROJECT_ROOT=C:\Dev\projects\uai_capoeira" />
+    <option name="filePath" value="$PROJECT_DIR$/lib/main_dev.dart" />
+    <method v="2" />
+  </configuration>
+</component>

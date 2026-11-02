@@ -27,58 +27,12 @@ class _GastosEventoScreenState extends State<GastosEventoScreen> {
         : const Color(0xFFFFFFFF);
   }
 
-  Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance())
-        .abs();
-    if (diff >= 0.26) return color;
 
-    final bgIsDark = background.computeLuminance() < 0.45;
-    final hsl = HSLColor.fromColor(color);
-
-    return hsl
-        .withLightness(bgIsDark ? 0.72 : 0.32)
-        .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
-        .toColor();
-  }
-
-  Color _onCard() => _readableOn(context.uai.card);
-  Color _onCardMuted() => _onCard().withAlpha(173);
   Color _appBarBg() =>
       Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
   Color _appBarFg() =>
       Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(_appBarBg());
 
-  InputDecoration _uaiInputDecoration({
-    required String label,
-    IconData? icon,
-    String? hint,
-    String? prefixText,
-  }) {
-    final accent = _ensureVisible(context.uai.primary, context.uai.card);
-
-    return InputDecoration(
-      labelText: label,
-      hintText: hint,
-      prefixText: prefixText,
-      labelStyle: TextStyle(color: context.uai.textSecondary),
-      hintStyle: TextStyle(color: context.uai.textMuted),
-      prefixIcon: icon == null ? null : Icon(icon, color: accent),
-      filled: true,
-      fillColor: context.uai.cardAlt,
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(context.uai.buttonRadius),
-        borderSide: BorderSide(color: context.uai.border),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(context.uai.buttonRadius),
-        borderSide: BorderSide(color: context.uai.border),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(context.uai.buttonRadius),
-        borderSide: BorderSide(color: accent, width: 1.4),
-      ),
-    );
-  }
 
   final TextEditingController _descricaoController = TextEditingController();
   final TextEditingController _valorController = TextEditingController();
@@ -417,78 +371,6 @@ class _GastosEventoScreenState extends State<GastosEventoScreen> {
     );
   }
 
-  Widget _buildPermissaoBanner() {
-    if (_carregandoPermissoes) {
-      return Container(
-        width: double.infinity,
-        margin: EdgeInsets.fromLTRB(14, 14, 14, 0),
-        padding: EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: context.uai.card,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: context.uai.cardAlt),
-        ),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: context.uai.primary,
-              ),
-            ),
-            SizedBox(width: 10),
-            Text(
-              'Conferindo permissão de gastos...',
-              style: TextStyle(
-                color: context.uai.textSecondary,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    final color = _podeGerenciarGastos
-        ? context.uai.success
-        : context.uai.warning;
-
-    return Container(
-      width: double.infinity,
-      margin: EdgeInsets.fromLTRB(14, 14, 14, 0),
-      padding: EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withAlpha(20),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: color.withAlpha(36)),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            _podeGerenciarGastos
-                ? Icons.check_circle_rounded
-                : Icons.lock_outline_rounded,
-            color: _ensureVisible(color, context.uai.card),
-          ),
-          SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              _podeGerenciarGastos
-                  ? 'Permissão liberada para adicionar e excluir gastos.'
-                  : 'Você pode visualizar os gastos, mas não pode adicionar ou excluir.',
-              style: TextStyle(
-                color: _ensureVisible(color, context.uai.card),
-                fontWeight: FontWeight.w800,
-                height: 1.25,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildFormularioGasto() {
     if (!_podeGerenciarGastos && !_carregandoPermissoes) {

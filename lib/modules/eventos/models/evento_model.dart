@@ -92,6 +92,7 @@ class EventoModel {
   final String? linkFotosVideos;
   final String? previaVideo;
   final String? linkPlaylist;
+  final bool linksHabilitados;
 
   // 🖼️ ENQUADRAMENTO DO BANNER NO PORTFÓLIO
   final double portfolioCoverPositionX;
@@ -106,6 +107,20 @@ class EventoModel {
 
   // 🌐 PORTFÓLIO WEB
   final bool mostrarNoPortfolioWeb;
+
+  // Funcionalidades opcionais; eventos legados mantêm histórico acessível.
+  final bool temControleGastos;
+  final bool temPatrocinadores;
+
+  /// Controle independente da visibilidade do relatório financeiro.
+  final bool auditoriaVisivelGestores;
+  final bool temRelatorioFinanceiro;
+
+  /// Define se pagamentos de inscrição participam dos fluxos financeiros.
+  final bool temCobrancaInscricao;
+
+  /// Null: evento legado, mantém permissões anteriores. Lista: gestão restrita.
+  final List<String>? gestoresAutorizadosUids;
 
   // 📊 METADADOS
   final Timestamp? criadoEm;
@@ -141,6 +156,7 @@ class EventoModel {
     this.linkFotosVideos,
     this.previaVideo,
     this.linkPlaylist,
+    this.linksHabilitados = true,
     this.portfolioCoverPositionX = 0,
     this.portfolioCoverPositionY = 0,
     this.portfolioCoverScale = 1,
@@ -149,6 +165,12 @@ class EventoModel {
     this.modeloCertificadoPath,
     this.configuracoesCertificado,
     required this.mostrarNoPortfolioWeb,
+    this.temControleGastos = false,
+    this.temPatrocinadores = false,
+    this.temRelatorioFinanceiro = true,
+    this.auditoriaVisivelGestores = false,
+    this.temCobrancaInscricao = true,
+    this.gestoresAutorizadosUids,
     this.criadoEm,
     this.atualizadoEm,
   });
@@ -265,14 +287,24 @@ class EventoModel {
       linkFotosVideos: data['linkFotosVideos'] ?? data['link_fotos_videos'],
       previaVideo: data['previaVideo'] ?? data['previa_video'],
       linkPlaylist: data['linkPlaylist'] ?? data['link_playlist'],
+      linksHabilitados: data['linksHabilitados'] != false,
       portfolioCoverPositionX: _asDouble(
-        (data['portfolioCover'] is Map ? (data['portfolioCover'] as Map)['positionX'] : null) ?? data['portfolioCoverPositionX'],
+        (data['portfolioCover'] is Map
+                ? (data['portfolioCover'] as Map)['positionX']
+                : null) ??
+            data['portfolioCoverPositionX'],
       ).clamp(-1.0, 1.0).toDouble(),
       portfolioCoverPositionY: _asDouble(
-        (data['portfolioCover'] is Map ? (data['portfolioCover'] as Map)['positionY'] : null) ?? data['portfolioCoverPositionY'],
+        (data['portfolioCover'] is Map
+                ? (data['portfolioCover'] as Map)['positionY']
+                : null) ??
+            data['portfolioCoverPositionY'],
       ).clamp(-1.0, 1.0).toDouble(),
       portfolioCoverScale: _asDouble(
-        (data['portfolioCover'] is Map ? (data['portfolioCover'] as Map)['scale'] : null) ?? data['portfolioCoverScale'],
+        (data['portfolioCover'] is Map
+                ? (data['portfolioCover'] as Map)['scale']
+                : null) ??
+            data['portfolioCoverScale'],
         fallback: 1,
       ).clamp(1.0, 2.5).toDouble(),
 
@@ -289,6 +321,16 @@ class EventoModel {
           ? Map<String, dynamic>.from(configCertificadoRaw)
           : null,
 
+      temControleGastos: data['temControleGastos'] ?? true,
+      temPatrocinadores: data['temPatrocinadores'] ?? true,
+      temRelatorioFinanceiro: data['temRelatorioFinanceiro'] ?? true,
+      auditoriaVisivelGestores: data['auditoriaVisivelGestores'] == true,
+      temCobrancaInscricao: data['temCobrancaInscricao'] ?? true,
+      gestoresAutorizadosUids: data['gestoresAutorizadosUids'] is List
+          ? (data['gestoresAutorizadosUids'] as List)
+                .map((v) => v.toString())
+                .toList()
+          : null,
       mostrarNoPortfolioWeb:
           data['mostrarNoPortfolioWeb'] ??
           data['mostrar_no_portfolio_web'] ??
@@ -343,6 +385,7 @@ class EventoModel {
       if (linkFotosVideos != null) 'linkFotosVideos': linkFotosVideos,
       if (previaVideo != null) 'previaVideo': previaVideo,
       if (linkPlaylist != null) 'linkPlaylist': linkPlaylist,
+      'linksHabilitados': linksHabilitados,
       'portfolioCover': {
         'positionX': portfolioCoverPositionX.clamp(-1.0, 1.0),
         'positionY': portfolioCoverPositionY.clamp(-1.0, 1.0),
@@ -358,6 +401,12 @@ class EventoModel {
           ? configuracoesCertificadoAtualizada
           : null,
 
+      'temControleGastos': temControleGastos,
+      'temPatrocinadores': temPatrocinadores,
+      'temRelatorioFinanceiro': temRelatorioFinanceiro,
+      'auditoriaVisivelGestores': auditoriaVisivelGestores,
+      'temCobrancaInscricao': temCobrancaInscricao,
+      'gestoresAutorizadosUids': gestoresAutorizadosUids,
       'mostrarNoPortfolioWeb': mostrarNoPortfolioWeb,
 
       'atualizado_em': FieldValue.serverTimestamp(),
@@ -400,6 +449,7 @@ class EventoModel {
     String? linkFotosVideos,
     String? previaVideo,
     String? linkPlaylist,
+    bool? linksHabilitados,
     double? portfolioCoverPositionX,
     double? portfolioCoverPositionY,
     double? portfolioCoverScale,
@@ -408,6 +458,12 @@ class EventoModel {
     String? modeloCertificadoPath,
     Map<String, dynamic>? configuracoesCertificado,
     bool? mostrarNoPortfolioWeb,
+    bool? temControleGastos,
+    bool? temPatrocinadores,
+    bool? temRelatorioFinanceiro,
+    bool? auditoriaVisivelGestores,
+    bool? temCobrancaInscricao,
+    List<String>? gestoresAutorizadosUids,
     Timestamp? criadoEm,
     Timestamp? atualizadoEm,
   }) {
@@ -451,8 +507,11 @@ class EventoModel {
       linkFotosVideos: linkFotosVideos ?? this.linkFotosVideos,
       previaVideo: previaVideo ?? this.previaVideo,
       linkPlaylist: linkPlaylist ?? this.linkPlaylist,
-      portfolioCoverPositionX: portfolioCoverPositionX ?? this.portfolioCoverPositionX,
-      portfolioCoverPositionY: portfolioCoverPositionY ?? this.portfolioCoverPositionY,
+      linksHabilitados: linksHabilitados ?? this.linksHabilitados,
+      portfolioCoverPositionX:
+          portfolioCoverPositionX ?? this.portfolioCoverPositionX,
+      portfolioCoverPositionY:
+          portfolioCoverPositionY ?? this.portfolioCoverPositionY,
       portfolioCoverScale: portfolioCoverScale ?? this.portfolioCoverScale,
       temCertificado: temCertificado ?? this.temCertificado,
       modeloCertificadoId: modeloCertificadoId ?? this.modeloCertificadoId,
@@ -460,6 +519,15 @@ class EventoModel {
           modeloCertificadoPath ?? this.modeloCertificadoPath,
       configuracoesCertificado:
           configuracoesCertificado ?? this.configuracoesCertificado,
+      temControleGastos: temControleGastos ?? this.temControleGastos,
+      temPatrocinadores: temPatrocinadores ?? this.temPatrocinadores,
+      temRelatorioFinanceiro:
+          temRelatorioFinanceiro ?? this.temRelatorioFinanceiro,
+      auditoriaVisivelGestores:
+          auditoriaVisivelGestores ?? this.auditoriaVisivelGestores,
+      temCobrancaInscricao: temCobrancaInscricao ?? this.temCobrancaInscricao,
+      gestoresAutorizadosUids:
+          gestoresAutorizadosUids ?? this.gestoresAutorizadosUids,
       mostrarNoPortfolioWeb:
           mostrarNoPortfolioWeb ?? this.mostrarNoPortfolioWeb,
       criadoEm: criadoEm ?? this.criadoEm,
@@ -719,19 +787,36 @@ class EventoModel {
   double get valorCamisaRegata => valorCamisaPorTipo(tipoRegata);
 
   double getValorTotal({bool comCamisa = true, String? tipoCamisa}) {
-    double total = valorInscricao;
-    if (comCamisa && temCamisa) {
+    double total = temCobrancaInscricao ? valorInscricao : 0;
+    if ((comCamisa || camisaObrigatoria) && temCamisa) {
       total += valorCamisaPorTipo(tipoCamisa ?? tipoManga);
     }
     return total;
   }
 
-  double getValorParcela({bool comCamisa = true, int numeroParcelas = 1}) {
-    final total = getValorTotal(comCamisa: comCamisa);
-    if (!permiteParcelamento || numeroParcelas == 1) {
-      return total * (1 - descontoAVista / 100);
+  double getValorParcela({
+    bool comCamisa = true,
+    int numeroParcelas = 1,
+    String? tipoCamisa,
+    int parcela = 1,
+  }) {
+    if (numeroParcelas < 1 ||
+        parcela < 1 ||
+        parcela > numeroParcelas ||
+        (numeroParcelas > 1 &&
+            (!permiteParcelamento || numeroParcelas > maxParcelas))) {
+      throw ArgumentError('Parcelamento fora das condições do evento.');
     }
-    return total / numeroParcelas;
+    var totalCentavos =
+        (getValorTotal(comCamisa: comCamisa, tipoCamisa: tipoCamisa) * 100)
+            .round();
+    if (numeroParcelas == 1) {
+      totalCentavos =
+          (totalCentavos * (100 - descontoAVista.clamp(0, 100)) / 100).round();
+    }
+    final base = totalCentavos ~/ numeroParcelas;
+    final resto = totalCentavos % numeroParcelas;
+    return (base + (parcela <= resto ? 1 : 0)) / 100;
   }
 
   List<String> get tamanhosDisponiveisFormatados {
@@ -826,7 +911,6 @@ class EventoModel {
 }
 
 @immutable
-
 @immutable
 class CertificadoVisualConfig {
   final String corFundo;
@@ -1467,9 +1551,7 @@ class AssinaturaCertificadoEvento {
     required this.apelido,
   });
 
-  const AssinaturaCertificadoEvento.vazia(this.slot)
-    : nome = '',
-      apelido = '';
+  const AssinaturaCertificadoEvento.vazia(this.slot) : nome = '', apelido = '';
 
   bool get slotValido => slot >= 1 && slot <= 5;
 

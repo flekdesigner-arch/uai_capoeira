@@ -405,6 +405,11 @@ class _HistoricoEdicoesAlunoScreenState
                   overflow: TextOverflow.ellipsis,
                 ),
               ],
+              if ((data['inicio']?.toString() ?? '').isNotEmpty) ...[
+                const SizedBox(height:3),
+                Text('Início: ${data['inicio']} · Retorno: ${data['data_retorno'] ?? 'Não se aplica'}',
+                  style:TextStyle(color:t.textSecondary,fontSize:12)),
+              ],
               if ((data['origem']?.toString() ?? '').isNotEmpty) ...[
                 const SizedBox(height: 3),
                 Text(
@@ -570,6 +575,11 @@ class _HistoricoEdicoesAlunoScreenState
     if (subtipo == 'reversao_mudanca_turma') {
       return _chip('Reversão de turma', t.warning);
     }
+    if (subtipo == 'expulsao_aluno') return _chip('EXPULSÃO', t.error);
+    if (subtipo == 'reativacao_expulso') return _chip('Reintegração pós-expulsão', t.warning);
+    if (subtipo == 'suspensao') return _chip('Suspensão', t.warning);
+    if (subtipo == 'advertencia') return _chip('Advertência', t.info);
+    if (subtipo == 'anulacao_disciplina') return _chip('Anulação disciplinar', t.warning);
     if (subtipo == 'desativacao_aluno') {
       return _chip('Desativação', t.error);
     }

@@ -7,7 +7,7 @@ class PagamentoDialog extends StatefulWidget {
   final double valorTotal;
   final double valorPago;
   final double valorRestante;
-  final Function(double, String) onConfirm;
+  final Future<void> Function(double, String) onConfirm;
 
   const PagamentoDialog({
     super.key,
@@ -30,6 +30,7 @@ class _PagamentoDialogState extends State<PagamentoDialog> {
     symbol: 'R\$',
   );
   bool _isLoading = false;
+  String? _erroOperacao;
 
   final List<Map<String, dynamic>> _formasPagamento = [
     {'valor': 'dinheiro', 'label': 'Dinheiro', 'icone': Icons.money},
@@ -81,13 +82,15 @@ class _PagamentoDialogState extends State<PagamentoDialog> {
     final cardAlt = context.uai.cardAlt;
     final surface = context.uai.surface;
 
-    return AlertDialog(
+    return PopScope(
+      canPop: !_isLoading,
+      child: AlertDialog(
       backgroundColor: surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(context.uai.cardRadius),
       ),
       title: Text(
-        'Registrar Pagamento',
+        _isLoading ? 'Registrando pagamento...' : 'Registrar pagamento',
         style: TextStyle(fontWeight: FontWeight.bold, color: textPrimary),
       ),
       content: SingleChildScrollView(
@@ -234,6 +237,10 @@ class _PagamentoDialogState extends State<PagamentoDialog> {
               ),
             ),
 
+            if (_erroOperacao != null) ...[
+              const SizedBox(height: 10),
+              Text(_erroOperacao!, style: TextStyle(color: error, fontSize: 12)),
+            ],
             if (widget.valorRestante <= 0)
               Container(
                 padding: const EdgeInsets.all(12),
@@ -284,51 +291,38 @@ class _PagamentoDialogState extends State<PagamentoDialog> {
                   ),
                 )
               : Text(
-                  'Registrar',
+                  'Confirmar pagamento',
                   style: TextStyle(color: _readableOn(success)),
                 ),
         ),
       ],
+      ),
     );
   }
 
-  void _confirmarPagamento() {
-    double valor =
-        double.tryParse(_valorController.text.replaceAll(',', '.')) ?? 0;
-
-    if (valor <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Valor deve ser maior que zero',
-            style: TextStyle(color: _readableOn(context.uai.error)),
-          ),
-          backgroundColor: context.uai.error,
-        ),
-      );
+  Future<void> _confirmarPagamento() async {
+    if (_isLoading) return;
+    final valor = double.tryParse(_valorController.text.replaceAll(',', '.')) ?? 0;
+    if (valor <= 0 || valor > widget.valorRestante + 0.000001) {
+      setState(() => _erroOperacao = valor <= 0
+          ? 'Informe um valor maior que zero.'
+          : 'O pagamento não pode ultrapassar ${_realFormat.format(widget.valorRestante)}.');
       return;
     }
-
-    if (valor > widget.valorRestante) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Valor não pode ser maior que ${_realFormat.format(widget.valorRestante)}',
-            style: TextStyle(color: _readableOn(context.uai.error)),
-          ),
-          backgroundColor: context.uai.error,
-        ),
-      );
-      return;
+    setState(() { _isLoading = true; _erroOperacao = null; });
+    try {
+      // A callable é idempotente: esperar o backend evita a confirmação falsa
+      // e protege contra toque duplo em Windows, Android e PWA.
+      await widget.onConfirm(valor, _formaPagamento!);
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _erroOperacao = 'Pagamento não confirmado. ${e.toString().replaceFirst('Exception: ', '')}';
+      });
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
-
-    setState(() => _isLoading = true);
-
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (mounted) {
-        Navigator.pop(context);
-        widget.onConfirm(valor, _formaPagamento!);
-      }
-    });
   }
 }

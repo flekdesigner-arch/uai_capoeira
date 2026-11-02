@@ -482,12 +482,6 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
     return colors[index % colors.length];
   }
 
-  int _totalLinhas() {
-    return _secoesRegimento.fold<int>(0, (total, secao) {
-      final conteudo = secao['conteudo']?.toString() ?? '';
-      return total + _linhasConteudo(conteudo).length;
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -693,88 +687,7 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
     );
   }
 
-  Widget _buildResumoCards(bool isMobile) {
-    final t = context.uai;
 
-    final cards = [
-      _ResumoRegimento(
-        icon: Icons.article_rounded,
-        label: 'Seções',
-        value: _secoesRegimento.length.toString(),
-        color: t.info,
-      ),
-      _ResumoRegimento(
-        icon: Icons.checklist_rounded,
-        label: 'Orientações',
-        value: _totalLinhas().toString(),
-        color: t.success,
-      ),
-      _ResumoRegimento(
-        icon: Icons.groups_rounded,
-        label: 'Grupo',
-        value: 'UAI',
-        color: t.warning,
-      ),
-    ];
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        const spacing = 10.0;
-        final itemWidth = (constraints.maxWidth - spacing * 2) / 3;
-
-        return Wrap(
-          spacing: spacing,
-          runSpacing: spacing,
-          children: cards.map((card) {
-            return SizedBox(
-              width: itemWidth,
-              child: _buildResumoCard(card, compact: isMobile),
-            );
-          }).toList(),
-        );
-      },
-    );
-  }
-
-  Widget _buildResumoCard(_ResumoRegimento card, {required bool compact}) {
-    final t = context.uai;
-    final accent = _ensureVisible(card.color, t.card);
-
-    return Container(
-      constraints: BoxConstraints(minHeight: compact ? 94 : 104),
-      padding: EdgeInsets.all(compact ? 10 : 13),
-      decoration: _cardDecoration(borderColor: accent.withAlpha(33)),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(card.icon, color: accent, size: compact ? 23 : 26),
-          const SizedBox(height: 6),
-          Text(
-            card.value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: accent,
-              fontSize: compact ? 18 : 22,
-              fontWeight: FontWeight.w900,
-              height: 1,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            card.label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: t.textSecondary,
-              fontSize: compact ? 10.5 : 11.5,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildSectionIntro(bool isMobile) {
     final t = context.uai;
@@ -999,7 +912,6 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
     required String linha,
     required Color cor,
     required bool isMobile,
-    bool featured = false,
   }) {
     final t = context.uai;
 
@@ -1120,18 +1032,4 @@ class _RegimentoScreenState extends State<RegimentoScreen> {
       boxShadow: t.softShadow,
     );
   }
-}
-
-class _ResumoRegimento {
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color color;
-
-  const _ResumoRegimento({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.color,
-  });
 }

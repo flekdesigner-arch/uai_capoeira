@@ -174,7 +174,6 @@ class _ConfigurarInscricoesScreenState
     return _readableOn(_safeHeroBase());
   }
 
-  Color _onPrimary() => _readableOn(context.uai.primary);
 
   Color _appBarBg() =>
       Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
@@ -220,50 +219,6 @@ class _ConfigurarInscricoesScreenState
     );
   }
 
-  Widget _responsiveWrap({
-    required List<Widget> children,
-    double minItemWidth = 360,
-    int maxColumns = 4,
-    double spacing = 12,
-    double runSpacing = 12,
-    bool centerLastRow = true,
-  }) {
-    if (children.isEmpty) return const SizedBox.shrink();
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final width = constraints.maxWidth;
-
-        if (width < 720) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: List.generate(children.length, (index) {
-              final isLast = index == children.length - 1;
-              return Padding(
-                padding: EdgeInsets.only(bottom: isLast ? 0 : runSpacing),
-                child: SizedBox(width: double.infinity, child: children[index]),
-              );
-            }),
-          );
-        }
-
-        final columns = (width / minItemWidth)
-            .floor()
-            .clamp(1, maxColumns)
-            .toInt();
-        final itemWidth = (width - spacing * (columns - 1)) / columns;
-
-        return Wrap(
-          alignment: centerLastRow ? WrapAlignment.center : WrapAlignment.start,
-          spacing: spacing,
-          runSpacing: runSpacing,
-          children: children
-              .map((child) => SizedBox(width: itemWidth, child: child))
-              .toList(),
-        );
-      },
-    );
-  }
 
   Future<void> _carregarConfiguracao() async {
     try {

@@ -22,7 +22,7 @@ Future<Map<String, dynamic>> callNotifyNewAppVersion(
   if (!_isDesktop) {
     final callable = FirebaseFunctions.instanceFor(
       region: 'us-central1',
-    ).httpsCallable('notifyNewAppVersion');
+    ).httpsCallable('notifyNewAppVersionV183');
     final result = await callable.call<Map<String, dynamic>>(data);
     return Map<String, dynamic>.from(result.data);
   }
@@ -57,7 +57,7 @@ Future<Map<String, dynamic>> _callViaHttp(Map<String, dynamic> data) async {
 
   final uri = Uri.https(
     'us-central1-$projectId.cloudfunctions.net',
-    '/notifyNewAppVersion',
+    '/notifyNewAppVersionV183',
   );
 
   try {

@@ -1,3 +1,4 @@
+import 'package:uai_capoeira/core/access_simulation/simulation_user_selector.dart';
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -98,55 +99,6 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> with 
     }
   }
 
-  Future<void> _marcarComoAreaAluno(
-    BuildContext dialogContext,
-    QueryDocumentSnapshot usuario,
-  ) async {
-    final data = usuario.data() as Map<String, dynamic>;
-    final nome = _textoUsuario(data, ['nome_completo', 'nome', 'name'], 'Usuário');
-    final confirmar = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Marcar como Área do Aluno'),
-        content: Text(
-          'A conta de $nome deixará de aparecer como solicitação administrativa. '
-          'O vínculo do aluno não será excluído nem alterado.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton.icon(
-            onPressed: () => Navigator.pop(context, true),
-            icon: const Icon(Icons.school_rounded),
-            label: const Text('É Área do Aluno'),
-          ),
-        ],
-      ),
-    );
-    if (confirmar != true) return;
-
-    try {
-      await _identidadeService.marcarComoAreaAluno(usuario.id);
-      if (!mounted) return;
-      if (Navigator.of(dialogContext).canPop()) Navigator.of(dialogContext).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('$nome foi separado da gestão e mantido na Área do Aluno.'),
-          backgroundColor: context.uai.success,
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Erro ao classificar a conta: $e'),
-          backgroundColor: context.uai.error,
-        ),
-      );
-    }
-  }
 
   Color _readableOn(Color background) {
     return background.computeLuminance() > 0.48
@@ -227,22 +179,6 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> with 
     return null;
   }
 
-  String _formatarDataCriacao(Map<String, dynamic> data) {
-    final date = _dataCriacaoFromData(data);
-    if (date == null) return 'Data de criacao nao informada';
-    final local = date.toLocal();
-    final now = DateTime.now();
-    final hora =
-        '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
-    if (local.year == now.year &&
-        local.month == now.month &&
-        local.day == now.day) {
-      return 'Criado hoje as $hora';
-    }
-    final dia = local.day.toString().padLeft(2, '0');
-    final mes = local.month.toString().padLeft(2, '0');
-    return 'Criado em $dia/$mes/${local.year} as $hora';
-  }
 
   String _textoUsuario(
     Map<String, dynamic> data,
@@ -278,69 +214,6 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> with 
   }
 
   // Função para confirmar rejeição
-  void _showRejectConfirmation(
-    BuildContext context,
-    String userId,
-    String nome,
-  ) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text('Rejeitar Usuário'),
-          content: Text(
-            "Deseja realmente rejeitar o usuário \"$nome\"?\n\nA solicitação será encerrada sem apagar a identidade, vínculos ou histórico.",
-          ),
-          actions: <Widget>[
-            TextButton(
-              child: Text('Cancelar'),
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-            TextButton(
-              style: TextButton.styleFrom(foregroundColor: context.uai.error),
-              child: Text('Rejeitar'),
-              onPressed: () async {
-                // Fecha o diálogo de confirmação
-                Navigator.of(context).pop();
-
-                try {
-                  await UsuarioStatusService.alterarStatus(
-                    userId: userId,
-                    novoStatus: 'rejeitada',
-                    atorNome: 'Administrador',
-                  );
-
-                  // Mostrar mensagem de sucesso
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Usuário "$nome" rejeitado com sucesso!'),
-                        backgroundColor: context.uai.error,
-                      ),
-                    );
-                  }
-
-                  // Fecha o diálogo de pendentes se ainda estiver aberto
-                  if (mounted) {
-                    Navigator.of(context).pop();
-                  }
-                } catch (e) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Erro ao rejeitar usuário: $e'),
-                        backgroundColor: context.uai.error,
-                      ),
-                    );
-                  }
-                }
-              },
-            ),
-          ],
-        );
-      },
-    );
-  }
 
   void _showInactiveUsersDialog(BuildContext context) {
     final inactiveUsers = _usuariosList.where((doc) {
@@ -752,9 +625,19 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> with 
 
               final aprovados = usuarios.where((doc) {
                 final data = doc.data() as Map<String, dynamic>;
+                final pesoRaw = data['peso_permissao'];
+                final peso = pesoRaw is num
+                    ? pesoRaw.toInt()
+                    : int.tryParse('$pesoRaw') ?? 0;
+                // Contas de gestão legadas podem estar ativas sem aprovado_em.
+                // Nunca incluir solicitações ainda pendentes nem Área do Aluno.
                 return UsuarioStatusService.normalizar(data['status_conta']) ==
                         'ativa' &&
-                    data['aprovado_em'] != null;
+                    data['solicitacao_acesso_gestao'] != true &&
+                    data['acesso_gestao'] != false &&
+                    (data['aprovado_em'] != null ||
+                        data['acesso_gestao'] == true ||
+                        (peso > 0 && !UsuarioIdentidadeService.ehSomenteAreaAluno(data)));
               }).toList();
 
               final bloqueados = usuarios.where((doc) {
@@ -765,7 +648,7 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> with 
               }).length;
 
               final textoBusca = _buscaController.text.trim().toLowerCase();
-              final filtrados = usuarios.where((doc) {
+              final filtrados = aprovados.where((doc) {
                 final data = doc.data() as Map<String, dynamic>;
                 if (!_usuarioPassaFiltro(data, _filtroUsuarios)) return false;
                 if (textoBusca.isEmpty) return true;
@@ -807,7 +690,7 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> with 
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
                                 _buildPremiumHero(
-                                  total: usuarios.length,
+                                  total: aprovados.length,
                                   ativos: aprovados.length,
                                   pendentes: pendentes.length,
                                   bloqueados: bloqueados,
@@ -815,15 +698,13 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> with 
                                 ),
                                 const SizedBox(height: 10),
                                 _buildQuickActionChips(
-                                  pendentes: pendentes.length,
                                   inativos: bloqueados,
-                                  canApprove: access.adminMaster,
                                 ),
                                 const SizedBox(height: 10),
                                 _buildSearchAndFilters(
                                   compact: isCompact,
                                   totalFiltrado: filtrados.length,
-                                  usuarios: usuarios,
+                                  usuarios: aprovados,
                                 ),
                                 const SizedBox(height: 14),
                                 _buildSectionHeaderPremium(
@@ -863,7 +744,6 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> with 
     );
   }
 
-
   bool _usuarioPassaFiltro(Map<String, dynamic> data, String filtro) {
     final status = (data['status_conta'] ?? '').toString().toLowerCase();
     final tipo = (data['tipo'] ?? '').toString().toLowerCase();
@@ -871,8 +751,6 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> with 
     switch (filtro) {
       case 'ativos':
         return status == 'ativa' && aprovado;
-      case 'pendentes':
-        return status == 'pendente' && !aprovado && data['solicitacao_acesso_gestao'] == true;
       case 'administradores':
         return tipo == 'admin' || tipo == 'administrador';
       case 'professores':
@@ -890,8 +768,6 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> with 
     switch (filtro) {
       case 'ativos':
         return 'Usuários ativos';
-      case 'pendentes':
-        return 'Solicitações pendentes';
       case 'administradores':
         return 'Administradores';
       case 'professores':
@@ -901,14 +777,12 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> with 
       case 'inativos':
         return 'Inativos e bloqueados';
       default:
-        return 'Todos os usuários';
+        return 'Usuários aprovados';
     }
   }
 
   Widget _buildQuickActionChips({
-    required int pendentes,
     required int inativos,
-    required bool canApprove,
   }) {
     Widget chip({
       required IconData icon,
@@ -930,13 +804,6 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> with 
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
-          chip(
-            icon: Icons.pending_actions_rounded,
-            label: pendentes == 0 ? 'Sem pendências' : '$pendentes pendente${pendentes == 1 ? '' : 's'}',
-            color: pendentes == 0 ? context.uai.success : context.uai.warning,
-            onTap: () => _showPendingUsersDialog(context, const [], canApprove),
-          ),
-          const SizedBox(width: 7),
           chip(
             icon: Icons.hub_rounded,
             label: 'Central de identidades',
@@ -1034,339 +901,9 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> with 
     );
   }
 
-  Widget _buildSlimDashboardSummary({
-    required int total,
-    required int ativos,
-    required int pendentes,
-    required int bloqueados,
-    required bool compact,
-  }) {
-    final primary = context.uai.primary;
 
-    Widget metric({
-      required IconData icon,
-      required int value,
-      required String label,
-      required Color color,
-    }) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-        decoration: BoxDecoration(
-          color: color.withAlpha(20),
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 15, color: color),
-            const SizedBox(width: 6),
-            Text(
-              '$value',
-              style: TextStyle(
-                color: context.uai.textPrimary,
-                fontSize: 13,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(width: 4),
-            Text(
-              label,
-              style: TextStyle(
-                color: context.uai.textSecondary,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 2),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: primary.withAlpha(26),
-                  borderRadius: BorderRadius.circular(11),
-                ),
-                child: Icon(
-                  Icons.manage_accounts_rounded,
-                  color: primary,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Gestão de acessos',
-                      style: TextStyle(
-                        color: context.uai.textPrimary,
-                        fontSize: compact ? 17 : 18,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    Text(
-                      '$total usuário${total == 1 ? '' : 's'} administrativo${total == 1 ? '' : 's'}',
-                      style: TextStyle(
-                        color: context.uai.textSecondary,
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 7,
-            runSpacing: 7,
-            children: [
-              metric(
-                icon: Icons.check_circle_rounded,
-                value: ativos,
-                label: 'ativos',
-                color: context.uai.success,
-              ),
-              metric(
-                icon: Icons.pending_actions_rounded,
-                value: pendentes,
-                label: 'pendentes',
-                color: context.uai.warning,
-              ),
-              metric(
-                icon: Icons.block_rounded,
-                value: bloqueados,
-                label: 'inativos',
-                color: context.uai.error,
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildSlimStat({
-    required IconData icon,
-    required int value,
-    required String label,
-    required Color color,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
-      decoration: BoxDecoration(
-        color: color.withAlpha(18),
-        borderRadius: BorderRadius.circular(13),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, color: color, size: 16),
-              const SizedBox(width: 5),
-              Text(
-                '$value',
-                style: TextStyle(
-                  color: context.uai.textPrimary,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w900,
-                  height: 1,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 3),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: context.uai.textSecondary,
-              fontSize: 9.5,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCompactDashboardHeader({
-    required int total,
-    required int ativos,
-    required int pendentes,
-    required int bloqueados,
-    required bool compact,
-  }) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final stats = <Widget>[
-      _buildCompactStat(
-        icon: Icons.people_alt_rounded,
-        value: total,
-        label: 'Gestão',
-        color: context.uai.primary,
-      ),
-      _buildCompactStat(
-        icon: Icons.verified_user_rounded,
-        value: ativos,
-        label: 'Ativos',
-        color: context.uai.success,
-      ),
-      _buildCompactStat(
-        icon: Icons.pending_actions_rounded,
-        value: pendentes,
-        label: 'Pendentes',
-        color: context.uai.warning,
-      ),
-      _buildCompactStat(
-        icon: Icons.block_rounded,
-        value: bloqueados,
-        label: 'Inativos',
-        color: context.uai.error,
-      ),
-    ];
-
-    return Container(
-      padding: EdgeInsets.all(compact ? 14 : 16),
-      decoration: BoxDecoration(
-        color: context.uai.card,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: colorScheme.outlineVariant.withAlpha(179)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: context.uai.primary.withAlpha(31),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(
-                  Icons.admin_panel_settings_rounded,
-                  color: context.uai.primary,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Usuários da gestão',
-                      style: TextStyle(
-                        color: context.uai.textPrimary,
-                        fontSize: compact ? 19 : 22,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Acessos administrativos, funções e permissões.',
-                      style: TextStyle(
-                        color: context.uai.textSecondary,
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (!compact)
-                FilledButton.icon(
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const EditarUsuarioScreen(),
-                    ),
-                  ),
-                  icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
-                  label: const Text('Novo usuário'),
-                ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          if (compact)
-            Wrap(spacing: 8, runSpacing: 8, children: stats)
-          else
-            Row(
-              children: stats
-                  .map((e) => Expanded(child: Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: e,
-                      )))
-                  .toList(),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCompactStat({
-    required IconData icon,
-    required int value,
-    required String label,
-    required Color color,
-  }) {
-    return Container(
-      constraints: const BoxConstraints(minWidth: 112),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: color.withAlpha(20),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withAlpha(41)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: color, size: 19),
-          const SizedBox(width: 8),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                '$value',
-                style: TextStyle(
-                  color: context.uai.textPrimary,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w900,
-                  height: 1,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                label,
-                style: TextStyle(
-                  color: context.uai.textSecondary,
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildSearchAndFilters({
     required bool compact,
@@ -1379,7 +916,6 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> with 
       'administradores': 'Admins',
       'professores': 'Professores',
       'monitores': 'Monitores',
-      'pendentes': 'Pendentes',
       'inativos': 'Inativos',
     };
 
@@ -1395,7 +931,7 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> with 
             });
           },
           decoration: InputDecoration(
-            hintText: 'Buscar por nome, e-mail ou função...',
+            hintText: 'Buscar usuários aprovados por nome, e-mail ou função...',
             prefixIcon: const Icon(Icons.search_rounded),
             suffixIcon: _buscaController.text.isEmpty
                 ? null
@@ -1479,94 +1015,7 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> with 
     );
   }
 
-  Widget _buildCompactQuickActions({
-    required List<QueryDocumentSnapshot> pendentes,
-    required bool compact,
-    required bool canApprove,
-  }) {
-    final actions = <Widget>[
-      _buildCompactActionButton(
-        icon: Icons.pending_actions_rounded,
-        label: pendentes.isEmpty
-            ? 'Sem pendências'
-            : '${pendentes.length} pendente${pendentes.length == 1 ? '' : 's'}',
-        color: context.uai.warning,
-        onTap: () => _showPendingUsersDialog(context, pendentes, canApprove),
-      ),
-      _buildCompactActionButton(
-        icon: Icons.hub_rounded,
-        label: 'Central de identidades',
-        color: context.uai.info,
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const CentralIdentidadesScreen()),
-        ),
-      ),
-      _buildCompactActionButton(
-        icon: Icons.tune_rounded,
-        label: 'Predefinições',
-        color: context.uai.primary,
-        onTap: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => const PredefinicoesPermissoesScreen(),
-          ),
-        ),
-      ),
-      _buildCompactActionButton(
-        icon: Icons.manage_search_rounded,
-        label: _identificandoAreaAluno ? 'Identificando...' : 'Revisar identidades',
-        color: context.uai.success,
-        onTap: _identificandoAreaAluno ? null : () => _identificarContasAreaAluno(),
-      ),
-    ];
-    if (compact) {
-      return SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: actions
-              .map((e) => Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: e,
-                  ))
-              .toList(),
-        ),
-      );
-    }
-    return Row(
-      children: actions
-          .map((e) => Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: e,
-                ),
-              ))
-          .toList(),
-    );
-  }
 
-  Widget _buildCompactActionButton({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required VoidCallback? onTap,
-  }) {
-    return OutlinedButton.icon(
-      onPressed: onTap,
-      icon: Icon(icon, size: 18, color: color),
-      label: Text(
-        label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontWeight: FontWeight.w800),
-      ),
-      style: OutlinedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
-        side: BorderSide(color: color.withAlpha(64)),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      ),
-    );
-  }
 
   Widget _buildPendingActionButton(bool canApprove) {
     return Stack(
@@ -1784,145 +1233,7 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> with 
     );
   }
 
-  Widget _buildQuickActionsRow({
-    required List<QueryDocumentSnapshot> pendentes,
-    required bool compact,
-    required bool canApprove,
-  }) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final wide = constraints.maxWidth >= 760;
-        final actions = [
-          _buildActionCard(
-            icon: Icons.pending_actions_rounded,
-            title: 'Pendentes',
-            subtitle: pendentes.isEmpty
-                ? 'Nenhum aguardando'
-                : '${pendentes.length} aguardando aprovação',
-            color: context.uai.warning,
-            onTap: () =>
-                _showPendingUsersDialog(context, pendentes, canApprove),
-          ),
-          _buildActionCard(
-            icon: Icons.people_outline_rounded,
-            title: 'Inativos',
-            subtitle: 'Bloqueados e inativos',
-            color: context.uai.error,
-            onTap: () => _showInactiveUsersDialog(context),
-          ),
-          _buildActionCard(
-            icon: Icons.person_add_alt_1_rounded,
-            title: 'Novo usuário',
-            subtitle: 'Cadastrar usuário',
-            color: context.uai.success,
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const EditarUsuarioScreen(),
-              ),
-            ),
-          ),
-        ];
 
-        if (!wide) {
-          return Column(
-            children: actions
-                .map(
-                  (w) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: w,
-                  ),
-                )
-                .toList(),
-          );
-        }
-
-        return Row(
-          children: [
-            Expanded(child: actions[0]),
-            SizedBox(width: 10),
-            Expanded(child: actions[1]),
-            SizedBox(width: 10),
-            Expanded(child: actions[2]),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildActionCard({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return Material(
-      color: context.uai.card,
-      borderRadius: BorderRadius.circular(20),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(13),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: color.withAlpha(46)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withAlpha(6),
-                blurRadius: 6,
-                offset: Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: color.withAlpha(26),
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                child: Icon(icon, color: color, size: 22),
-              ),
-              SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: context.uai.textPrimary,
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: context.uai.textSecondary,
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(Icons.chevron_right_rounded, color: color),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
   Widget _buildUserGrid({
     required List<QueryDocumentSnapshot> usuarios,
@@ -2177,6 +1488,12 @@ class _GerenciarUsuariosScreenState extends State<GerenciarUsuariosScreen> with 
                       ],
                     ),
                   ),
+                  if (isAdmin)
+                    IconButton(
+                      tooltip: 'ENTRAR COMO ESTE USUÁRIO',
+                      icon: const Icon(Icons.visibility_outlined),
+                      onPressed: () => SimulationUserSelector.launch(context, userId),
+                    ),
                   if (podeEditarRapido)
                     PopupMenuButton<String>(
                       tooltip: 'Ações',

@@ -1,7 +1,7 @@
 name: uai_capoeira
 description: "Sistema de gestão para academia de capoeira UAI CAPOEIRA"
 publish_to: 'none'
-version: 2.0.162+162
+version: 2.0.190+190
 
 # =============================================
 # 🔧 VERSÕES DO SDK
@@ -116,6 +116,7 @@ dependencies:
   # 🔔 NOTIFICAÇÕES
   # =============================================
   flutter_local_notifications: ^17.2.0
+  android_intent_plus: 5.3.1
 
   # =============================================
   # 📊 GRÁFICOS
@@ -261,6 +262,19 @@ flutter:
     - family: PhotographSignature
       fonts:
         - asset: assets/fontes/Photograph Signature.ttf
+    # UAI Birthday Studio — fontes gratuitas OFL 1.1, uso exclusivo nas artes.
+    - family: BirthdayInterDisplay
+      fonts:
+        - asset: assets/fontes/birthday_premium/InterDisplay-ExtraBold.otf
+          weight: 800
+    - family: BirthdayLato
+      fonts:
+        - asset: assets/fontes/birthday_premium/Lato-Black.ttf
+          weight: 900
+    - family: BirthdayNotoSerif
+      fonts:
+        - asset: assets/fontes/birthday_premium/NotoSerif-Bold.ttf
+          weight: 700
 
 # =============================================
 # 🎨 CONFIGURAÇÃO DE ÍCONES DO APP

@@ -179,10 +179,7 @@ class _CamisasEventoScreenState extends State<CamisasEventoScreen> {
   }
 
   Color _onPrimary() => _readableOn(context.uai.primary);
-  Color _onSuccess() => _readableOn(context.uai.success);
-  Color _onWarning() => _readableOn(context.uai.warning);
   Color _onError() => _readableOn(context.uai.error);
-  Color _onInfo() => _readableOn(context.uai.info);
 
   Color _appBarBg() =>
       Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;

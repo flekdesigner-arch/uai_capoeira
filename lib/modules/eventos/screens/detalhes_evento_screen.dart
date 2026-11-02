@@ -709,6 +709,7 @@ ${_evento.temCamisa ? '👕 Camisa: R\$ ${_evento.valorCamisa?.toStringAsFixed(2
   }
 
   Widget _buildLinksSection() {
+    if (!_evento.linksHabilitados) return const SizedBox.shrink();
     final hasLinks =
         (_evento.linkBanner?.isNotEmpty ?? false) ||
         (_evento.linkFotosVideos?.isNotEmpty ?? false) ||
@@ -1465,58 +1466,7 @@ ${_evento.temCamisa ? '👕 Camisa: R\$ ${_evento.valorCamisa?.toStringAsFixed(2
     );
   }
 
-  Widget _buildParticipanteChip(IconData icon, String label, Color color) {
-    final visible = _ensureVisible(color, context.uai.cardAlt);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-      decoration: BoxDecoration(
-        color: visible.withAlpha(26),
-        borderRadius: BorderRadius.circular(99),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: visible, size: 13),
-          const SizedBox(width: 5),
-          Text(
-            label,
-            style: TextStyle(
-              color: visible,
-              fontSize: 11,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildParticipanteDetail(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              style: TextStyle(color: context.uai.textSecondary),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Flexible(
-            child: Text(
-              value,
-              textAlign: TextAlign.right,
-              style: TextStyle(
-                color: context.uai.textPrimary,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   String _formatarDataParticipante(dynamic data) {
     if (data is Timestamp) {

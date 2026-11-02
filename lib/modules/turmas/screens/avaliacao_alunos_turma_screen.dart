@@ -13,7 +13,6 @@ Color _readableOn(Color background) {
 
 Color _onCard(BuildContext context) => _readableOn(context.uai.card);
 Color _onCardMuted(BuildContext context) => _onCard(context).withAlpha(173);
-Color _onPrimary(BuildContext context) => _readableOn(context.uai.primary);
 
 String _mensagemErroAmigavelAvaliacao(Object erro, {String contexto = 'ação'}) {
   if (erro is FirebaseException) {
@@ -59,8 +58,6 @@ class _AvaliacaoAlunosTurmaScreenState
   Color _onCard([BuildContext? c]) => _readableOn((c ?? context).uai.card);
   Color _onCardMuted([BuildContext? c]) =>
       _onCard(c ?? context).withAlpha(173);
-  Color _onPrimary([BuildContext? c]) =>
-      _readableOn((c ?? context).uai.primary);
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -311,13 +308,6 @@ class _AvaliacaoAlunosTurmaScreenState
     return 0;
   }
 
-  DateTime _toDate(dynamic value) {
-    if (value is Timestamp) return value.toDate();
-    if (value is DateTime) return value;
-    if (value is String) return DateTime.tryParse(value) ?? DateTime.now();
-    return DateTime.now();
-  }
-
   String _mesNome(int mes) {
     const nomes = [
       '',
@@ -374,12 +364,6 @@ class _AvaliacaoAlunosTurmaScreenState
     if (nota >= 7) return context.uai.info;
     if (nota >= 6) return context.uai.warning;
     return context.uai.primaryDark;
-  }
-
-  double _calcularMedia(Map<String, double> notas) {
-    if (notas.isEmpty) return 0;
-    final soma = notas.values.fold<double>(0, (s, n) => s + n);
-    return soma / notas.length;
   }
 
   void _mostrarSnack(String mensagem, Color cor) {

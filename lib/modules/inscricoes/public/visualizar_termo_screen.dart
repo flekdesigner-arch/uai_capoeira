@@ -14,11 +14,6 @@ class VisualizarTermoScreen extends StatelessWidget {
   });
 
   // Helpers de contraste
-  static Color _readableOn(Color background) {
-    return background.computeLuminance() > 0.48
-        ? const Color(0xFF111827)
-        : const Color(0xFFFFFFFF);
-  }
 
   static Color _ensureVisible(Color color, Color background) {
     final diff = (color.computeLuminance() - background.computeLuminance())

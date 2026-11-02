@@ -3051,7 +3051,6 @@ class _FotoAlunoEvento extends StatefulWidget {
 
 class _FotoAlunoEventoState extends State<_FotoAlunoEvento> {
   Future<String?>? _resolvedFuture;
-  String _lastRaw = '';
 
   @override
   void initState() {
@@ -3069,7 +3068,6 @@ class _FotoAlunoEventoState extends State<_FotoAlunoEvento> {
 
   void _prepare() {
     final raw = widget.fotoUrl.trim();
-    _lastRaw = raw;
 
     if (raw.isEmpty ||
         raw.startsWith('http://') ||

@@ -292,6 +292,7 @@ class AppUpdateAdminService {
 
     final metadata = SettableMetadata(
       contentType: 'application/vnd.android.package-archive',
+      contentDisposition: 'attachment; filename="$nomeArquivo"',
       customMetadata: {
         'versao': versaoLimpa,
         'nomeArquivo': nomeArquivo,
@@ -418,6 +419,7 @@ class AppUpdateAdminService {
       bytes,
       SettableMetadata(
         contentType: 'application/vnd.android.package-archive',
+        contentDisposition: 'attachment; filename="$nomeArquivo"',
         customMetadata: {
           'versao': versaoLimpa,
           'architecture': abi,

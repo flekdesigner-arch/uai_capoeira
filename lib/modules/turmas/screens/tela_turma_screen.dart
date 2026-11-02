@@ -49,9 +49,6 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
 
   Map<String, dynamic> _dadosTurma = {};
   Map<String, dynamic> _permissoes = {};
-
-  Color _corTurmaFallback = const Color(0xFFB71C1C);
-
   bool _carregandoAlertasIndicadores = false;
   List<_AlunoAlertaTurma> _alertasIndicadoresTurma = [];
 
@@ -260,10 +257,6 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
 
         setState(() {
           _dadosTurma = data;
-          _corTurmaFallback = _getColorFromHex(
-            data['cor_turma']?.toString() ?? '#B71C1C',
-            fallback: context.uai.primary,
-          );
         });
       }
     } catch (e) {
@@ -1340,7 +1333,9 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
                                   ? 'Última presença hoje'
                                   : 'Última presença há ${aluno.dias} dia${aluno.dias == 1 ? '' : 's'}';
 
-                              return ListTile(
+                              return Material(
+                                color: Colors.transparent,
+                                child: ListTile(
                                 dense: true,
                                 onTap: () {
                                   Navigator.pop(dialogContext);
@@ -1369,6 +1364,7 @@ class _TelaTurmaScreenState extends State<TelaTurmaScreen> {
                                 trailing: Icon(
                                   Icons.contact_phone_rounded,
                                   color: cor,
+                                ),
                                 ),
                               );
                             }),

@@ -1,6 +1,16 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
+    <!-- Entrada publica por link para o APK Android. Fora do menu e do sitemap. -->
+    <script>
+      if (window.location.pathname === '/r/versao-android-0dbf0312593a734f90fc393a00269348') {
+        document.title = 'UAI Capoeira | APK Android Oficial';
+        const robots = document.createElement('meta');
+        robots.name = 'robots';
+        robots.content = 'noindex,nofollow,noarchive';
+        document.head.appendChild(robots);
+      }
+    </script>
 
     <!-- =========================================================
          PATCH PWA INSTALL — CAPTURA GLOBAL DO PROMPT

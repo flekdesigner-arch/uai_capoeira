@@ -27,6 +27,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import 'package:uai_capoeira/core/permissions/permissao_service.dart';
+import 'package:uai_capoeira/core/services/official_apk_website_service.dart';
+import 'package:uai_capoeira/shared/widgets/update_compact_panel.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/sistema/atualizacoes/models/app_version_model.dart';
 import 'package:uai_capoeira/modules/sistema/atualizacoes/services/app_update_admin_service.dart';
@@ -88,6 +90,9 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
   bool _salvando = false;
   bool _enviandoApk = false;
   bool _notificando = false;
+  // Padrão seguro: admins recebem aviso após publicar; anúncio geral só por escolha explícita.
+  String _audienciaNotificacaoRelease = 'admins';
+  bool _acionarDownloadWifiRelease = true;
   bool _verificandoAcesso = true;
   bool _acessoPermitido = false;
   double _uploadProgress = 0;
@@ -680,7 +685,7 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
           content: Text(
             restrita
                 ? 'A Central vai gerar somente os APKs Android ARM32/ARM64/x86_64 da versão $versao, validar SHA-256, executar o Health Check e publicar no canal BETA apenas para a audiência selecionada.\n\nA produção atual, o PWA e o Windows NÃO serão substituídos.'
-                : 'A Central vai sincronizar versão/build, publicar o PWA, gerar Android ARM32/ARM64/x86_64, organizar os APKs no Storage, gerar e instalar o Windows release e atualizar o atalho da Área de Trabalho.\n\nA notificação para os usuários NÃO será enviada automaticamente. Você testa primeiro e só depois notifica pelo botão da tela.',
+                : 'A Central vai sincronizar versão/build, publicar o PWA, gerar Android ARM32/ARM64/x86_64, organizar os APKs no Storage e instalar o Windows.\n\nAviso após publicar: ${_audienciaNotificacaoRelease == 'admins' ? 'somente administradores' : _audienciaNotificacaoRelease == 'todos' ? 'TODOS OS USUÁRIOS' : 'nenhum'}.\nSinal do Wi-Fi: ${_acionarDownloadWifiRelease ? 'ativado' : 'desativado'}.\nO Android não instala silenciosamente.',
             style: TextStyle(
               color: t.textSecondary,
               height: 1.35,
@@ -1052,6 +1057,7 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
       }
 
       _addAutomationLog('🩺 Executando Health Check da release antes da publicação...');
+      _addAutomationLog('🔐 Se o servidor falhar, o manifesto ficará pendente; os artefatos enviados serão preservados.');
       final healthResult = await _v3Service.healthCheck(versao);
       final health = healthResult['health'] is Map
           ? Map<String, dynamic>.from(healthResult['health'] as Map)
@@ -1097,8 +1103,11 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
             )
             .updateStep(
               stepId: 'notify_users',
-              status: LocalPublishStepStatus.skipped,
-              log: 'Notificação manual para permitir teste antes do aviso geral.',
+              status: canal == 'producao' &&
+                      (_audienciaNotificacaoRelease != 'nenhum' || _acionarDownloadWifiRelease)
+                  ? LocalPublishStepStatus.running
+                  : LocalPublishStepStatus.skipped,
+              log: canal == 'producao' ? 'Processando notificação/sinal configurados...' : 'BETA sem aviso público.',
             )
             .copyWith(
               running: false,
@@ -1118,8 +1127,56 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
         _addAutomationLog('🖥️ Windows instalado em: ${windowsResult.windowsInstallDir}');
         _addAutomationLog('🔗 Atalho da Área de Trabalho atualizado.');
       }
-      _addAutomationLog('🔕 Usuários NÃO foram notificados automaticamente.');
-      _snack(canal == 'producao' ? 'Release $versao+$build concluída: PWA + Android + Windows.' : 'BETA $versao+$build concluída e restrita aos testadores selecionados.', color: t.success);
+      if (canal == 'producao' &&
+          (_audienciaNotificacaoRelease != 'nenhum' || _acionarDownloadWifiRelease)) {
+        try {
+          setState(() => _notificando = true);
+          final notificationResult = await callNotifyNewAppVersion({
+            'versao': published.versao,
+            'audiencia': _audienciaNotificacaoRelease,
+            'acionarDownloadWifi': _acionarDownloadWifiRelease,
+            'titulo': 'Nova versão $versao disponível',
+            'mensagem': _resumoController.text.trim().isNotEmpty
+                ? _resumoController.text.trim()
+                : 'O UAI Capoeira recebeu uma nova atualização.',
+          });
+          if (notificationResult['success'] != true) {
+            throw StateError('Aviso não enviado: ${notificationResult['message'] ?? notificationResult['code'] ?? 'sem detalhes'}');
+          }
+          _addAutomationLog(
+            '🔔 Aviso ($_audienciaNotificacaoRelease): '
+            '${notificationResult['successCount'] ?? 0} envio(s), '
+            'sinal Wi-Fi: ${notificationResult['wifiTriggerSuccessCount'] == 1 ? 'aceito pelo Firebase' : 'não enviado'}.',
+          );
+          if (mounted) {
+            setState(() {
+              _automationState = _automationState?.updateStep(
+                stepId: 'notify_users',
+                status: LocalPublishStepStatus.success,
+                log: 'Notificações processadas; Wi-Fi depende de consentimento e agendamento Android.',
+              );
+            });
+          }
+        } catch (e) {
+          // A publicação não pode ser desfeita porque uma notificação falhou.
+          _addAutomationLog('⚠️ Release publicada, mas aviso/sinal falhou: $e');
+          if (mounted) {
+            setState(() {
+              _automationState = _automationState?.updateStep(
+                stepId: 'notify_users',
+                status: LocalPublishStepStatus.error,
+                log: 'Falha de envio: $e. Use o envio manual depois de conferir a release.',
+              );
+            });
+          }
+        } finally {
+          if (mounted) setState(() => _notificando = false);
+        }
+      } else {
+        _addAutomationLog('🔕 Aviso e sinal automáticos não enviados nesta release.');
+      }
+      if (!mounted) return;
+      _snack(canal == 'producao' ? 'Release $versao+$build publicada: confira o resultado do aviso no log.' : 'BETA $versao+$build concluída e restrita aos testadores selecionados.', color: t.success);
       _tabController.animateTo(0);
     } catch (e) {
       if (!mounted) return;
@@ -1173,6 +1230,8 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
       final data = await callNotifyNewAppVersion({
         'versao': versaoLimpa,
         'obrigatoria': obrigatoria,
+        'audiencia': 'todos', // envio geral somente após confirmação acima
+        'acionarDownloadWifi': false, // já sinalizado na publicação
         'titulo': titulo.trim().isNotEmpty
             ? titulo.trim()
             : '🚀 Nova versão $versaoLimpa disponível!',
@@ -1453,141 +1512,11 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
     );
   }
 
-  Widget _buildAutomationFullscreen(BuildContext context) {
-    final t = context.uai;
-    final state = _automationState;
-    final progress = state?.progress ?? 0;
-    LocalPublishStep? current;
-    for (final step in state?.steps ?? const <LocalPublishStep>[]) {
-      if (step.status == LocalPublishStepStatus.running) { current = step; break; }
-    }
-    final completed = state?.steps.where((e) => e.status == LocalPublishStepStatus.success).length ?? 0;
-    final total = state?.steps.length ?? 0;
-
-    return PopScope(
-      canPop: false,
-      child: Scaffold(
-        backgroundColor: t.background,
-        body: AnimatedBuilder(
-          animation: _releaseFxController,
-          builder: (context, child) {
-            final pulse = .5 + (_releaseFxController.value * .5);
-            return Stack(
-              children: [
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: CustomPaint(
-                      painter: _ReleaseGridPainter(
-                        color: t.primary.withAlpha((255.0 * (.045 + .025 * pulse)).round()),
-                      ),
-                    ),
-                  ),
-                ),
-                SafeArea(
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 1180),
-                      child: Padding(
-                        padding: const EdgeInsets.all(20),
-                        child: Column(
-                          children: [
-                            const SizedBox(height: 8),
-                            Transform.scale(
-                              scale: .96 + .05 * pulse,
-                              child: Container(
-                                width: 82,
-                                height: 82,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: t.primary.withAlpha(26),
-                                  border: Border.all(color: t.primary.withAlpha(89), width: 2),
-                                  boxShadow: [BoxShadow(color: t.primary.withAlpha((255.0 * (.12 + .10 * pulse)).round()), blurRadius: 32, spreadRadius: 6)],
-                                ),
-                                child: Icon(Icons.rocket_launch_rounded, size: 38, color: t.primary),
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            Text('UAI RELEASE ENGINE', style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900, fontSize: 24, letterSpacing: 1.2)),
-                            const SizedBox(height: 5),
-                            Text('Não feche esta tela. A Central está sincronizando, compilando e publicando sua nova versão.', textAlign: TextAlign.center, style: TextStyle(color: t.textSecondary, fontWeight: FontWeight.w600)),
-                            const SizedBox(height: 18),
-                            Container(
-                              padding: const EdgeInsets.all(18),
-                              decoration: BoxDecoration(color: t.card, borderRadius: BorderRadius.circular(t.cardRadius), border: Border.all(color: t.primary.withAlpha(51)), boxShadow: t.softShadow),
-                              child: Column(children: [
-                                Row(children: [
-                                  Expanded(child: Text(current?.title ?? 'Processando release...', style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900, fontSize: 16))),
-                                  Text('${(progress * 100).toStringAsFixed(0)}%', style: TextStyle(color: t.primary, fontWeight: FontWeight.w900, fontSize: 18)),
-                                ]),
-                                const SizedBox(height: 10),
-                                ClipRRect(borderRadius: BorderRadius.circular(999), child: LinearProgressIndicator(value: progress.clamp(0.0, 1.0), minHeight: 9, backgroundColor: t.cardAlt, color: t.primary)),
-                                const SizedBox(height: 8),
-                                Row(children: [Text('$completed de $total etapas concluídas', style: TextStyle(color: t.textSecondary, fontWeight: FontWeight.w700, fontSize: 12)), const Spacer(), Text(current?.description ?? '', style: TextStyle(color: t.textMuted, fontWeight: FontWeight.w600, fontSize: 11))]),
-                              ]),
-                            ),
-                            const SizedBox(height: 14),
-                            Expanded(
-                              child: LayoutBuilder(builder: (context, c) {
-                                final wide = c.maxWidth >= 820;
-                                final steps = _automationStepsFuturistic(state);
-                                final log = _automationLogFuturistic();
-                                return wide
-                                    ? Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Expanded(flex: 6, child: steps), const SizedBox(width: 12), Expanded(flex: 4, child: log)])
-                                    : Column(children: [Expanded(flex: 6, child: steps), const SizedBox(height: 10), Expanded(flex: 4, child: log)]);
-                              }),
-                            ),
-                            const SizedBox(height: 8),
-                            Text('Navegação temporariamente bloqueada por segurança até a automação terminar.', style: TextStyle(color: t.textMuted, fontSize: 11, fontWeight: FontWeight.w600)),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  Widget _automationStepsFuturistic(LocalPublishAutomationState? state) {
-    final t = context.uai;
-    final steps = state?.steps ?? const <LocalPublishStep>[];
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: t.card.withAlpha(245), borderRadius: BorderRadius.circular(t.cardRadius), border: Border.all(color: t.border)),
-      child: ListView.separated(
-        itemCount: steps.length,
-        separatorBuilder: (_, _) => const SizedBox(height: 6),
-        itemBuilder: (context, index) {
-          final step = steps[index];
-          final color = step.status == LocalPublishStepStatus.success ? t.success : step.status == LocalPublishStepStatus.error ? t.error : step.status == LocalPublishStepStatus.running ? t.primary : t.textMuted;
-          final icon = step.status == LocalPublishStepStatus.success ? Icons.check_circle_rounded : step.status == LocalPublishStepStatus.error ? Icons.error_rounded : step.status == LocalPublishStepStatus.running ? Icons.sync_rounded : Icons.radio_button_unchecked_rounded;
-          return AnimatedContainer(
-            duration: const Duration(milliseconds: 260),
-            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
-            decoration: BoxDecoration(color: step.status == LocalPublishStepStatus.running ? color.withAlpha(20) : t.cardAlt.withAlpha(140), borderRadius: BorderRadius.circular(12), border: Border.all(color: step.status == LocalPublishStepStatus.running ? color.withAlpha(77) : t.border.withAlpha(179))),
-            child: Row(children: [Icon(icon, color: color, size: 20), const SizedBox(width: 9), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(step.title, style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900, fontSize: 12.5)), if ((step.log ?? '').trim().isNotEmpty) Text(step.log!, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: t.textSecondary, fontWeight: FontWeight.w600, fontSize: 10.5))])), Text(step.status.label, style: TextStyle(color: color, fontWeight: FontWeight.w900, fontSize: 10))]),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _automationLogFuturistic() {
-    final t = context.uai;
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: t.card.withAlpha(245), borderRadius: BorderRadius.circular(t.cardRadius), border: Border.all(color: t.border)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [Icon(Icons.terminal_rounded, color: t.primary, size: 18), const SizedBox(width: 7), Text('Telemetria da release', style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900, fontSize: 12.5))]),
-        const SizedBox(height: 8),
-        Expanded(child: SingleChildScrollView(reverse: true, child: SelectableText(_automationLogText.trim().isEmpty ? 'Aguardando telemetria...' : _automationLogText, style: TextStyle(color: t.textSecondary, fontFamily: 'monospace', fontSize: 10.5, height: 1.35)))),
-      ]),
-    );
-  }
+  Widget _buildAutomationFullscreen(BuildContext context) => ReleaseEngineView(
+        automationState: _automationState,
+        logText: _automationLogText,
+        animation: _releaseFxController,
+      );
 
   Widget _buildLoadingAcesso() {
     final t = context.uai;
@@ -1703,6 +1632,15 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
               titulo: titulo,
               mensagem: mensagem,
             ),
+            const SizedBox(height: 12),
+            _officialApkWebsitePanel(),
+            const SizedBox(height: 12),
+            _updateDialogPreviewPanel(
+              versao: versaoAtual,
+              obrigatoria: obrigatoria,
+              titulo: titulo,
+              mensagem: mensagem,
+            ),
             const SizedBox(height: 14),
             LayoutBuilder(
               builder: (context, constraints) {
@@ -1778,6 +1716,366 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
           ],
         );
       },
+    );
+  }
+
+  /// Simulador visual seguro: reutiliza o mesmo UpdateCompactPanel do Android.
+  /// Os callbacks da prévia não baixam, instalam, verificam versões nem salvam
+  /// preferências. A simulação pode ser fechada mesmo em modo obrigatório.
+  Widget _updateDialogPreviewPanel({
+    required String versao,
+    required bool obrigatoria,
+    required String titulo,
+    required String mensagem,
+  }) {
+    final t = context.uai;
+    final accent = _ensureVisible(t.primary, t.card);
+    final info = Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: _softFill(accent, t.cardAlt, 0.14),
+            borderRadius: BorderRadius.circular(t.buttonRadius),
+            border: Border.all(color: accent.withAlpha(31)),
+          ),
+          child: Icon(Icons.phone_android_rounded, color: accent),
+        ),
+        const SizedBox(width: 11),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Simular diálogo de atualização',
+                style: TextStyle(
+                  color: t.textPrimary,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 15,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                'Veja o Signature Update real nos modos obrigatório e opcional, sem instalar nada.',
+                style: TextStyle(
+                  color: t.textSecondary,
+                  height: 1.25,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+    final button = OutlinedButton.icon(
+      onPressed: () => _abrirPreviaDialogoAtualizacao(
+        versao: versao,
+        obrigatoria: obrigatoria,
+        titulo: titulo,
+        mensagem: mensagem,
+      ),
+      icon: const Icon(Icons.visibility_rounded),
+      label: const Text('Pré-visualizar diálogo'),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: accent,
+        side: BorderSide(color: accent.withAlpha(115)),
+        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(t.buttonRadius),
+        ),
+        textStyle: const TextStyle(fontWeight: FontWeight.w900),
+      ),
+    );
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: t.card,
+        borderRadius: BorderRadius.circular(t.cardRadius),
+        border: Border.all(color: t.border),
+        boxShadow: t.softShadow,
+      ),
+      child: LayoutBuilder(builder: (context, constraints) {
+        if (constraints.maxWidth < 620) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [info, const SizedBox(height: 12), button],
+          );
+        }
+        return Row(children: [
+          Expanded(child: info),
+          const SizedBox(width: 12),
+          button,
+        ]);
+      }),
+    );
+  }
+
+  static String _versaoAnteriorParaPrevia(String versao) {
+    final partes = versao.split('.');
+    if (partes.length == 3) {
+      final patch = int.tryParse(partes.last);
+      if (patch != null && patch > 0) {
+        return '${partes[0]}.${partes[1]}.${patch - 1}';
+      }
+    }
+    return '2.0.185'; // Somente exemplo quando não há versão semântica.
+  }
+
+  void _acaoDemonstrativa(BuildContext dialogContext, String acao) {
+    ScaffoldMessenger.of(dialogContext).hideCurrentSnackBar();
+    ScaffoldMessenger.of(dialogContext).showSnackBar(SnackBar(
+      content: Text('Prévia: "$acao" não executa nenhuma ação real.'),
+      duration: const Duration(seconds: 3),
+    ));
+  }
+
+  Future<void> _abrirPreviaDialogoAtualizacao({
+    required String versao,
+    required bool obrigatoria,
+    required String titulo,
+    required String mensagem,
+  }) async {
+    // Abre imediatamente. O changelog oficial atualiza a prévia quando
+    // Firestore responder, sem travar o botão se a conexão estiver lenta.
+    Future<AppVersionModel?> consultarReleasePublicada() async {
+      try {
+        final releases =
+            await _service.listarVersoesParaSequenciamento(limit: 100);
+        for (final candidate in releases) {
+          if (candidate.versao == versao &&
+              candidate.publicada &&
+              candidate.canal == 'producao') {
+            return candidate;
+          }
+        }
+      } catch (_) {
+        // O título e resumo de configuracoes/app servem como fallback offline.
+      }
+      return null;
+    }
+
+    final releaseFuture = consultarReleasePublicada();
+    var simulacaoObrigatoria = obrigatoria;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true, // Prévia, nunca bloqueio real.
+      builder: (overlayContext) => StatefulBuilder(
+        builder: (dialogContext, atualizarPrevia) {
+          final screen = MediaQuery.sizeOf(dialogContext);
+          final availableHeight =
+              (screen.height - 32).clamp(220.0, 720.0).toDouble();
+          return Dialog(
+            insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 515),
+              child: SizedBox(
+                height: availableHeight,
+                child: Column(children: [
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(12, 6, 6, 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF242936),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Row(children: [
+                      const Icon(Icons.visibility_rounded,
+                          size: 17, color: Colors.white70),
+                      const SizedBox(width: 7),
+                      const Expanded(
+                        child: Text('PRÉVIA · NENHUMA AÇÃO REAL',
+                            maxLines: 2,
+                            style: TextStyle(color: Colors.white,
+                                fontSize: 11, fontWeight: FontWeight.w800)),
+                      ),
+                      IconButton(
+                        tooltip: 'Fechar simulação',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                        icon: const Icon(Icons.close_rounded, color: Colors.white),
+                      ),
+                    ]),
+                  ),
+                  const SizedBox(height: 7),
+                  Row(children: [
+                    Expanded(child: _modoPreviaButton(
+                      selected: simulacaoObrigatoria,
+                      text: 'Obrigatória',
+                      icon: Icons.lock_rounded,
+                      onPressed: () => atualizarPrevia(
+                          () => simulacaoObrigatoria = true),
+                    )),
+                    const SizedBox(width: 7),
+                    Expanded(child: _modoPreviaButton(
+                      selected: !simulacaoObrigatoria,
+                      text: 'Opcional',
+                      icon: Icons.lock_open_rounded,
+                      onPressed: () => atualizarPrevia(
+                          () => simulacaoObrigatoria = false),
+                    )),
+                  ]),
+                  const SizedBox(height: 8),
+                  Expanded(child: FutureBuilder<AppVersionModel?>(
+                    future: releaseFuture,
+                    builder: (context, snapshot) {
+                      final release = snapshot.data;
+                      final changes = <String>[
+                        ...?release?.melhorias,
+                        ...?release?.correcoes,
+                        ...?release?.implementacoes,
+                      ].where((item) => item.trim().isNotEmpty).toList();
+                      if (changes.isEmpty && mensagem.trim().isNotEmpty) {
+                        changes.add(mensagem.trim());
+                      }
+                      return UpdateCompactPanel(
+                        key: ValueKey(simulacaoObrigatoria),
+                        previewMode: true,
+                        requiredUpdate: simulacaoObrigatoria,
+                        installedVersion: _versaoAnteriorParaPrevia(versao),
+                        targetVersion: versao,
+                        title: (release?.titulo.trim().isNotEmpty ?? false)
+                            ? release!.titulo
+                            : titulo,
+                        summary: (release?.resumo.trim().isNotEmpty ?? false)
+                            ? release!.resumo
+                            : mensagem,
+                        changes: changes,
+                        onUpdate: () => _acaoDemonstrativa(
+                            dialogContext, 'Atualizar agora'),
+                        onOfficialSite: () => _acaoDemonstrativa(
+                            dialogContext, 'Baixar no site oficial'),
+                        onVerify: () => _acaoDemonstrativa(
+                            dialogContext, 'Já atualizei, verificar'),
+                        onLater: simulacaoObrigatoria
+                            ? null
+                            : () => Navigator.of(dialogContext).pop(),
+                      );
+                    },
+                  )),
+                ]),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _modoPreviaButton({
+    required bool selected,
+    required String text,
+    required IconData icon,
+    required VoidCallback onPressed,
+  }) {
+    return SizedBox(
+      height: 35,
+      child: OutlinedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 15),
+        label: FittedBox(fit: BoxFit.scaleDown, child: Text(text)),
+        style: OutlinedButton.styleFrom(
+          backgroundColor: selected ? const Color(0xFFB72736) : const Color(0xFF2B3040),
+          foregroundColor: Colors.white,
+          side: BorderSide(color: selected ? Colors.white54 : Colors.white24),
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      ),
+    );
+  }
+
+  /// Acesso administrativo ao portal público. Reusa exatamente o endereço
+  /// usado pelos diálogos Android, evitando links divergentes entre telas.
+  Widget _officialApkWebsitePanel() {
+    final t = context.uai;
+    final accent = _ensureVisible(t.info, t.card);
+
+    final info = Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: _softFill(accent, t.cardAlt, 0.14),
+            borderRadius: BorderRadius.circular(t.buttonRadius),
+            border: Border.all(color: accent.withAlpha(31)),
+          ),
+          child: Icon(Icons.public_rounded, color: accent),
+        ),
+        const SizedBox(width: 11),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Página oficial do APK',
+                style: TextStyle(
+                  color: t.textPrimary,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 15,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                'Visualize como os usuários verão a versão e os downloads no site UAI Capoeira.',
+                style: TextStyle(
+                  color: t.textSecondary,
+                  height: 1.25,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+
+    final button = OutlinedButton.icon(
+      onPressed: () => OfficialApkWebsiteService.open(context),
+      icon: const Icon(Icons.open_in_new_rounded),
+      label: const Text('Abrir página oficial'),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: accent,
+        side: BorderSide(color: accent.withAlpha(115)),
+        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(t.buttonRadius),
+        ),
+        textStyle: const TextStyle(fontWeight: FontWeight.w900),
+      ),
+    );
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: t.card,
+        borderRadius: BorderRadius.circular(t.cardRadius),
+        border: Border.all(color: t.border),
+        boxShadow: t.softShadow,
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth < 620) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [info, const SizedBox(height: 12), button],
+            );
+          }
+          return Row(
+            children: [
+              Expanded(child: info),
+              const SizedBox(width: 12),
+              button,
+            ],
+          );
+        },
+      ),
     );
   }
 
@@ -2466,6 +2764,12 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
                   onRunFullAutomation: () => _executarAutomacaoCompletaWindows(canal: 'producao'),
                   onRunBetaAutomation: () => _executarAutomacaoCompletaWindows(canal: 'beta'),
                   onClearLog: _clearAutomationLog,
+                  notificationAudience: _audienciaNotificacaoRelease,
+                  onNotificationAudienceChanged: (value) =>
+                      setState(() => _audienciaNotificacaoRelease = value),
+                  triggerWifiCheck: _acionarDownloadWifiRelease,
+                  onTriggerWifiCheckChanged: (value) =>
+                      setState(() => _acionarDownloadWifiRelease = value),
                 ),
               ],
             ],
@@ -3292,6 +3596,463 @@ class _ControleAtualizacoesScreenState extends State<ControleAtualizacoesScreen>
   }
 }
 
+
+/// Presentation of a running local release; does not invoke release services.
+class ReleaseEngineView extends StatelessWidget {
+  const ReleaseEngineView({
+    super.key,
+    required this.automationState,
+    required this.logText,
+    required this.animation,
+  });
+
+  final LocalPublishAutomationState? automationState;
+  final String logText;
+  final Animation<double> animation;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = context.uai;
+    final state = automationState;
+    final progress = state?.progress ?? 0;
+    LocalPublishStep? current;
+    for (final step in state?.steps ?? const <LocalPublishStep>[]) {
+      if (step.status == LocalPublishStepStatus.running) {
+        current = step;
+        break;
+      }
+    }
+    final completed =
+        state?.steps
+            .where((e) => e.status == LocalPublishStepStatus.success)
+            .length ??
+        0;
+    final total = state?.steps.length ?? 0;
+
+    return PopScope(
+      canPop: false,
+      child: Scaffold(
+        backgroundColor: t.background,
+        body: AnimatedBuilder(
+          animation: animation,
+          builder: (context, child) {
+            final pulse = .5 + (animation.value * .5);
+            return Stack(
+              children: [
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: CustomPaint(
+                      painter: _ReleaseGridPainter(
+                        color: t.primary.withAlpha(
+                          (255.0 * (.045 + .025 * pulse)).round(),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                SafeArea(
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1180),
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            // Keep both scrollable panels usable on short mobile windows.
+                            final minimumHeight = constraints.maxWidth < 600
+                                ? 820.0
+                                : 640.0;
+                            final height = constraints.maxHeight < minimumHeight
+                                ? minimumHeight
+                                : constraints.maxHeight;
+                            return SingleChildScrollView(
+                              key: const Key('release_engine_page_scroll'),
+                              child: SizedBox(
+                                height: height,
+                                child: Column(
+                                  children: [
+                                    const SizedBox(height: 8),
+                                    Transform.scale(
+                                      scale: .96 + .05 * pulse,
+                                      child: Container(
+                                        width: 82,
+                                        height: 82,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: t.primary.withAlpha(26),
+                                          border: Border.all(
+                                            color: t.primary.withAlpha(89),
+                                            width: 2,
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: t.primary.withAlpha(
+                                                (255.0 * (.12 + .10 * pulse))
+                                                    .round(),
+                                              ),
+                                              blurRadius: 32,
+                                              spreadRadius: 6,
+                                            ),
+                                          ],
+                                        ),
+                                        child: Icon(
+                                          Icons.rocket_launch_rounded,
+                                          size: 38,
+                                          color: t.primary,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Text(
+                                      'UAI RELEASE ENGINE',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: t.textPrimary,
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 24,
+                                        letterSpacing: 1.2,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 5),
+                                    Text(
+                                      'Não feche esta tela. A Central está sincronizando, compilando e publicando sua nova versão.',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: t.textSecondary,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 18),
+                                    Container(
+                                      padding: const EdgeInsets.all(18),
+                                      decoration: BoxDecoration(
+                                        color: t.card,
+                                        borderRadius: BorderRadius.circular(
+                                          t.cardRadius,
+                                        ),
+                                        border: Border.all(
+                                          color: t.primary.withAlpha(51),
+                                        ),
+                                        boxShadow: t.softShadow,
+                                      ),
+                                      child: Column(
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  current?.title ??
+                                                      'Processando release...',
+                                                  style: TextStyle(
+                                                    color: t.textPrimary,
+                                                    fontWeight: FontWeight.w900,
+                                                    fontSize: 16,
+                                                  ),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 12),
+                                              Text(
+                                                '${(progress * 100).toStringAsFixed(0)}%',
+                                                style: TextStyle(
+                                                  color: t.primary,
+                                                  fontWeight: FontWeight.w900,
+                                                  fontSize: 18,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 10),
+                                          ClipRRect(
+                                            borderRadius: BorderRadius.circular(
+                                              999,
+                                            ),
+                                            child: LinearProgressIndicator(
+                                              value: progress.clamp(0.0, 1.0),
+                                              minHeight: 9,
+                                              backgroundColor: t.cardAlt,
+                                              color: t.primary,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 8),
+                                          LayoutBuilder(
+                                            builder: (context, constraints) {
+                                              final count = Text(
+                                                '$completed de $total etapas concluídas',
+                                                style: TextStyle(
+                                                  color: t.textSecondary,
+                                                  fontWeight: FontWeight.w700,
+                                                  fontSize: 12,
+                                                ),
+                                              );
+                                              final description = Text(
+                                                current?.description ?? '',
+                                                style: TextStyle(
+                                                  color: t.textMuted,
+                                                  fontWeight: FontWeight.w600,
+                                                  fontSize: 11,
+                                                ),
+                                              );
+                                              return constraints.maxWidth >= 600
+                                                  ? Row(
+                                                      crossAxisAlignment:
+                                                          CrossAxisAlignment
+                                                              .start,
+                                                      children: [
+                                                        Expanded(child: count),
+                                                        const SizedBox(
+                                                          width: 16,
+                                                        ),
+                                                        Expanded(
+                                                          child: description,
+                                                        ),
+                                                      ],
+                                                    )
+                                                  : Column(
+                                                      crossAxisAlignment:
+                                                          CrossAxisAlignment
+                                                              .start,
+                                                      children: [
+                                                        count,
+                                                        const SizedBox(
+                                                          height: 4,
+                                                        ),
+                                                        description,
+                                                      ],
+                                                    );
+                                            },
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 14),
+                                    Expanded(
+                                      child: LayoutBuilder(
+                                        builder: (context, c) {
+                                          final wide = c.maxWidth >= 820;
+                                          final steps =
+                                              _automationStepsFuturistic(
+                                                context,
+                                                state,
+                                              );
+                                          final log = _automationLogFuturistic(
+                                            context,
+                                          );
+                                          return wide
+                                              ? Row(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment
+                                                          .stretch,
+                                                  children: [
+                                                    Expanded(
+                                                      flex: 6,
+                                                      child: steps,
+                                                    ),
+                                                    const SizedBox(width: 12),
+                                                    Expanded(
+                                                      flex: 4,
+                                                      child: log,
+                                                    ),
+                                                  ],
+                                                )
+                                              : Column(
+                                                  children: [
+                                                    Expanded(
+                                                      flex: 6,
+                                                      child: steps,
+                                                    ),
+                                                    const SizedBox(height: 10),
+                                                    Expanded(
+                                                      flex: 4,
+                                                      child: log,
+                                                    ),
+                                                  ],
+                                                );
+                                        },
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Navegação temporariamente bloqueada por segurança até a automação terminar.',
+                                      style: TextStyle(
+                                        color: t.textMuted,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _automationStepsFuturistic(
+    BuildContext context,
+    LocalPublishAutomationState? state,
+  ) {
+    final t = context.uai;
+    final steps = state?.steps ?? const <LocalPublishStep>[];
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: t.card.withAlpha(245),
+        borderRadius: BorderRadius.circular(t.cardRadius),
+        border: Border.all(color: t.border),
+      ),
+      child: ListView.separated(
+        itemCount: steps.length,
+        separatorBuilder: (_, _) => const SizedBox(height: 6),
+        itemBuilder: (context, index) {
+          final step = steps[index];
+          final color = step.status == LocalPublishStepStatus.success
+              ? t.success
+              : step.status == LocalPublishStepStatus.error
+              ? t.error
+              : step.status == LocalPublishStepStatus.running
+              ? t.primary
+              : t.textMuted;
+          final icon = step.status == LocalPublishStepStatus.success
+              ? Icons.check_circle_rounded
+              : step.status == LocalPublishStepStatus.error
+              ? Icons.error_rounded
+              : step.status == LocalPublishStepStatus.running
+              ? Icons.sync_rounded
+              : Icons.radio_button_unchecked_rounded;
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 260),
+            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+            decoration: BoxDecoration(
+              color: step.status == LocalPublishStepStatus.running
+                  ? color.withAlpha(20)
+                  : t.cardAlt.withAlpha(140),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: step.status == LocalPublishStepStatus.running
+                    ? color.withAlpha(77)
+                    : t.border.withAlpha(179),
+              ),
+            ),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final status = Text(
+                  step.status.label,
+                  style: TextStyle(
+                    color: color,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 10,
+                  ),
+                );
+                final narrow = constraints.maxWidth < 380;
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(icon, color: color, size: 20),
+                    const SizedBox(width: 9),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            step.title,
+                            style: TextStyle(
+                              color: t.textPrimary,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 12.5,
+                            ),
+                          ),
+                          if ((step.log ?? '').trim().isNotEmpty)
+                            Text(
+                              step.log!,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: t.textSecondary,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 10.5,
+                              ),
+                            ),
+                          if (narrow)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: status,
+                            ),
+                        ],
+                      ),
+                    ),
+                    if (!narrow) ...[
+                      const SizedBox(width: 8),
+                      Flexible(child: status),
+                    ],
+                  ],
+                );
+              },
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _automationLogFuturistic(BuildContext context) {
+    final t = context.uai;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: t.card.withAlpha(245),
+        borderRadius: BorderRadius.circular(t.cardRadius),
+        border: Border.all(color: t.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.terminal_rounded, color: t.primary, size: 18),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  'Telemetria da release',
+                  style: TextStyle(
+                    color: t.textPrimary,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 12.5,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: SingleChildScrollView(
+              key: const Key('release_engine_telemetry_scroll'),
+              reverse: true,
+              child: SelectableText(
+                logText.trim().isEmpty ? 'Aguardando telemetria...' : logText,
+                style: TextStyle(
+                  color: t.textSecondary,
+                  fontFamily: 'monospace',
+                  fontSize: 10.5,
+                  height: 1.35,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _ReleaseGridPainter extends CustomPainter {
   final Color color;

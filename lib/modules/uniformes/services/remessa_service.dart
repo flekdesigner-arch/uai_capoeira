@@ -1,91 +1,76 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'uniformes_admin_service.dart';
 
 class RemessaService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final User? currentUser = FirebaseAuth.instance.currentUser;
+  final UniformesAdminService _backend = UniformesAdminService();
 
   Future<String> criarRemessa(Map<String, dynamic> dados) async {
-    dados.addAll({
-      'criado_em': FieldValue.serverTimestamp(),
-      'criado_por': currentUser?.uid,
-      'status': dados['status'] ?? 'pendente',
-    });
-    final docRef = await _firestore.collection('remessas').add(dados);
-    return docRef.id;
+    final result = await _backend.operar('salvar_remessa', {'remessa': dados});
+    return result['id'].toString();
   }
 
   Future<void> atualizarRemessa(
     String remessaId,
     Map<String, dynamic> dados,
   ) async {
-    dados['atualizado_em'] = FieldValue.serverTimestamp();
-    dados['atualizado_por'] = currentUser?.uid;
-    await _firestore.collection('remessas').doc(remessaId).update(dados);
+    await _backend.operar('salvar_remessa', {
+      'remessaId': remessaId,
+      'remessa': dados,
+    });
   }
 
-  /// Exclusão definitiva e consistente.
-  ///
-  /// Remove os pedidos vinculados e a remessa no mesmo batch (até 499
-  /// pedidos por remessa). Assim a UI nunca fica com remessa órfã ou pedido
-  /// apontando para um documento que já não existe.
-  Future<int> excluirRemessaComPedidos(String remessaId) async {
-    final pedidos = await _firestore
-        .collection('pedidos_uniformes')
-        .where('remessa_id', isEqualTo: remessaId)
-        .get();
-
-    if (pedidos.docs.length > 499) {
-      throw StateError(
-        'Esta remessa possui pedidos demais para exclusão em uma única operação.',
-      );
-    }
-
-    final batch = _firestore.batch();
-    for (final doc in pedidos.docs) {
-      batch.delete(doc.reference);
-    }
-    batch.delete(_firestore.collection('remessas').doc(remessaId));
-    await batch.commit();
-    return pedidos.docs.length;
+  Future<int> excluirRemessaComPedidos(
+    String remessaId, {
+    required String motivo,
+  }) async {
+    final result = await _backend.operar('excluir_remessa', {
+      'remessaId': remessaId,
+      'motivo': motivo,
+      'confirmacao': true,
+    });
+    return (result['pedidosExcluidos'] as num?)?.toInt() ?? 0;
   }
 
-  Future<void> excluirRemessa(String remessaId) async {
-    await excluirRemessaComPedidos(remessaId);
+  Future<void> excluirRemessa(
+    String remessaId, {
+    required String motivo,
+  }) async {
+    await excluirRemessaComPedidos(remessaId, motivo: motivo);
   }
 
   Future<void> excluirPedidoDefinitivamente(
     String pedidoId, {
     String? remessaId,
+    required String motivo,
   }) async {
-    final batch = _firestore.batch();
-
-    if (remessaId != null && remessaId.trim().isNotEmpty) {
-      batch.update(_firestore.collection('remessas').doc(remessaId), {
-        'pedidos_ids': FieldValue.arrayRemove([pedidoId]),
-      });
-    }
-
-    batch.delete(_firestore.collection('pedidos_uniformes').doc(pedidoId));
-    await batch.commit();
+    await _backend.operar('excluir_pedido', {
+      'pedidoId': pedidoId,
+      'motivo': motivo,
+      'confirmacao': true,
+    });
   }
 
   Future<void> vincularPedido(String pedidoId, String remessaId) async {
-    await _firestore.collection('pedidos_uniformes').doc(pedidoId).update({
-      'remessa_id': remessaId,
-    });
-    await _firestore.collection('remessas').doc(remessaId).update({
-      'pedidos_ids': FieldValue.arrayUnion([pedidoId]),
+    await _backend.operar('vincular_pedido', {
+      'pedidoId': pedidoId,
+      'remessaId': remessaId,
     });
   }
 
   Future<void> desvincularPedido(String pedidoId, String remessaId) async {
-    await _firestore.collection('pedidos_uniformes').doc(pedidoId).update({
-      'remessa_id': FieldValue.delete(),
+    await _backend.operar('desvincular_pedido', {
+      'pedidoId': pedidoId,
+      'remessaId': remessaId,
     });
-    await _firestore.collection('remessas').doc(remessaId).update({
-      'pedidos_ids': FieldValue.arrayRemove([pedidoId]),
-    });
+  }
+
+  Future<void> iniciarConfeccao(String id) async {
+    await _backend.operar('iniciar_confeccao', {'remessaId': id});
+  }
+
+  Future<void> receberRemessa(String id) async {
+    await _backend.operar('receber_remessa', {'remessaId': id});
   }
 
   Stream<QuerySnapshot> getPedidosDaRemessa(String remessaId) {

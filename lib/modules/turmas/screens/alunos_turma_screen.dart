@@ -19,6 +19,158 @@ import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/turmas/timeline/turma_timeline_screen.dart';
 import 'package:uai_capoeira/modules/turmas/timeline/turma_timeline_service.dart';
 import 'package:uai_capoeira/core/image_cache/uai_student_photo.dart';
+import 'package:uai_capoeira/modules/disciplina/disciplina_service.dart';
+
+/// Apresentação única da projeção já carregada, inclusive durante uso offline.
+class DisciplinaVisualTurma {
+  const DisciplinaVisualTurma._(this.evento, this.pendente);
+  final Map<String, dynamic>? evento;
+  final bool pendente;
+  factory DisciplinaVisualTurma.deResumo(
+    Map<String, dynamic>? resumo, {
+    required bool carregado,
+    bool falha = false,
+    bool cache = false,
+    bool documentoExiste = true,
+    DateTime? hoje,
+  }) {
+    final pendente = falha || !carregado || (cache && !documentoExiste);
+    return DisciplinaVisualTurma._(
+      pendente
+          ? null
+          : DisciplinaService.suspensaoAtual(
+              resumo,
+              hoje ?? DisciplinaService.hoje(),
+            ),
+      pendente,
+    );
+  }
+  factory DisciplinaVisualTurma.deSnapshot(
+    AsyncSnapshot<DocumentSnapshot<Map<String, dynamic>>> snapshot,
+  ) => DisciplinaVisualTurma.deResumo(
+    snapshot.data?.data(),
+    carregado: snapshot.hasData,
+    falha: snapshot.hasError,
+    cache: snapshot.data?.metadata.isFromCache ?? false,
+    documentoExiste: snapshot.data?.exists ?? false,
+  );
+  bool get suspenso => evento != null;
+  bool get expulso => evento?['tipo'] == 'expulsao';
+  String get dataRetorno {
+    for (final raw in [evento?['data_retorno'], evento?['fim_exclusivo']]) {
+      if (raw is! String) continue;
+      final data = DateTime.tryParse(raw);
+      if (data != null && DisciplinaService.chaveData(data) == raw) {
+        return '${data.day.toString().padLeft(2, '0')}/${data.month.toString().padLeft(2, '0')}/${data.year.toString().padLeft(4, '0')}';
+      }
+    }
+    return '--/--/----';
+  }
+}
+
+/// O filtro fica no ramo da imagem, antes de faixas, textos, alertas e corda.
+class FotoDisciplinarTurma extends StatelessWidget {
+  const FotoDisciplinarTurma({
+    super.key,
+    required this.suspenso,
+    required this.child,
+  });
+  final bool suspenso;
+  final Widget child;
+  static const matriz = <double>[
+    .2126,
+    .7152,
+    .0722,
+    0,
+    0,
+    .2126,
+    .7152,
+    .0722,
+    0,
+    0,
+    .2126,
+    .7152,
+    .0722,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+  ];
+  @override
+  Widget build(BuildContext context) => !suspenso
+      ? child
+      : ClipRect(
+          child: ColorFiltered(
+            colorFilter: const ColorFilter.matrix(matriz),
+            child: RepaintBoundary(child: child),
+          ),
+        );
+}
+
+class IndicadorDisciplinaTurma extends StatelessWidget {
+  const IndicadorDisciplinaTurma({
+    super.key,
+    required this.visual,
+    this.faixaFoto = false,
+  });
+  final DisciplinaVisualTurma visual;
+  final bool faixaFoto;
+  @override
+  Widget build(BuildContext context) {
+    final t = context.uai;
+    final fundo = faixaFoto ? t.primary.withAlpha(240) : t.error.withAlpha(14);
+    final cor = faixaFoto
+        ? (t.primary.computeLuminance() > .48
+              ? const Color(0xFF111827)
+              : Colors.white)
+        : t.error;
+    return Container(
+      height: faixaFoto ? 30 : 33,
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
+      decoration: BoxDecoration(
+        color: fundo,
+        borderRadius: BorderRadius.circular(faixaFoto ? 0 : 6),
+        border: faixaFoto ? null : Border.all(color: t.error.withAlpha(50)),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              visual.expulso ? 'ALUNO EXPULSO' : 'SUSPENSO ATÉ',
+              maxLines: 1,
+              style: TextStyle(
+                color: cor,
+                fontSize: faixaFoto ? 7.2 : 9,
+                fontWeight: FontWeight.w900,
+                height: 1,
+              ),
+            ),
+          ),
+          const SizedBox(height: 1),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              visual.expulso ? 'ADMINISTRAÇÃO' : visual.dataRetorno,
+              maxLines: 1,
+              style: TextStyle(
+                color: cor,
+                fontSize: faixaFoto ? 8.8 : 11,
+                fontWeight: FontWeight.w900,
+                height: 1,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 // ============================================
 // SERVIÇO DE CACHE INTELIGENTE (30 MINUTOS)
@@ -134,6 +286,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
 
   String? _svgContent;
   String _searchQuery = '';
+  Timer? _disciplinaDiaTimer;
   Timer? _searchDebounce; // Debounce para busca avançada
   int _viewMode = 0;
   int _preferredViewMode = 0;
@@ -157,7 +310,6 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
   final Map<String, bool> _graduacaoValidaCache = {};
   // Uma busca por graduação, não uma busca por card/aluno.
   final Map<String, Future<Map<String, dynamic>?>> _coresGraduacaoFutures = {};
-
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _alunosCache = [];
   int _capacidadeMaximaTurma = 0;
@@ -202,13 +354,15 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     _carregarAlunos();
     _monitorarConectividade();
 
-    Timer.periodic(const Duration(minutes: 1), (timer) {
+    _disciplinaDiaTimer = Timer.periodic(const Duration(minutes: 1), (timer) {
       _cache.limparCacheExpirado();
+      if (mounted) setState(() {});
     });
   }
 
   @override
   void dispose() {
+    _disciplinaDiaTimer?.cancel();
     _alunosSubscription?.cancel();
     _connectivitySubscription?.cancel();
     _searchDebounce?.cancel();
@@ -550,8 +704,14 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
       final nascimento = data['data_nascimento']?.toString() ?? '';
       final status = data['status_atividade']?.toString() ?? '';
       final turmaId = data['turma_id']?.toString() ?? '';
-      final google = data['vinculado_google']?.toString() ?? data['google_uid']?.toString() ?? '';
-      final email = data['email_verificado']?.toString() ?? data['conta_email_verificada']?.toString() ?? '';
+      final google =
+          data['vinculado_google']?.toString() ??
+          data['google_uid']?.toString() ??
+          '';
+      final email =
+          data['email_verificado']?.toString() ??
+          data['conta_email_verificada']?.toString() ??
+          '';
       return '${doc.id}|$nome|$apelido|$graduacaoId|$graduacaoNome|$contatoAluno|$contatoResponsavel|$responsavel|$foto|$endereco|$sexo|$nascimento|$status|$turmaId|$google|$email';
     }).toList()..sort();
     return partes.join('§');
@@ -572,7 +732,9 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
             alunos: alunos,
           )
           .catchError((error) {
-            debugPrint('Timeline da turma: sincronização silenciosa falhou: $error');
+            debugPrint(
+              'Timeline da turma: sincronização silenciosa falhou: $error',
+            );
           }),
     );
   }
@@ -653,12 +815,20 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: const Row(children: [
-          SizedBox(width: 16, height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
-          SizedBox(width: 10),
-          Expanded(child: Text('Buscando dados atualizados do servidor...')),
-        ]),
+        content: const Row(
+          children: [
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            ),
+            SizedBox(width: 10),
+            Expanded(child: Text('Buscando dados atualizados do servidor...')),
+          ],
+        ),
         backgroundColor: context.uai.primary,
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 3),
@@ -947,8 +1117,10 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
       }
 
       try {
-        final robo = await _firestore.collection('configuracoes_sistema')
-            .doc('robo_inatividade').get();
+        final robo = await _firestore
+            .collection('configuracoes_sistema')
+            .doc('robo_inatividade')
+            .get();
         if (mounted) {
           final valor = robo.data()?['dias_novato'];
           final dias = valor is num ? valor.toInt() : int.tryParse('$valor');
@@ -956,7 +1128,9 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
             setState(() => _diasNovato = dias);
           }
         }
-      } catch (_) { /* configuração opcional */ }
+      } catch (_) {
+        /* configuração opcional */
+      }
       if (!mounted || !doc.exists) return;
 
       final data = doc.data() ?? {};
@@ -1239,11 +1413,17 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
 
   bool _ehNovato(Map<String, dynamic> data) {
     final ingresso = _normalizarDataUltimaPresenca(
-      data['data_entrada_turma'] ?? data['aprovado_em'] ?? data['criado_em']);
-    if (ingresso == null || data['status_atividade'] != 'ATIVO(A)') return false;
+      data['data_entrada_turma'] ?? data['aprovado_em'] ?? data['criado_em'],
+    );
+    if (ingresso == null || data['status_atividade'] != 'ATIVO(A)') {
+      return false;
+    }
     final hoje = DateTime.now();
-    final dias = DateTime(hoje.year, hoje.month, hoje.day).difference(
-      DateTime(ingresso.year, ingresso.month, ingresso.day)).inDays;
+    final dias = DateTime(
+      hoje.year,
+      hoje.month,
+      hoje.day,
+    ).difference(DateTime(ingresso.year, ingresso.month, ingresso.day)).inDays;
     return dias >= 0 && dias <= _diasNovato;
   }
 
@@ -1260,8 +1440,14 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
         if (_ehNovato(data)) ...[
           const Tooltip(
             message: 'Aluno novato: período inicial após ingresso',
-            child: Chip(label: Text('NOVATO', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-              visualDensity: VisualDensity.compact, padding: EdgeInsets.zero),
+            child: Chip(
+              label: Text(
+                'NOVATO',
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+              ),
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+            ),
           ),
           const SizedBox(width: 5),
         ],
@@ -1280,6 +1466,97 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildFotoAlunoLista({
+    required String alunoId,
+    required String? fotoUrl,
+    required Widget fallback,
+    required bool suspenso,
+    required UaiStudentPhotoProfile profile,
+    required BoxFit fit,
+  }) {
+    if (fotoUrl == null || fotoUrl.isEmpty) return fallback;
+    return FotoDisciplinarTurma(
+      suspenso: suspenso,
+      child: UaiStudentPhoto(
+        studentId: alunoId,
+        imageUrl: fotoUrl,
+        profile: profile,
+        fit: fit,
+        fallback: fallback,
+      ),
+    );
+  }
+
+  Widget _buildFaixaFotoDisciplina({
+    required DisciplinaVisualTurma visual,
+    required dynamic t,
+    required int idade,
+  }) {
+    final textoCor = _readableOn(t.primary);
+    if (!visual.suspenso) {
+      return Container(
+        height: 23,
+        color: t.primary.withAlpha(235),
+        child: Center(
+          child: Text(
+            '$idade ANOS',
+            style: TextStyle(
+              color: textoCor,
+              fontSize: 10.5,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return IndicadorDisciplinaTurma(visual: visual, faixaFoto: true);
+  }
+
+  /// Status compacto para caber no card da lista de altura fixa (92 px).
+  /// Motivo e autoria ficam disponíveis no toque longo, sem expandir o card.
+  Widget _buildLinhaStatusDisciplinaOuPresenca(
+    Map<String, dynamic> data, {
+    DisciplinaVisualTurma? visual,
+    double fonte = 10.8,
+  }) {
+    final evento = visual?.evento;
+    if (evento == null) {
+      return _buildLinhaUltimaPresenca(data);
+    }
+
+    final expulso = evento['tipo'] == 'expulsao';
+    final dataRetorno = visual!.dataRetorno;
+    final titulo = expulso ? 'ALUNO EXPULSO' : 'SUSPENSO ATÉ $dataRetorno';
+    final motivo = (evento['motivo'] ?? 'Não informado').toString();
+    final responsavel = (evento['autor_nome'] ?? 'Não identificado').toString();
+    final cor = expulso ? context.uai.error : context.uai.warning;
+
+    return Tooltip(
+      message: 'Motivo: $motivo\nResponsável: $responsavel',
+      child: Row(
+        mainAxisSize: MainAxisSize.max,
+        children: [
+          Icon(Icons.block_rounded, color: cor, size: 12),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Text(
+              titulo,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: cor,
+                fontSize: fonte,
+                height: 1.05,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1741,27 +2018,49 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
   @override
   Widget build(BuildContext context) {
     if (widget.offlineOnly) {
-      return Scaffold(appBar: AppBar(title: Text(widget.turmaNome)),
-        body: OfflineReadonlyViews.loading(OfflineReadonlyViews.snapshot(), (snapshot) {
-          final alunos = OfflineReadonlyViews.rows(snapshot, 'alunos')
-            .where((e) => e['turmaId'] == widget.turmaId).toList()
-            ..sort((a, b) => '${a['nome']}'.compareTo('${b['nome']}'));
-          return ListView(children: [OfflineReadonlyViews.banner(snapshot),
-            for (final aluno in alunos) Card(child: ListTile(
-              leading: const Icon(Icons.person_outline),
-              title: Text('${aluno['nome'] ?? 'Aluno'}'),
-              subtitle: Text('${aluno['graduacao'] ?? ''}'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                OfflineReadonlyViews.record('abriu_ficha_aluno_offline', 'alunos');
-                Navigator.push(context, MaterialPageRoute(builder: (_) => AlunoDetalheScreen(
-                  alunoId: '${aluno['id']}', offlineOnly: true,
-                )));
-              },
-            )),
-            if (alunos.isEmpty) OfflineReadonlyViews.notFound('Alunos'),
-          ]);
-        }));
+      return Scaffold(
+        appBar: AppBar(title: Text(widget.turmaNome)),
+        body: OfflineReadonlyViews.loading(OfflineReadonlyViews.snapshot(), (
+          snapshot,
+        ) {
+          final alunos =
+              OfflineReadonlyViews.rows(
+                  snapshot,
+                  'alunos',
+                ).where((e) => e['turmaId'] == widget.turmaId).toList()
+                ..sort((a, b) => '${a['nome']}'.compareTo('${b['nome']}'));
+          return ListView(
+            children: [
+              OfflineReadonlyViews.banner(snapshot),
+              for (final aluno in alunos)
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.person_outline),
+                    title: Text('${aluno['nome'] ?? 'Aluno'}'),
+                    subtitle: Text('${aluno['graduacao'] ?? ''}'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () {
+                      OfflineReadonlyViews.record(
+                        'abriu_ficha_aluno_offline',
+                        'alunos',
+                      );
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => AlunoDetalheScreen(
+                            alunoId: '${aluno['id']}',
+                            offlineOnly: true,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              if (alunos.isEmpty) OfflineReadonlyViews.notFound('Alunos'),
+            ],
+          );
+        }),
+      );
     }
 
     final alunosFiltrados = _getAlunosFiltrados();
@@ -1797,22 +2096,48 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
               }
             },
             itemBuilder: (context) => [
-              const PopupMenuItem(value: 0, child: ListTile(
-                dense: true, leading: Icon(Icons.view_list_rounded),
-                title: Text('Lista padrão'))),
-              const PopupMenuItem(value: 1, child: ListTile(
-                dense: true, leading: Icon(Icons.grid_view_rounded),
-                title: Text('Card em grade'), subtitle: Text('Salvar preferência'))),
+              const PopupMenuItem(
+                value: 0,
+                child: ListTile(
+                  dense: true,
+                  leading: Icon(Icons.view_list_rounded),
+                  title: Text('Lista padrão'),
+                ),
+              ),
+              const PopupMenuItem(
+                value: 1,
+                child: ListTile(
+                  dense: true,
+                  leading: Icon(Icons.grid_view_rounded),
+                  title: Text('Card em grade'),
+                  subtitle: Text('Salvar preferência'),
+                ),
+              ),
               const PopupMenuDivider(),
-              const PopupMenuItem(value: 2, child: ListTile(
-                dense: true, leading: Icon(Icons.circle_outlined),
-                title: Text('Filtrar por indicadores'))),
-              const PopupMenuItem(value: 3, child: ListTile(
-                dense: true, leading: Icon(Icons.military_tech_outlined),
-                title: Text('Filtrar por graduação'))),
-              const PopupMenuItem(value: 4, child: ListTile(
-                dense: true, leading: Icon(Icons.view_headline_rounded),
-                title: Text('Lista compacta'))),
+              const PopupMenuItem(
+                value: 2,
+                child: ListTile(
+                  dense: true,
+                  leading: Icon(Icons.circle_outlined),
+                  title: Text('Filtrar por indicadores'),
+                ),
+              ),
+              const PopupMenuItem(
+                value: 3,
+                child: ListTile(
+                  dense: true,
+                  leading: Icon(Icons.military_tech_outlined),
+                  title: Text('Filtrar por graduação'),
+                ),
+              ),
+              const PopupMenuItem(
+                value: 4,
+                child: ListTile(
+                  dense: true,
+                  leading: Icon(Icons.view_headline_rounded),
+                  title: Text('Lista compacta'),
+                ),
+              ),
             ],
           ),
           IconButton(
@@ -2122,31 +2447,62 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
       color: context.uai.primary,
       backgroundColor: context.uai.surface,
       onRefresh: _forcarRecarregamento,
-      child: LayoutBuilder(builder: (context, constraints) {
-        final largura = constraints.maxWidth;
-        final colunas = largura >= 1400 ? 6 : largura >= 1080 ? 5
-            : largura >= 780 ? 4 : largura >= 550 ? 3 : 2;
-        const margem = 12.0;
-        const espacamento = 10.0;
-        final larguraCard = (largura - margem * 2 -
-            espacamento * (colunas - 1)) / colunas;
-        // Grade mais baixa: a foto cresce na largura, não indefinidamente na altura.
-        // Mantém espaço mínimo para presença, faixa e nome da graduação.
-        final alturaCard = larguraCard * (largura >= 1080 ? 0.94 : 1.08) + 59;
-        return GridView.builder(
-          key: const ValueKey('cardsChamada'),
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(margem, 10, margem, 24),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: colunas,
-            crossAxisSpacing: espacamento,
-            mainAxisSpacing: espacamento,
-            mainAxisExtent: alturaCard.clamp(190.0, 292.0).toDouble(),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final largura = constraints.maxWidth;
+          final colunas = largura >= 1400
+              ? 6
+              : largura >= 1080
+              ? 5
+              : largura >= 780
+              ? 4
+              : largura >= 550
+              ? 3
+              : 2;
+          const margem = 12.0;
+          const espacamento = 10.0;
+          final larguraCard =
+              (largura - margem * 2 - espacamento * (colunas - 1)) / colunas;
+          // Grade mais baixa: a foto cresce na largura, não indefinidamente na altura.
+          // Mantém espaço mínimo para presença, faixa e nome da graduação.
+          final alturaCard = larguraCard * (largura >= 1080 ? 0.94 : 1.08) + 59;
+          return GridView.builder(
+            key: const ValueKey('cardsChamada'),
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(margem, 10, margem, 24),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: colunas,
+              crossAxisSpacing: espacamento,
+              mainAxisSpacing: espacamento,
+              mainAxisExtent: alturaCard.clamp(190.0, 292.0).toDouble(),
+            ),
+            itemCount: docs.length,
+            itemBuilder: (context, i) => _buildCardFotografico(docs[i]),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _marcadorVerificacao(bool pendente, Widget child) {
+    if (!pendente) return child;
+    return Stack(
+      fit: StackFit.passthrough,
+      children: [
+        child,
+        Positioned(
+          top: 4,
+          right: 4,
+          child: Tooltip(
+            message: 'Verificação disciplinar pendente',
+            child: Icon(
+              Icons.hourglass_empty_rounded,
+              size: 16,
+              color: context.uai.textSecondary,
+            ),
           ),
-          itemCount: docs.length,
-          itemBuilder: (context, i) => _buildCardFotografico(docs[i]),
-        );
-      }),
+        ),
+      ],
     );
   }
 
@@ -2159,7 +2515,8 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
   // A corda SVG já resolve IDs e nomes ausentes do cache. A faixa agora
   // também consulta o documento oficial antes de usar qualquer cor neutra.
   Future<Map<String, dynamic>?> _buscarCoresGraduacao(
-    String? id, String nome,
+    String? id,
+    String nome,
   ) async {
     Map<String, dynamic>? atual = id != null ? _graduacoesCache[id] : null;
     atual ??= _graduacoesCache[nome];
@@ -2170,14 +2527,20 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
       try {
         DocumentSnapshot<Map<String, dynamic>> doc;
         try {
-          doc = await _firestore.collection('graduacoes').doc(id)
+          doc = await _firestore
+              .collection('graduacoes')
+              .doc(id)
               .get(const GetOptions(source: Source.cache));
           if (!doc.exists && _isOnline) {
-            doc = await _firestore.collection('graduacoes').doc(id)
+            doc = await _firestore
+                .collection('graduacoes')
+                .doc(id)
                 .get(const GetOptions(source: Source.server));
           }
         } catch (_) {
-          doc = await _firestore.collection('graduacoes').doc(id)
+          doc = await _firestore
+              .collection('graduacoes')
+              .doc(id)
               .get(const GetOptions(source: Source.server));
         }
         if (doc.exists) {
@@ -2194,17 +2557,23 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
       try {
         QuerySnapshot<Map<String, dynamic>> docs;
         try {
-          docs = await _firestore.collection('graduacoes')
-              .where('nome_graduacao', isEqualTo: nome).limit(1)
+          docs = await _firestore
+              .collection('graduacoes')
+              .where('nome_graduacao', isEqualTo: nome)
+              .limit(1)
               .get(const GetOptions(source: Source.cache));
           if (docs.docs.isEmpty && _isOnline) {
-            docs = await _firestore.collection('graduacoes')
-                .where('nome_graduacao', isEqualTo: nome).limit(1)
+            docs = await _firestore
+                .collection('graduacoes')
+                .where('nome_graduacao', isEqualTo: nome)
+                .limit(1)
                 .get(const GetOptions(source: Source.server));
           }
         } catch (_) {
-          docs = await _firestore.collection('graduacoes')
-              .where('nome_graduacao', isEqualTo: nome).limit(1)
+          docs = await _firestore
+              .collection('graduacoes')
+              .where('nome_graduacao', isEqualTo: nome)
+              .limit(1)
               .get(const GetOptions(source: Source.server));
         }
         if (docs.docs.isNotEmpty) {
@@ -2221,12 +2590,14 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
   }
 
   Future<Map<String, dynamic>?> _coresGraduacaoParaAluno(
-    Map<String, dynamic> aluno, String nome,
+    Map<String, dynamic> aluno,
+    String nome,
   ) {
     final id = aluno['graduacao_id']?.toString().trim();
     final chave = '${id ?? ''}|${_graduacaoKey(nome)}';
     return _coresGraduacaoFutures.putIfAbsent(
-      chave, () => _buscarCoresGraduacao(id, nome),
+      chave,
+      () => _buscarCoresGraduacao(id, nome),
     );
   }
 
@@ -2246,145 +2617,287 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     final cuidados = data['possui_cuidados_especiais'] == true;
     final aberto = _alunoCuidadosAbertoId == aluno.id;
     final corIndicador = _corAusenciaPorDias(_diasSemPresenca(data));
-    return Material(
-      color: t.card,
-      borderRadius: BorderRadius.circular(17),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => _abrirDetalhesAluno(aluno.id),
-        child: Container(
-          decoration: BoxDecoration(
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: DisciplinaService.resumo(
+        aluno.id,
+      ).snapshots(includeMetadataChanges: true),
+      builder: (context, disciplinaSnapshot) {
+        final visual = DisciplinaVisualTurma.deSnapshot(disciplinaSnapshot);
+        final pendente = visual.pendente;
+        final suspenso = visual.suspenso;
+
+        return _marcadorVerificacao(
+          pendente,
+          Material(
+            color: t.card,
             borderRadius: BorderRadius.circular(17),
-            border: Border.all(color: t.border, width: 1),
-          ),
-          child: Column(children: [
-            Expanded(child: Stack(fit: StackFit.expand, children: [
-              foto.isNotEmpty
-                  ? UaiStudentPhoto(
-                      studentId: aluno.id, imageUrl: foto,
-                      profile: UaiStudentPhotoProfile.list,
-                      fit: BoxFit.cover, fallback: _placeholderIcon())
-                  : _placeholderIcon(),
-              const Positioned.fill(child: DecoratedBox(
-                decoration: BoxDecoration(gradient: LinearGradient(
-                  begin: Alignment.bottomCenter,
-                  end: Alignment.center,
-                  colors: [Color(0xA8000000), Colors.transparent],
-                )),
-              )),
-              Positioned(left: 5, right: 5, bottom: 5,
-                child: Center(child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withAlpha(90),
-                    borderRadius: BorderRadius.circular(99)),
-                  child: Text(nome.toUpperCase(),
-                    textAlign: TextAlign.center, maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: Colors.white,
-                      fontWeight: FontWeight.w900, fontSize: 10.5, height: 1.08)),
-                )),
-              ),
-              // Dois pontos indicadores, como na chamada: novato + ausência.
-              Positioned(top: 8, left: 8, child: Row(children: [
-                Container(width: 12, height: 12, decoration: BoxDecoration(
-                  color: _ehNovato(data) ? t.error : t.success,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 2))),
-                const SizedBox(width: 5),
-                if (_indicadoresAusenciaAtivos)
-                  Container(width: 12, height: 12, decoration: BoxDecoration(
-                    color: corIndicador, shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2))),
-              ])),
-              // Mesmo lugar do botão de observações na chamada, sem expor a ficha.
-              if (cuidados) Positioned(top: 6, right: 6, child: Tooltip(
-                message: 'Consultar cuidados especiais',
-                child: Material(color: Colors.white.withAlpha(245),
-                  shape: const CircleBorder(),
-                  child: InkWell(
-                    customBorder: const CircleBorder(),
-                    onTap: () => _alternarCuidadosNoCard(aluno.id),
-                    child: const Padding(padding: EdgeInsets.all(7),
-                      child: Icon(Icons.warning_amber_rounded, size: 17,
-                        color: Color(0xFFBE7900))),
-                  ),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () => _abrirDetalhesAluno(aluno.id),
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(17),
+                  border: Border.all(color: t.border, width: 1),
                 ),
-              )),
-            ])),
-            SizedBox(height: 37, child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 260),
-              child: aberto
-                  ? InkWell(
-                      key: ValueKey('cuidado_${aluno.id}'),
-                      onTap: () => _alternarCuidadosNoCard(aluno.id),
-                      child: Center(child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 6),
-                        child: Text(_alunoCuidadosCarregando
-                            ? 'Consultando cuidados...' : _alunoCuidadosTexto,
-                          maxLines: 2, overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 10, color: t.textPrimary)),
-                      )),
-                    )
-                  : Column(
-                      key: ValueKey('presenca_${aluno.id}'),
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        if (_indicadoresAusenciaAtivos && _mostrarTextoUltimaPresenca)
-                          Padding(padding: const EdgeInsets.symmetric(horizontal: 4),
-                            child: Text(_descricaoAusenciaPorDias(_diasSemPresenca(data)),
-                              maxLines: 1, overflow: TextOverflow.ellipsis,
-                              style: TextStyle(fontSize: 10, color: corIndicador,
-                                  fontWeight: FontWeight.w800))),
-                        SyncIndicator(
-                          isPending: _syncService.isDocumentPending(aluno),
-                          isCompact: true),
-                      ],
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          _buildFotoAlunoLista(
+                            alunoId: aluno.id,
+                            fotoUrl: foto,
+                            profile: UaiStudentPhotoProfile.list,
+                            fit: BoxFit.cover,
+                            fallback: _placeholderIcon(),
+                            suspenso: suspenso,
+                          ),
+                          const Positioned.fill(
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.bottomCenter,
+                                  end: Alignment.center,
+                                  colors: [
+                                    Color(0xA8000000),
+                                    Colors.transparent,
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            left: 5,
+                            right: 5,
+                            bottom: 5,
+                            child: Center(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withAlpha(90),
+                                  borderRadius: BorderRadius.circular(99),
+                                ),
+                                child: Text(
+                                  nome.toUpperCase(),
+                                  textAlign: TextAlign.center,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 10.5,
+                                    height: 1.08,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          // Dois pontos indicadores, como na chamada: novato + ausência.
+                          Positioned(
+                            top: 8,
+                            left: 8,
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 12,
+                                  height: 12,
+                                  decoration: BoxDecoration(
+                                    color: _ehNovato(data)
+                                        ? t.error
+                                        : t.success,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Colors.white,
+                                      width: 2,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 5),
+                                if (_indicadoresAusenciaAtivos)
+                                  Container(
+                                    width: 12,
+                                    height: 12,
+                                    decoration: BoxDecoration(
+                                      color: corIndicador,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: Colors.white,
+                                        width: 2,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          // Mesmo lugar do botão de observações na chamada, sem expor a ficha.
+                          if (cuidados)
+                            Positioned(
+                              top: 6,
+                              right: 6,
+                              child: Tooltip(
+                                message: 'Consultar cuidados especiais',
+                                child: Material(
+                                  color: Colors.white.withAlpha(245),
+                                  shape: const CircleBorder(),
+                                  child: InkWell(
+                                    customBorder: const CircleBorder(),
+                                    onTap: () =>
+                                        _alternarCuidadosNoCard(aluno.id),
+                                    child: const Padding(
+                                      padding: EdgeInsets.all(7),
+                                      child: Icon(
+                                        Icons.warning_amber_rounded,
+                                        size: 17,
+                                        color: Color(0xFFBE7900),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
-            )),
-            // Mesmos hex_cor1/hex_cor2 do SVG da corda; destaque real
-            // no rodapé, inclusive para duas metades da mesma cor.
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
-              child: FutureBuilder<Map<String, dynamic>?>(
-                future: futureCores,
-                builder: (context, snapshot) {
-                  final refGraduacao = snapshot.data;
-                  final cor1 = _corGraduacaoCard(
-                    refGraduacao?['hex_cor1'], const Color(0xFFEDE7DB));
-                  final cor2 = _corGraduacaoCard(
-                    refGraduacao?['hex_cor2'], cor1);
-                  return Container(
-                    height: 20,
-                    clipBehavior: Clip.antiAlias,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(
-                        color: t.textSecondary.withAlpha(70), width: 0.8),
+                    SizedBox(
+                      height: 37,
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 260),
+                        child: suspenso
+                            ? Padding(
+                                key: ValueKey('disciplina_${aluno.id}'),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                ),
+                                child: Center(
+                                  child: IndicadorDisciplinaTurma(
+                                    visual: visual,
+                                  ),
+                                ),
+                              )
+                            : aberto
+                            ? InkWell(
+                                key: ValueKey('cuidado_${aluno.id}'),
+                                onTap: () => _alternarCuidadosNoCard(aluno.id),
+                                child: Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                    ),
+                                    child: Text(
+                                      _alunoCuidadosCarregando
+                                          ? 'Consultando cuidados...'
+                                          : _alunoCuidadosTexto,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: t.textPrimary,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              )
+                            : Column(
+                                key: ValueKey('presenca_${aluno.id}'),
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  if (_indicadoresAusenciaAtivos &&
+                                      _mostrarTextoUltimaPresenca)
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 4,
+                                      ),
+                                      child: Text(
+                                        _descricaoAusenciaPorDias(
+                                          _diasSemPresenca(data),
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: corIndicador,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ),
+                                  SyncIndicator(
+                                    isPending: _syncService.isDocumentPending(
+                                      aluno,
+                                    ),
+                                    isCompact: true,
+                                  ),
+                                ],
+                              ),
+                      ),
                     ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Expanded(child: ColoredBox(color: cor2)),
-                        Expanded(child: ColoredBox(color: cor1)),
-                      ],
+                    // Mesmos hex_cor1/hex_cor2 do SVG da corda; destaque real
+                    // no rodapé, inclusive para duas metades da mesma cor.
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 0, 8, 0),
+                      child: FutureBuilder<Map<String, dynamic>?>(
+                        future: futureCores,
+                        builder: (context, snapshot) {
+                          final refGraduacao = snapshot.data;
+                          final cor1 = _corGraduacaoCard(
+                            refGraduacao?['hex_cor1'],
+                            const Color(0xFFEDE7DB),
+                          );
+                          final cor2 = _corGraduacaoCard(
+                            refGraduacao?['hex_cor2'],
+                            cor1,
+                          );
+                          return Container(
+                            height: 20,
+                            clipBehavior: Clip.antiAlias,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: t.textSecondary.withAlpha(70),
+                                width: 0.8,
+                              ),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Expanded(child: ColoredBox(color: cor2)),
+                                Expanded(child: ColoredBox(color: cor1)),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
                     ),
-                  );
-                },
+                    SizedBox(
+                      height: 19,
+                      child: Center(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: Text(
+                            graduacao.toUpperCase(),
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 8.5,
+                              fontWeight: FontWeight.w900,
+                              color: t.textSecondary,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            SizedBox(height: 19, child: Center(child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Text(graduacao.toUpperCase(),
-                textAlign: TextAlign.center,
-                maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.w900,
-                    color: t.textSecondary)),
-            ))),
-          ]),
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -2525,9 +3038,7 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                       height: 58,
                       padding: const EdgeInsets.all(4),
                       decoration: BoxDecoration(
-                        color: isSemGraduacao
-                            ? t.cardAlt
-                            : cor.withAlpha(20),
+                        color: isSemGraduacao ? t.cardAlt : cor.withAlpha(20),
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(color: cor.withAlpha(56)),
                       ),
@@ -2883,20 +3394,26 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
       _alunoCuidadosCarregando = true;
     });
     try {
-      final resposta = await FichaCallableClient.call('gerenciarFichaInscricao', {
-        'aluno_id': alunoId, 'acao': 'ler',
-      });
+      final resposta = await FichaCallableClient.call(
+        'gerenciarFichaInscricao',
+        {'aluno_id': alunoId, 'acao': 'ler'},
+      );
       final ficha = resposta['ficha'];
       final saude = ficha is Map ? ficha['saude'] : null;
       if (saude is! Map) throw StateError('Ficha restrita indisponível');
       final condicoes = saude['condicoes'] is List
-          ? (saude['condicoes'] as List).map((e) => e.toString().trim())
-              .where((e) => e.isNotEmpty).join(', ')
+          ? (saude['condicoes'] as List)
+                .map((e) => e.toString().trim())
+                .where((e) => e.isNotEmpty)
+                .join(', ')
           : '';
       final detalhes = (saude['detalhes'] ?? '').toString().trim();
       final orientacao = (saude['orientacao'] ?? '').toString().trim();
-      final informacoes = [condicoes, detalhes, orientacao]
-          .where((e) => e.isNotEmpty).toList();
+      final informacoes = [
+        condicoes,
+        detalhes,
+        orientacao,
+      ].where((e) => e.isNotEmpty).toList();
       if (!mounted || _alunoCuidadosAbertoId != alunoId) return;
       setState(() {
         _alunoCuidadosTexto = informacoes.isEmpty
@@ -2907,7 +3424,8 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
     } catch (_) {
       if (!mounted || _alunoCuidadosAbertoId != alunoId) return;
       setState(() {
-        _alunoCuidadosTexto = 'Não foi possível consultar. Verifique acesso e conexão.';
+        _alunoCuidadosTexto =
+            'Não foi possível consultar. Verifique acesso e conexão.';
         _alunoCuidadosCarregando = false;
       });
     }
@@ -2949,21 +3467,43 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('⚠ CUIDADOS ESPECIAIS',
-                            maxLines: 1, overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 10.5,
-                                color: Color(0xFFBF7500), fontWeight: FontWeight.w900)),
+                        const Text(
+                          '⚠ CUIDADOS ESPECIAIS',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            color: Color(0xFFBF7500),
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
                         const SizedBox(height: 3),
                         if (_alunoCuidadosCarregando)
-                          const SizedBox(height: 15, width: 15,
-                              child: CircularProgressIndicator(strokeWidth: 2))
+                          const SizedBox(
+                            height: 15,
+                            width: 15,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
                         else
-                          Flexible(child: Text(_alunoCuidadosTexto,
-                              maxLines: 3, overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 10.5, height: 1.15,
-                                  fontWeight: FontWeight.w600))),
-                        const Text('Toque para voltar',
-                            style: TextStyle(fontSize: 9, color: Color(0xFF888888))),
+                          Flexible(
+                            child: Text(
+                              _alunoCuidadosTexto,
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 10.5,
+                                height: 1.15,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        const Text(
+                          'Toque para voltar',
+                          style: TextStyle(
+                            fontSize: 9,
+                            color: Color(0xFF888888),
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -2987,22 +3527,24 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
   }) {
     final possuiCuidados = dados['possui_cuidados_especiais'] == true;
     final nomeWidget = Text.rich(
-      TextSpan(children: [
-        if (possuiCuidados)
-          WidgetSpan(
-            alignment: PlaceholderAlignment.baseline,
-            baseline: TextBaseline.alphabetic,
-            child: Padding(
-              padding: const EdgeInsets.only(right: 4),
-              child: Icon(
-                Icons.warning_amber_rounded,
-                size: tamanhoFonte,
-                color: const Color(0xFFE49A00),
+      TextSpan(
+        children: [
+          if (possuiCuidados)
+            WidgetSpan(
+              alignment: PlaceholderAlignment.baseline,
+              baseline: TextBaseline.alphabetic,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: Icon(
+                  Icons.warning_amber_rounded,
+                  size: tamanhoFonte,
+                  color: const Color(0xFFE49A00),
+                ),
               ),
             ),
-          ),
-        TextSpan(text: nome.toUpperCase()),
-      ]),
+          TextSpan(text: nome.toUpperCase()),
+        ],
+      ),
       style: TextStyle(
         color: corTexto,
         fontSize: tamanhoFonte,
@@ -3041,153 +3583,179 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
             svgSnapshot.connectionState == ConnectionState.waiting;
         final mostrarCorda = modifiedSvg != null || isLoadingSvg;
 
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: SizedBox(
-            height: 92,
-            child: Material(
-              color: t.card,
-              borderRadius: BorderRadius.circular(t.cardRadius - 5),
-              clipBehavior: Clip.antiAlias,
-              child: InkWell(
-                onTap: () => _abrirDetalhesAluno(aluno.id),
-                child: Container(
-                  decoration: BoxDecoration(
+        return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: DisciplinaService.resumo(
+            aluno.id,
+          ).snapshots(includeMetadataChanges: true),
+          builder: (context, disciplinaSnapshot) {
+            final visual = DisciplinaVisualTurma.deSnapshot(disciplinaSnapshot);
+            final pendente = visual.pendente;
+            final suspenso = visual.suspenso;
+
+            return _marcadorVerificacao(
+              pendente,
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: SizedBox(
+                  height: 92,
+                  child: Material(
+                    color: t.card,
                     borderRadius: BorderRadius.circular(t.cardRadius - 5),
-                    border: Border.all(color: t.border),
-                    boxShadow: t.softShadow,
-                  ),
-                  child: Stack(
-                    children: [
-                      Positioned(
-                        top: 0,
-                        right: 0,
-                        child: _buildIndicadorAusencia(data, cantoCard: true),
-                      ),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          SizedBox(
-                            width: 92,
-                            child: Stack(
-                              fit: StackFit.expand,
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      onTap: () => _abrirDetalhesAluno(aluno.id),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(t.cardRadius - 5),
+                          border: Border.all(color: t.border),
+                          boxShadow: t.softShadow,
+                        ),
+                        child: Stack(
+                          children: [
+                            Positioned(
+                              top: 0,
+                              right: 0,
+                              child: _buildIndicadorAusencia(
+                                data,
+                                cantoCard: true,
+                              ),
+                            ),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                fotoUrl != null && fotoUrl.isNotEmpty
-                                    ? UaiStudentPhoto(
-                                        studentId: aluno.id,
-                                        imageUrl: fotoUrl,
+                                SizedBox(
+                                  width: 92,
+                                  child: Stack(
+                                    fit: StackFit.expand,
+                                    children: [
+                                      _buildFotoAlunoLista(
+                                        alunoId: aluno.id,
+                                        fotoUrl: fotoUrl,
                                         profile: UaiStudentPhotoProfile.list,
                                         fit: BoxFit.cover,
                                         fallback: _placeholderIcon(),
-                                      )
-                                    : _placeholderIcon(),
-                                Positioned(
-                                  bottom: 0,
-                                  left: 0,
-                                  right: 0,
-                                  child: Container(
-                                    height: 23,
-                                    color: t.primary.withAlpha(235),
-                                    child: Center(
-                                      child: Text(
-                                        '$idade ANOS',
-                                        style: TextStyle(
-                                          color: _readableOn(t.primary),
-                                          fontSize: 10.5,
-                                          fontWeight: FontWeight.bold,
+                                        suspenso: suspenso,
+                                      ),
+                                      Positioned(
+                                        bottom: 0,
+                                        left: 0,
+                                        right: 0,
+                                        child: _buildFaixaFotoDisciplina(
+                                          visual: visual,
+                                          t: t,
+                                          idade: idade,
                                         ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Expanded(
+                                  child: _painelDeslizanteCuidados(
+                                    alunoId: aluno.id,
+                                    conteudoNormal: Padding(
+                                      padding: suspenso
+                                          ? const EdgeInsets.fromLTRB(
+                                              10,
+                                              4,
+                                              6,
+                                              3,
+                                            )
+                                          : EdgeInsets.fromLTRB(
+                                              12,
+                                              graduacaoNome.isNotEmpty &&
+                                                      graduacaoNome !=
+                                                          'SEM GRADUAÇÃO'
+                                                  ? 7
+                                                  : 10,
+                                              8,
+                                              7,
+                                            ),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          _nomeAlunoComAlerta(
+                                            alunoId: aluno.id,
+                                            dados: data,
+                                            nome: nomeAluno,
+                                            tamanhoFonte: suspenso
+                                                ? 13.2
+                                                : 14.2,
+                                            corTexto: t.textPrimary,
+                                          ),
+                                          if (graduacaoNome.isNotEmpty &&
+                                              graduacaoNome !=
+                                                  'SEM GRADUAÇÃO') ...[
+                                            SizedBox(height: suspenso ? 1 : 4),
+                                            Text(
+                                              graduacaoNome,
+                                              style: TextStyle(
+                                                color: t.textSecondary,
+                                                fontSize: suspenso
+                                                    ? 10.2
+                                                    : 11.2,
+                                                fontWeight: FontWeight.w600,
+                                                height: 1.05,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ],
+                                          SizedBox(height: suspenso ? 1 : 4),
+                                          _buildLinhaStatusDisciplinaOuPresenca(
+                                            data,
+                                            visual: visual,
+                                            fonte: suspenso ? 9.8 : 10.8,
+                                          ),
+                                          SizedBox(height: suspenso ? 1 : 3),
+                                          SyncIndicator(
+                                            isPending: _syncService
+                                                .isDocumentPending(aluno),
+                                            isCompact: true,
+                                          ),
+                                        ],
                                       ),
                                     ),
                                   ),
                                 ),
+                                if (mostrarCorda)
+                                  SizedBox(
+                                    width: 58,
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(right: 6),
+                                      child: Center(
+                                        child: isLoadingSvg
+                                            ? SizedBox(
+                                                width: 22,
+                                                height: 22,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                      strokeWidth: 2,
+                                                      color: t.primary,
+                                                    ),
+                                              )
+                                            : SvgPicture.string(
+                                                modifiedSvg!,
+                                                height: 58,
+                                                fit: BoxFit.contain,
+                                              ),
+                                      ),
+                                    ),
+                                  ),
+                                const SizedBox(width: 4),
                               ],
                             ),
-                          ),
-                          Expanded(
-                            child: _painelDeslizanteCuidados(
-                              alunoId: aluno.id,
-                              conteudoNormal: Padding(
-                              padding: EdgeInsets.fromLTRB(
-                                12,
-                                graduacaoNome.isNotEmpty &&
-                                        graduacaoNome != 'SEM GRADUAÇÃO'
-                                    ? 7
-                                    : 10,
-                                8,
-                                7,
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  _nomeAlunoComAlerta(
-                                    alunoId: aluno.id,
-                                    dados: data,
-                                    nome: nomeAluno,
-                                    tamanhoFonte: 14.2,
-                                    corTexto: t.textPrimary,
-                                  ),
-                                  if (graduacaoNome.isNotEmpty &&
-                                      graduacaoNome != 'SEM GRADUAÇÃO') ...[
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      graduacaoNome,
-                                      style: TextStyle(
-                                        color: t.textSecondary,
-                                        fontSize: 11.2,
-                                        fontWeight: FontWeight.w600,
-                                        height: 1.05,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ],
-                                  const SizedBox(height: 4),
-                                  _buildLinhaUltimaPresenca(data),
-                                  const SizedBox(height: 3),
-                                  SyncIndicator(
-                                    isPending: _syncService.isDocumentPending(
-                                      aluno,
-                                    ),
-                                    isCompact: true,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            ),
-                          ),
-                          if (mostrarCorda)
-                            SizedBox(
-                              width: 58,
-                              child: Padding(
-                                padding: const EdgeInsets.only(right: 6),
-                                child: Center(
-                                  child: isLoadingSvg
-                                      ? SizedBox(
-                                          width: 22,
-                                          height: 22,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: t.primary,
-                                          ),
-                                        )
-                                      : SvgPicture.string(
-                                          modifiedSvg!,
-                                          height: 58,
-                                          fit: BoxFit.contain,
-                                        ),
-                                ),
-                              ),
-                            ),
-                          const SizedBox(width: 4),
-                        ],
+                          ],
+                        ),
                       ),
-                    ],
+                    ),
                   ),
                 ),
               ),
-            ),
-          ),
+            );
+          },
         );
       },
     );
@@ -3211,154 +3779,171 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
             svgSnapshot.connectionState == ConnectionState.waiting;
         final mostrarCorda = modifiedSvg != null || isLoadingSvg;
 
-        return Material(
-          color: t.card,
-          borderRadius: BorderRadius.circular(t.cardRadius - 6),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: () => _abrirDetalhesAluno(aluno.id),
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(t.cardRadius - 6),
-                border: Border.all(color: t.border),
-                boxShadow: t.softShadow,
-              ),
-              child: Stack(
-                children: [
-                  Positioned(
-                    top: 0,
-                    right: 0,
-                    child: _buildIndicadorAusencia(data, cantoCard: true),
-                  ),
-                  LayoutBuilder(
-                    builder: (context, constraints) {
-                      final cardWidth = constraints.maxWidth;
-                      final fotoWidth = cardWidth < 340 ? 78.0 : 88.0;
-                      final cordaWidth = mostrarCorda
-                          ? (cardWidth < 340 ? 42.0 : 50.0)
-                          : 0.0;
+        return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: DisciplinaService.resumo(
+            aluno.id,
+          ).snapshots(includeMetadataChanges: true),
+          builder: (context, disciplinaSnapshot) {
+            final visual = DisciplinaVisualTurma.deSnapshot(disciplinaSnapshot);
+            final pendente = visual.pendente;
+            final suspenso = visual.suspenso;
 
-                      return Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          SizedBox(
-                            width: fotoWidth,
-                            child: Stack(
-                              fit: StackFit.expand,
+            return _marcadorVerificacao(
+              pendente,
+              Material(
+                color: t.card,
+                borderRadius: BorderRadius.circular(t.cardRadius - 6),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: () => _abrirDetalhesAluno(aluno.id),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(t.cardRadius - 6),
+                      border: Border.all(color: t.border),
+                      boxShadow: t.softShadow,
+                    ),
+                    child: Stack(
+                      children: [
+                        Positioned(
+                          top: 0,
+                          right: 0,
+                          child: _buildIndicadorAusencia(data, cantoCard: true),
+                        ),
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final cardWidth = constraints.maxWidth;
+                            final fotoWidth = cardWidth < 340 ? 78.0 : 88.0;
+                            final cordaWidth = mostrarCorda
+                                ? (cardWidth < 340 ? 42.0 : 50.0)
+                                : 0.0;
+
+                            return Row(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                fotoUrl != null && fotoUrl.isNotEmpty
-                                    ? UaiStudentPhoto(
-                                        studentId: aluno.id,
-                                        imageUrl: fotoUrl,
+                                SizedBox(
+                                  width: fotoWidth,
+                                  child: Stack(
+                                    fit: StackFit.expand,
+                                    children: [
+                                      _buildFotoAlunoLista(
+                                        alunoId: aluno.id,
+                                        fotoUrl: fotoUrl,
                                         profile: UaiStudentPhotoProfile.list,
                                         fit: BoxFit.cover,
                                         fallback: _placeholderIcon(size: 42),
-                                      )
-                                    : _placeholderIcon(size: 42),
-                                Positioned(
-                                  bottom: 0,
-                                  left: 0,
-                                  right: 0,
-                                  child: Container(
-                                    height: 22,
-                                    color: t.primary.withAlpha(235),
-                                    child: Center(
-                                      child: Text(
-                                        '$idade ANOS',
-                                        style: TextStyle(
-                                          color: _readableOn(t.primary),
-                                          fontSize: 9.8,
-                                          fontWeight: FontWeight.bold,
+                                        suspenso: suspenso,
+                                      ),
+                                      Positioned(
+                                        bottom: 0,
+                                        left: 0,
+                                        right: 0,
+                                        child: _buildFaixaFotoDisciplina(
+                                          visual: visual,
+                                          t: t,
+                                          idade: idade,
                                         ),
                                       ),
-                                    ),
+                                    ],
                                   ),
                                 ),
-                              ],
-                            ),
-                          ),
-                          Expanded(
-                            child: _painelDeslizanteCuidados(
-                              alunoId: aluno.id,
-                              conteudoNormal: Padding(
-                              padding: EdgeInsets.fromLTRB(
-                                cardWidth < 340 ? 9 : 12,
-                                8,
-                                6,
-                                7,
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  _nomeAlunoComAlerta(
+                                Expanded(
+                                  child: _painelDeslizanteCuidados(
                                     alunoId: aluno.id,
-                                    dados: data,
-                                    nome: nomeAluno,
-                                    tamanhoFonte: cardWidth < 340 ? 12.4 : 13.2,
-                                    corTexto: t.textPrimary,
-                                  ),
-                                  if (graduacaoNome.isNotEmpty &&
-                                      graduacaoNome != 'SEM GRADUAÇÃO') ...[
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      graduacaoNome,
-                                      style: TextStyle(
-                                        fontSize: cardWidth < 340 ? 10.2 : 10.8,
-                                        color: t.textSecondary,
-                                        fontWeight: FontWeight.w600,
-                                        height: 1.05,
+                                    conteudoNormal: Padding(
+                                      padding: EdgeInsets.fromLTRB(
+                                        cardWidth < 340 ? 9 : 12,
+                                        8,
+                                        6,
+                                        7,
                                       ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ],
-                                  const SizedBox(height: 4),
-                                  _buildLinhaUltimaPresenca(data),
-                                  const SizedBox(height: 3),
-                                  SyncIndicator(
-                                    isPending: _syncService.isDocumentPending(
-                                      aluno,
-                                    ),
-                                    isCompact: true,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            ),
-                          ),
-                          if (mostrarCorda)
-                            SizedBox(
-                              width: cordaWidth,
-                              child: Padding(
-                                padding: const EdgeInsets.only(right: 5),
-                                child: Center(
-                                  child: isLoadingSvg
-                                      ? SizedBox(
-                                          width: 20,
-                                          height: 20,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: t.primary,
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          _nomeAlunoComAlerta(
+                                            alunoId: aluno.id,
+                                            dados: data,
+                                            nome: nomeAluno,
+                                            tamanhoFonte: cardWidth < 340
+                                                ? 12.4
+                                                : 13.2,
+                                            corTexto: t.textPrimary,
                                           ),
-                                        )
-                                      : SvgPicture.string(
-                                          modifiedSvg!,
-                                          height: cardWidth < 340 ? 42 : 50,
-                                          fit: BoxFit.contain,
-                                        ),
+                                          if (graduacaoNome.isNotEmpty &&
+                                              graduacaoNome !=
+                                                  'SEM GRADUAÇÃO') ...[
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              graduacaoNome,
+                                              style: TextStyle(
+                                                fontSize: cardWidth < 340
+                                                    ? 10.2
+                                                    : 10.8,
+                                                color: t.textSecondary,
+                                                fontWeight: FontWeight.w600,
+                                                height: 1.05,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ],
+                                          const SizedBox(height: 4),
+                                          _buildLinhaStatusDisciplinaOuPresenca(
+                                            data,
+                                            visual: visual,
+                                            fonte: cardWidth < 340 ? 9.6 : 10.2,
+                                          ),
+                                          const SizedBox(height: 3),
+                                          SyncIndicator(
+                                            isPending: _syncService
+                                                .isDocumentPending(aluno),
+                                            isCompact: true,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            ),
-                          const SizedBox(width: 4),
-                        ],
-                      );
-                    },
+                                if (mostrarCorda)
+                                  SizedBox(
+                                    width: cordaWidth,
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(right: 5),
+                                      child: Center(
+                                        child: isLoadingSvg
+                                            ? SizedBox(
+                                                width: 20,
+                                                height: 20,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                      strokeWidth: 2,
+                                                      color: t.primary,
+                                                    ),
+                                              )
+                                            : SvgPicture.string(
+                                                modifiedSvg!,
+                                                height: cardWidth < 340
+                                                    ? 42
+                                                    : 50,
+                                                fit: BoxFit.contain,
+                                              ),
+                                      ),
+                                    ),
+                                  ),
+                                const SizedBox(width: 4),
+                              ],
+                            );
+                          },
+                        ),
+                      ],
+                    ),
                   ),
-                ],
+                ),
               ),
-            ),
-          ),
+            );
+          },
         );
       },
     );
@@ -3380,35 +3965,45 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
             svgSnapshot.connectionState == ConnectionState.waiting;
         final mostrarCorda = modifiedSvg != null || isLoadingSvg;
 
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 7),
-          child: Material(
-            color: t.card,
-            borderRadius: BorderRadius.circular(t.cardRadius - 8),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: () => _abrirDetalhesAluno(aluno.id),
-              child: Container(
-                height: 58,
-                padding: const EdgeInsets.symmetric(horizontal: 9),
-                decoration: BoxDecoration(
+        return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: DisciplinaService.resumo(
+            aluno.id,
+          ).snapshots(includeMetadataChanges: true),
+          builder: (context, disciplinaSnapshot) {
+            final visual = DisciplinaVisualTurma.deSnapshot(disciplinaSnapshot);
+            final pendente = visual.pendente;
+            final suspenso = visual.suspenso;
+
+            return _marcadorVerificacao(
+              pendente,
+              Padding(
+                padding: const EdgeInsets.only(bottom: 7),
+                child: Material(
+                  color: t.card,
                   borderRadius: BorderRadius.circular(t.cardRadius - 8),
-                  border: Border.all(color: t.border),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 44,
-                      height: 44,
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: () => _abrirDetalhesAluno(aluno.id),
+                    child: Container(
+                      height: 58,
+                      padding: const EdgeInsets.symmetric(horizontal: 9),
                       decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: t.cardAlt,
+                        borderRadius: BorderRadius.circular(t.cardRadius - 8),
+                        border: Border.all(color: t.border),
                       ),
-                      child: fotoUrl != null && fotoUrl.isNotEmpty
-                          ? ClipOval(
-                              child: UaiStudentPhoto(
-                                studentId: aluno.id,
-                                imageUrl: fotoUrl,
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: t.cardAlt,
+                            ),
+                            child: ClipOval(
+                              child: _buildFotoAlunoLista(
+                                alunoId: aluno.id,
+                                fotoUrl: fotoUrl,
                                 profile: UaiStudentPhotoProfile.compact,
                                 fit: BoxFit.cover,
                                 fallback: Icon(
@@ -3416,54 +4011,72 @@ class _AlunosTurmaScreenState extends State<AlunosTurmaScreen> {
                                   size: 28,
                                   color: t.textMuted,
                                 ),
+                                suspenso: suspenso,
                               ),
-                            )
-                          : Icon(
-                              Icons.person_rounded,
-                              size: 28,
-                              color: t.textMuted,
                             ),
-                    ),
-                    const SizedBox(width: 11),
-                    Expanded(
-                      child: Text(
-                        nomeAluno,
-                        style: TextStyle(
-                          color: t.textPrimary,
-                          fontSize: 14.5,
-                          fontWeight: FontWeight.w800,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    SyncIndicator(
-                      isPending: _syncService.isDocumentPending(aluno),
-                      isCompact: true,
-                    ),
-                    if (mostrarCorda) ...[
-                      const SizedBox(width: 8),
-                      SizedBox(
-                        width: 30,
-                        height: 38,
-                        child: isLoadingSvg
-                            ? Center(
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: t.primary,
+                          ),
+                          const SizedBox(width: 11),
+                          Expanded(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  nomeAluno,
+                                  style: TextStyle(
+                                    color: t.textPrimary,
+                                    fontSize: 14.5,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                              )
-                            : SvgPicture.string(modifiedSvg!, height: 36),
+                                if (suspenso)
+                                  Text(
+                                    visual.expulso
+                                        ? 'ALUNO EXPULSO'
+                                        : 'SUSPENSO ATÉ ${visual.dataRetorno}',
+                                    style: TextStyle(
+                                      color: context.uai.warning,
+                                      fontSize: 10.2,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          SyncIndicator(
+                            isPending: _syncService.isDocumentPending(aluno),
+                            isCompact: true,
+                          ),
+                          if (mostrarCorda) ...[
+                            const SizedBox(width: 8),
+                            SizedBox(
+                              width: 30,
+                              height: 38,
+                              child: isLoadingSvg
+                                  ? Center(
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: t.primary,
+                                      ),
+                                    )
+                                  : SvgPicture.string(modifiedSvg!, height: 36),
+                            ),
+                          ],
+                          const SizedBox(width: 4),
+                          Icon(Icons.chevron_right_rounded, color: t.textMuted),
+                        ],
                       ),
-                    ],
-                    const SizedBox(width: 4),
-                    Icon(Icons.chevron_right_rounded, color: t.textMuted),
-                  ],
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
+            );
+          },
         );
       },
     );
@@ -3501,4 +4114,3 @@ class _GrupoIndicadorAlunos {
     required this.alunos,
   });
 }
-

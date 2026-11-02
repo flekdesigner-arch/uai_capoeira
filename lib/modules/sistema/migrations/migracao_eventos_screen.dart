@@ -22,24 +22,6 @@ class _MigracaoEventosScreenState extends State<MigracaoEventosScreen> {
   int _errorCount = 0;
   List<String> _errors = [];
 
-  // 🔥 MODELO DE EVENTO CORRIGIDO
-  final List<Map<String, dynamic>> _eventosExemplo = [
-    {
-      "nome": "2° BATIZADO & TROCA DE CORDAS - BOC",
-      "tipo_evento": "BATIZADO & TROCA DE CORDAS",
-      "data": "25/11/2018",
-      "horario": "10:00",
-      "local": "CENTRO DE CONVIVIO",
-      "cidade": "BOCAIUVA-MG",
-      "link_banner":
-          "https://drive.google.com/file/d/1Aq_m1OlCYUL2aRGsx9T5Ctqc5mw-zqLv/view",
-      "organizadores": "TICO-TICO, TOQUINHO, BODE, WARLEY",
-      "link_fotos_videos": "https://photos.app.goo.gl/rDKtWQ1uzZdMMVYC9",
-      "previa_video": "https://youtu.be/bwWPprzkoNg",
-      "link_playlist": "",
-      "status": "finalizado",
-    },
-  ];
 
   @override
   void initState() {

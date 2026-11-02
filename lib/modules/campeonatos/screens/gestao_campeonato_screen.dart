@@ -36,7 +36,7 @@ class _GestaoCampeonatoScreenState extends State<GestaoCampeonatoScreen>
   // Permissões
   bool _podeGerenciarInscricoes = false;
   bool _podeGerenciarFinanceiro = false;
-  bool _podeGerenciarChaves = false;
+
 
   @override
   void initState() {
@@ -53,7 +53,7 @@ class _GestaoCampeonatoScreenState extends State<GestaoCampeonatoScreen>
         await _permissaoService.temPermissao('pode_gerenciar_inscricoes');
     _podeGerenciarFinanceiro =
         await _permissaoService.temPermissao('pode_gerenciar_financeiro');
-    _podeGerenciarChaves =
+
         await _permissaoService.temPermissao('pode_gerenciar_chaves');
 
     if (mounted) setState(() {});

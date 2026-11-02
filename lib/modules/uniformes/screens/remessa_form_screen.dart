@@ -1,5 +1,4 @@
-import 'dart:typed_data';
-
+import '../dialogs/uniformes_motivo_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -7,6 +6,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/uniformes/services/remessa_service.dart';
+import 'package:uai_capoeira/modules/uniformes/services/uniformes_admin_service.dart';
+import 'package:uai_capoeira/modules/uniformes/widgets/remessa_precificacao_editor.dart';
 import 'package:uai_capoeira/modules/uniformes/services/fornecedor_service.dart';
 
 class RemessaFormScreen extends StatefulWidget {
@@ -22,9 +23,16 @@ class _RemessaFormScreenState extends State<RemessaFormScreen> {
   final _formKey = GlobalKey<FormState>();
   final RemessaService _remessaService = RemessaService();
   final FornecedorService _fornecedorService = FornecedorService();
+  final UniformesAdminService _admin = UniformesAdminService();
+  final _pricingKey = GlobalKey<RemessaPrecificacaoEditorState>();
+  bool _pricingLocked = false;
+  String _capaModo = 'icone';
+  String _capaIcone = 'remessa';
+  String? _imagemSugerida;
 
   final _nomeController = TextEditingController();
   final _observacoesController = TextEditingController();
+  final _custosExtrasController = TextEditingController(text: '0');
   DateTime? _dataEnvio;
   DateTime? _dataPrevista;
   String _status = 'pendente';
@@ -45,16 +53,19 @@ class _RemessaFormScreenState extends State<RemessaFormScreen> {
         : const Color(0xFFFFFFFF);
   }
 
-
-
   @override
   void initState() {
     super.initState();
     if (widget.remessaData != null) {
       _nomeController.text = widget.remessaData!['nome'] ?? '';
       _observacoesController.text = widget.remessaData!['observacoes'] ?? '';
+      _custosExtrasController.text = ((widget.remessaData!['custos_extras_centavos'] as num? ?? 0) / 100).toStringAsFixed(2);
       _status = widget.remessaData!['status'] ?? 'pendente';
       _capaUrl = (widget.remessaData!['capa_url'] ?? '').toString().trim();
+      _capaModo = (widget.remessaData!['capa_modo'] ?? (_capaUrl!.isNotEmpty ? 'imagem' : 'icone')).toString();
+      _capaIcone = (widget.remessaData!['capa_icone'] ?? 'remessa').toString();
+      _pricingLocked = true; // até verificar se há pedidos ou pagamentos
+      _verificarPedidosVinculados();
       if (_capaUrl != null && _capaUrl!.isEmpty) {
         _capaUrl = null;
       }
@@ -75,6 +86,90 @@ class _RemessaFormScreenState extends State<RemessaFormScreen> {
     }
   }
 
+  Future<void> _verificarPedidosVinculados() async {
+    if (widget.remessaId == null) return;
+    try {
+      final result = await FirebaseFirestore.instance.collection('pedidos_uniformes')
+          .where('remessa_id', isEqualTo: widget.remessaId).limit(1).get();
+      final paid = (widget.remessaData?['total_pago_fornecedor_centavos'] as num? ?? 0) > 0;
+      final closed = ['finalizada', 'recebida', 'cancelada'].contains(_status);
+      if (mounted) setState(() => _pricingLocked = paid || closed || result.docs.isNotEmpty);
+    } catch (_) {
+      // Modo conservador: sem verificar o histórico, não editar valores.
+      if (mounted) setState(() => _pricingLocked = true);
+    }
+  }
+
+  Future<void> _selecionarCapa() async {
+    final arquivo = await ImagePicker().pickImage(source: ImageSource.gallery,
+      maxWidth: 1400, imageQuality: 86);
+    if (arquivo != null && mounted) {
+      setState(() { _capaArquivo = arquivo; _capaModo = 'imagem'; });
+    }
+  }
+
+  void _usarImagemCatalogo(String url) {
+    if (url.isEmpty || _capaArquivo != null || _capaUrl != null) return;
+    if (mounted) {
+      setState(() {
+        _imagemSugerida = url;
+        _capaModo = 'imagem';
+      });
+    }
+  }
+
+  IconData _iconeCapa(String tipo) => switch (tipo) {
+    'camisa' => Icons.checkroom_rounded,
+    'calca' => Icons.dry_cleaning_outlined,
+    'estoque' => Icons.inventory_2_rounded,
+    'uniforme' => Icons.sports_martial_arts_rounded,
+    _ => Icons.local_shipping_rounded,
+  };
+
+  Widget _editorCapa() {
+    final t = context.uai;
+    final imagem = _capaUrl ?? _imagemSugerida;
+    return Card(child: Padding(padding: const EdgeInsets.all(14), child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Text('Identidade visual da remessa', style: TextStyle(
+        fontWeight: FontWeight.w900, fontSize: 16, color: t.textPrimary)),
+      const SizedBox(height: 6),
+      Text('Use a foto do catálogo, envie outra imagem ou escolha um ícone.',
+        style: TextStyle(color: t.textSecondary, fontSize: 12)),
+      const SizedBox(height: 12),
+      Center(child: ClipRRect(borderRadius: BorderRadius.circular(16),
+        child: Container(width: 110, height: 105, alignment: Alignment.center,
+          color: t.primary.withAlpha(22),
+          child: _capaModo == 'imagem' && _capaArquivo != null
+            ? FutureBuilder(future: _capaArquivo!.readAsBytes(), builder: (ctx, snap) =>
+                snap.hasData ? Image.memory(snap.data!, fit: BoxFit.cover,
+                  width: 110, height: 105) : const CircularProgressIndicator())
+            : _capaModo == 'imagem' && imagem != null && imagem.isNotEmpty
+            ? Image.network(imagem, fit: BoxFit.cover, width: 110, height: 105,
+                errorBuilder: (_, error, stack) => Icon(Icons.image_not_supported, color: t.primary))
+            : Icon(_iconeCapa(_capaIcone), size: 52, color: t.primary)))),
+      const SizedBox(height: 10),
+      Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.center, children: [
+        OutlinedButton.icon(onPressed: _selecionarCapa, icon: const Icon(Icons.upload_file),
+          label: const Text('Enviar imagem')),
+        if (imagem != null && imagem.isNotEmpty)
+          OutlinedButton.icon(onPressed: () => setState(() {
+            _capaModo = 'imagem'; _capaArquivo = null;
+          }), icon: const Icon(Icons.photo_library_outlined),
+            label: const Text('Usar imagem do catálogo')),
+        PopupMenuButton<String>(tooltip: 'Selecionar ícone da remessa',
+          onSelected: (v) => setState(() { _capaModo = 'icone'; _capaIcone = v; }),
+          itemBuilder: (_) => const [
+            PopupMenuItem(value: 'camisa', child: Text('Camisa')),
+            PopupMenuItem(value: 'calca', child: Text('Calça')),
+            PopupMenuItem(value: 'uniforme', child: Text('Uniforme')),
+            PopupMenuItem(value: 'estoque', child: Text('Estoque')),
+            PopupMenuItem(value: 'remessa', child: Text('Caminhão / Remessa')),
+          ], child: const Chip(avatar: Icon(Icons.palette_outlined), label: Text('Ícone'))),
+      ]),
+    ])));
+  }
+
   Future<void> _carregarFornecedor(String fornecedorId) async {
     final doc = await _fornecedorService.getFornecedor(fornecedorId);
     if (doc.exists) {
@@ -90,111 +185,37 @@ class _RemessaFormScreenState extends State<RemessaFormScreen> {
   void dispose() {
     _nomeController.dispose();
     _observacoesController.dispose();
+    _custosExtrasController.dispose();
     super.dispose();
-  }
-
-  Future<void> _selecionarCapa() async {
-    try {
-      final picker = ImagePicker();
-      final imagem = await picker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 82,
-        maxWidth: 1600,
-      );
-
-      if (imagem != null && mounted) {
-        setState(() => _capaArquivo = imagem);
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Não foi possível selecionar a capa.'),
-            backgroundColor: context.uai.error,
-          ),
-        );
-      }
-    }
-  }
-
-  void _removerCapa() {
-    setState(() {
-      _capaArquivo = null;
-      _capaUrl = null;
-    });
-  }
-
-  Widget _capaPlaceholder(BuildContext context) {
-    return Container(
-      height: 150,
-      width: double.infinity,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: context.uai.cardAlt,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.local_shipping_rounded,
-            size: 42,
-            color: context.uai.textMuted,
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Sem capa • será usado o caminhão',
-            style: TextStyle(
-              color: context.uai.textMuted,
-              fontSize: 11,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _previewCapa(BuildContext context) {
-    if (_capaArquivo != null) {
-      return FutureBuilder<List<int>>(
-        future: _capaArquivo!.readAsBytes(),
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            return Container(
-              height: 150,
-              alignment: Alignment.center,
-              child: const CircularProgressIndicator(strokeWidth: 2),
-            );
-          }
-
-          return Image.memory(
-            Uint8List.fromList(snapshot.data!),
-            fit: BoxFit.cover,
-            width: double.infinity,
-            height: 150,
-          );
-        },
-      );
-    }
-
-    if (_capaUrl != null && _capaUrl!.isNotEmpty) {
-      return Image.network(
-        _capaUrl!,
-        fit: BoxFit.cover,
-        width: double.infinity,
-        height: 150,
-        errorBuilder: (_, _, _) => _capaPlaceholder(context),
-      );
-    }
-
-    return _capaPlaceholder(context);
   }
 
   Future<void> _salvar() async {
     if (!_formKey.currentState!.validate()) return;
+    List<Map<String, dynamic>>? precificacao;
+    if (!_pricingLocked) {
+      try {
+        precificacao = _pricingKey.currentState!.validarEObterItens();
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+        return;
+      }
+    }
+    if (_fornecedorId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Selecione o fornecedor da remessa.')));
+      return;
+    }
+    final extraInput = _custosExtrasController.text.trim().replaceAll(',', '.');
+    final extras = num.tryParse(extraInput);
+    if (extras == null || extras < 0 || !extras.isFinite ||
+        ((extras * 100).round() - extras * 100).abs() > 0.000001) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Informe custos extras válidos, com até duas casas decimais.')));
+      return;
+    }
     setState(() => _isLoading = true);
     try {
-      String? capaFinal = _capaUrl;
+      String? capaFinal = _capaUrl ?? _imagemSugerida;
 
       if (_capaArquivo != null) {
         final bytes = await _capaArquivo!.readAsBytes();
@@ -208,11 +229,25 @@ class _RemessaFormScreenState extends State<RemessaFormScreen> {
         );
 
         capaFinal = await storageRef.getDownloadURL();
+        _capaUrl = capaFinal;
+        _capaArquivo = null;
       }
 
+      String? motivo;
+      if (_status == 'cancelada') {
+        if (!mounted) return;
+        motivo = await solicitarMotivoUniformes(
+          context,
+          'Justificativa do cancelamento',
+        );
+        if (motivo == null) return;
+      }
       final dados = {
+        'motivo': ?motivo,
         'nome': _nomeController.text.trim(),
         'capa_url': capaFinal,
+        'capa_modo': _capaModo,
+        'capa_icone': _capaIcone,
         'data_envio': _dataEnvio != null
             ? Timestamp.fromDate(_dataEnvio!)
             : null,
@@ -225,29 +260,30 @@ class _RemessaFormScreenState extends State<RemessaFormScreen> {
         'fornecedor_id': _fornecedorId,
       };
 
+      String? createdId;
       if (widget.remessaId == null) {
-        final remessaId = await _remessaService.criarRemessa(dados);
-        for (var pedidoId in _pedidosSelecionados) {
-          await _remessaService.vincularPedido(pedidoId, remessaId);
-        }
-        if (_status == 'em_confeccao') {
-          await _atualizarPedidosParaConfeccao(_pedidosSelecionados);
-        }
+        createdId = await _remessaService.criarRemessa(dados);
       } else {
         await _remessaService.atualizarRemessa(widget.remessaId!, dados);
-        final atuais = widget.remessaData!['pedidos_ids'] ?? [];
-        for (var id in _pedidosSelecionados) {
-          if (!atuais.contains(id)) {
-            await _remessaService.vincularPedido(id, widget.remessaId!);
-          }
-        }
-        for (var id in atuais) {
-          if (!_pedidosSelecionados.contains(id)) {
-            await _remessaService.desvincularPedido(id, widget.remessaId!);
-          }
-        }
-        if (_status == 'em_confeccao') {
-          await _atualizarPedidosParaConfeccao(_pedidosSelecionados);
+      }
+      // O editor de custos pertence ao próprio formulário da remessa.
+      // A callable valida cada variação e congela os preços históricos.
+      if (precificacao != null) {
+        try {
+          await _admin.call('configurarCustosRemessaUniformes', {
+            'remessaId': createdId ?? widget.remessaId,
+            'itens': precificacao,
+            'custosExtras': extras.toDouble(),
+          });
+        } catch (e) {
+          // O cadastro pode já ter sido criado: nunca dizer que foi salvo
+          // integralmente quando a segunda operação falhou.
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+            'A remessa foi cadastrada, mas a precificação não foi confirmada. '
+            'Abra Editar Remessa e tente novamente. Detalhe: $e')));
+          Navigator.pop(context, true);
+          return;
         }
       }
 
@@ -279,15 +315,6 @@ class _RemessaFormScreenState extends State<RemessaFormScreen> {
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _atualizarPedidosParaConfeccao(List<String> pedidosIds) async {
-    for (var id in pedidosIds) {
-      await FirebaseFirestore.instance
-          .collection('pedidos_uniformes')
-          .doc(id)
-          .update({'status': 'em_confeccao'});
     }
   }
 
@@ -468,6 +495,31 @@ class _RemessaFormScreenState extends State<RemessaFormScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
+                  RemessaPrecificacaoEditor(
+                    key: _pricingKey,
+                    initialRows: widget.remessaData?['precificacao_itens'] as List<dynamic>? ?? const [],
+                    locked: _pricingLocked,
+                    onImagemSugerida: _usarImagemCatalogo,
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(controller: _custosExtrasController,
+                    enabled: !_pricingLocked,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'Custos extras da remessa (R\$)',
+                      helperText: 'Frete, transporte ou taxas da confecção (opcional)',
+                      prefixIcon: Icon(Icons.local_shipping_outlined))),
+                  const SizedBox(height: 12),
+                  Card(child: ExpansionTile(
+                    initiallyExpanded: false,
+                    maintainState: true,
+                    leading: Icon(Icons.photo_library_outlined, color: primary),
+                    title: const Text('Identidade visual da remessa',
+                      style: TextStyle(fontWeight: FontWeight.w800)),
+                    subtitle: const Text('Imagem do catálogo, upload ou ícone'),
+                    children: [_editorCapa()],
+                  )),
+                  const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     initialValue: _status,
                     style: TextStyle(color: textPrimary),
@@ -741,10 +793,11 @@ class _SelecionarPedidosDialogState extends State<_SelecionarPedidosDialog> {
                     .orderBy('data_pedido', descending: true)
                     .snapshots(),
                 builder: (context, snapshot) {
-                  if (!snapshot.hasData)
-                    { return Center(
+                  if (!snapshot.hasData) {
+                    return Center(
                       child: CircularProgressIndicator(color: primary),
-                    ); }
+                    );
+                  }
                   var docs = snapshot.data!.docs;
                   if (_search.isNotEmpty) {
                     docs = docs.where((doc) {
@@ -881,10 +934,11 @@ class _SelecionarFornecedorDialogState
                     .orderBy('nome')
                     .snapshots(),
                 builder: (context, snapshot) {
-                  if (!snapshot.hasData)
-                    { return Center(
+                  if (!snapshot.hasData) {
+                    return Center(
                       child: CircularProgressIndicator(color: primary),
-                    ); }
+                    );
+                  }
                   var docs = snapshot.data!.docs;
                   if (_search.isNotEmpty) {
                     docs = docs.where((d) {
@@ -893,13 +947,14 @@ class _SelecionarFornecedorDialogState
                       return nome.toLowerCase().contains(_search);
                     }).toList();
                   }
-                  if (docs.isEmpty)
-                    { return Center(
+                  if (docs.isEmpty) {
+                    return Center(
                       child: Text(
                         'Nenhum fornecedor encontrado',
                         style: TextStyle(color: textMuted),
                       ),
-                    ); }
+                    );
+                  }
                   return ListView.builder(
                     itemCount: docs.length,
                     itemBuilder: (_, i) {

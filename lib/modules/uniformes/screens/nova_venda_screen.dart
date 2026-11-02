@@ -48,8 +48,6 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
         : const Color(0xFFFFFFFF);
   }
 
-
-
   @override
   void dispose() {
     _observacoesController.dispose();
@@ -115,13 +113,7 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
     setState(() => _salvando = true);
     try {
       final itensPersistidos = _itensVenda.map((item) {
-        return <String, dynamic>{
-          ...item,
-          'status_entrega': _statusEntrega,
-          if (_statusEntrega == 'entregue')
-            'entregue_em': DateTime.now().toIso8601String(),
-          if (_statusEntrega == 'entregue') 'entregue_por': currentUser?.uid,
-        };
+        return <String, dynamic>{...item, 'status_entrega': _statusEntrega};
       }).toList();
 
       final dadosVenda = {
@@ -142,8 +134,8 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
         dadosVenda,
         formaPagamentoInicial:
             (_statusPagamento == 'pago' || _statusPagamento == 'parcial')
-                ? _formaPagamento
-                : null,
+            ? _formaPagamento
+            : null,
       );
       debugPrint('[UNIFORMES_WINDOWS] UI 02 service finalizado');
 
@@ -174,7 +166,7 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Não foi possível registrar a venda agora. Verifique os dados e tente novamente.',
+              'Não foi possível registrar a venda: $e',
               style: TextStyle(color: _readableOn(context.uai.error)),
             ),
             backgroundColor: context.uai.error,
@@ -522,13 +514,29 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
                     ),
                   ),
 
-                  if (_statusPagamento == 'pago' || _statusPagamento == 'parcial') ...[
+                  if (_statusPagamento == 'pago' ||
+                      _statusPagamento == 'parcial') ...[
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
                       initialValue: _formaPagamento,
-                      decoration: const InputDecoration(labelText: 'Forma de pagamento'),
-                      items: const ['PIX', 'Dinheiro', 'Cartão', 'Transferência', 'Outro'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                      onChanged: (v) => setState(() => _formaPagamento = v ?? 'Outro'),
+                      decoration: const InputDecoration(
+                        labelText: 'Forma de pagamento',
+                      ),
+                      items:
+                          const [
+                                'PIX',
+                                'Dinheiro',
+                                'Cartão',
+                                'Transferência',
+                                'Outro',
+                              ]
+                              .map(
+                                (e) =>
+                                    DropdownMenuItem(value: e, child: Text(e)),
+                              )
+                              .toList(),
+                      onChanged: (v) =>
+                          setState(() => _formaPagamento = v ?? 'Outro'),
                     ),
                   ],
 
@@ -576,7 +584,9 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
                       color: cardBg,
-                      borderRadius: BorderRadius.circular(context.uai.cardRadius),
+                      borderRadius: BorderRadius.circular(
+                        context.uai.cardRadius,
+                      ),
                       border: Border.all(color: border),
                       boxShadow: context.uai.softShadow,
                     ),
@@ -585,7 +595,10 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
                       children: [
                         Text(
                           'STATUS DA ENTREGA',
-                          style: TextStyle(fontWeight: FontWeight.bold, color: textPrimary),
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: textPrimary,
+                          ),
                         ),
                         const SizedBox(height: 12),
                         SegmentedButton<String>(
@@ -604,7 +617,9 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
                           selected: {_statusEntrega},
                           onSelectionChanged: _salvando
                               ? null
-                              : (selected) => setState(() => _statusEntrega = selected.first),
+                              : (selected) => setState(
+                                  () => _statusEntrega = selected.first,
+                                ),
                         ),
                       ],
                     ),
@@ -653,4 +668,3 @@ class _NovaVendaScreenState extends State<NovaVendaScreen> {
     );
   }
 }
-

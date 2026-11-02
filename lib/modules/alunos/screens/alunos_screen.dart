@@ -1,10 +1,12 @@
+import 'package:uai_capoeira/modules/disciplina/disciplina_service.dart';
 import 'package:uai_capoeira/core/session_log/session_log_service.dart';
 import 'package:uai_capoeira/modules/alunos/parentesco/rede_parentesco_screen.dart';
 import 'dart:async';
 import 'dart:convert';
 
 import 'alunos_json_export_stub.dart'
-    if (dart.library.io) 'alunos_json_export_io.dart' as json_file;
+    if (dart.library.io) 'alunos_json_export_io.dart'
+    as json_file;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
@@ -56,6 +58,9 @@ class _AlunosScreenState extends State<AlunosScreen> {
     'Visualização Compacta',
   ];
 
+  Timer? _disciplinaTimer, _consultaDisciplinaTimer;
+  final _disciplina = <String, Map<String, dynamic>>{};
+  final _disciplinaConsultados = <String>{}, _disciplinaFila = <String>{};
   Timer? _searchDebounce;
   bool _podeExportarAlunos = false;
   bool _exportandoAlunos = false;
@@ -67,6 +72,14 @@ class _AlunosScreenState extends State<AlunosScreen> {
   @override
   void initState() {
     super.initState();
+    _disciplinaTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) {
+        setState(() {
+          _disciplinaConsultados.clear();
+          _disciplina.clear();
+        });
+      }
+    });
     _loadSvg();
     _preloadGraduacoes();
     _verificarPermissaoExportacao();
@@ -74,8 +87,87 @@ class _AlunosScreenState extends State<AlunosScreen> {
 
   @override
   void dispose() {
+    _disciplinaTimer?.cancel();
+    _consultaDisciplinaTimer?.cancel();
     _searchDebounce?.cancel();
     super.dispose();
+  }
+
+  Widget _fotoDisciplinar(String id, Widget foto) {
+    // Apenas alunos renderizados entram na fila. Uma consulta por lote visível,
+    // sem um StreamBuilder adicional por aluno da listagem geral.
+    if (!_disciplinaConsultados.contains(id)) {
+      _disciplinaFila.add(id);
+      _consultaDisciplinaTimer ??= Timer(
+        const Duration(milliseconds: 50),
+        () async {
+          _consultaDisciplinaTimer = null;
+          final ids = _disciplinaFila.toList();
+          _disciplinaFila.clear();
+          _disciplinaConsultados.addAll(ids);
+          Map<String, Map<String, dynamic>> dados = {};
+          try {
+            dados = await DisciplinaService.buscarResumos(ids);
+          } catch (_) {}
+          if (mounted) setState(() => _disciplina.addAll(dados));
+        },
+      );
+    }
+    if (!_disciplina.containsKey(id)) {
+      return Tooltip(
+        message: 'Verificação disciplinar pendente',
+        child: Stack(
+          fit: StackFit.passthrough,
+          children: [
+            foto,
+            Positioned(
+              bottom: 1,
+              right: 1,
+              child: Icon(
+                Icons.more_horiz,
+                size: 14,
+                color: context.uai.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    final evento = DisciplinaService.suspensaoAtual(
+      _disciplina[id],
+      DisciplinaService.hoje(),
+    );
+    if (evento == null) return foto;
+    return Tooltip(
+      message: evento['tipo'] == 'expulsao'
+          ? 'Aluno expulso'
+          : 'Suspenso até ${evento['data_retorno'] ?? evento['fim_exclusivo']}',
+      child: ColorFiltered(
+        colorFilter: const ColorFilter.matrix([
+          .2126,
+          .7152,
+          .0722,
+          0,
+          0,
+          .2126,
+          .7152,
+          .0722,
+          0,
+          0,
+          .2126,
+          .7152,
+          .0722,
+          0,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+        ]),
+        child: foto,
+      ),
+    );
   }
 
   String _normalizeString(String text) {
@@ -140,42 +232,75 @@ class _AlunosScreenState extends State<AlunosScreen> {
       if (!mounted) return;
       setState(() => _podeExportarAlunos = peso is num && peso >= 90);
     } catch (e) {
-      debugPrint('Exportação de alunos: não foi possível validar permissão: $e');
+      debugPrint(
+        'Exportação de alunos: não foi possível validar permissão: $e',
+      );
     }
   }
 
   // Mantém estrutura, chaves e tipos para comparar fichas antigas e novas.
   // Para compartilhamento externo, não exporta valores pessoais livres.
-  dynamic _valorParaJson(dynamic value, {required bool anonimizar, String key = ''}) {
+  dynamic _valorParaJson(
+    dynamic value, {
+    required bool anonimizar,
+    String key = '',
+  }) {
     if (value == null || value is bool || value is num) return value;
     if (value is Timestamp) {
-      return {'__tipo': 'timestamp', 'valor': anonimizar ? '<data>' : value.toDate().toIso8601String()};
+      return {
+        '__tipo': 'timestamp',
+        'valor': anonimizar ? '<data>' : value.toDate().toIso8601String(),
+      };
     }
     if (value is DateTime) {
-      return {'__tipo': 'datetime', 'valor': anonimizar ? '<data>' : value.toIso8601String()};
+      return {
+        '__tipo': 'datetime',
+        'valor': anonimizar ? '<data>' : value.toIso8601String(),
+      };
     }
     if (value is DocumentReference) {
-      return {'__tipo': 'reference', 'valor': anonimizar ? '<referencia>' : value.path};
+      return {
+        '__tipo': 'reference',
+        'valor': anonimizar ? '<referencia>' : value.path,
+      };
     }
     if (value is GeoPoint) {
-      return {'__tipo': 'geopoint', 'valor': anonimizar ? '<coordenadas>' : {'latitude': value.latitude, 'longitude': value.longitude}};
+      return {
+        '__tipo': 'geopoint',
+        'valor': anonimizar
+            ? '<coordenadas>'
+            : {'latitude': value.latitude, 'longitude': value.longitude},
+      };
     }
     if (value is List) {
-      return value.map((e) => _valorParaJson(e, anonimizar: anonimizar, key: key)).toList();
+      return value
+          .map((e) => _valorParaJson(e, anonimizar: anonimizar, key: key))
+          .toList();
     }
     if (value is Map) {
-      return value.map<String, dynamic>((k, v) => MapEntry(
-        k.toString(),
-        _valorParaJson(v, anonimizar: anonimizar, key: k.toString()),
-      ));
+      return value.map<String, dynamic>(
+        (k, v) => MapEntry(
+          k.toString(),
+          _valorParaJson(v, anonimizar: anonimizar, key: k.toString()),
+        ),
+      );
     }
     if (value is String && anonimizar) {
       final campo = key.toLowerCase();
       // Categorias/estados são importantes para comparar o schema.
       const chavesNaoPessoais = <String>{
-        'status_atividade', 'status', 'sexo', 'origem', 'tipo',
-        'grau_emergencia', 'grau_responsavel', 'parentesco',
-        'estado_civil', 'tipo_sanguineo', 'turno', 'modalidade',
+        'status_atividade',
+        'status',
+        'sexo',
+        'origem',
+        'tipo',
+        'grau_emergencia',
+        'grau_responsavel',
+        'parentesco',
+        'estado_civil',
+        'tipo_sanguineo',
+        'turno',
+        'modalidade',
       };
       if (chavesNaoPessoais.contains(campo)) return value;
       if (value.trim().isEmpty) return '';
@@ -187,7 +312,8 @@ class _AlunosScreenState extends State<AlunosScreen> {
 
   Future<void> _abrirExportacaoAlunos() async {
     if (!_exportacaoDisponivelNoWindows ||
-        !_podeExportarAlunos || _exportandoAlunos) {
+        !_podeExportarAlunos ||
+        _exportandoAlunos) {
       return;
     }
 
@@ -206,7 +332,9 @@ class _AlunosScreenState extends State<AlunosScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Escolha os documentos da coleção alunos para gerar um JSON de diagnóstico.'),
+                  const Text(
+                    'Escolha os documentos da coleção alunos para gerar um JSON de diagnóstico.',
+                  ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
                     initialValue: filtro,
@@ -216,9 +344,18 @@ class _AlunosScreenState extends State<AlunosScreen> {
                       border: OutlineInputBorder(),
                     ),
                     items: const [
-                      DropdownMenuItem(value: 'TODOS', child: Text('Todos os alunos')),
-                      DropdownMenuItem(value: 'ATIVO(A)', child: Text('Somente ativos')),
-                      DropdownMenuItem(value: 'INATIVO(A)', child: Text('Somente inativos')),
+                      DropdownMenuItem(
+                        value: 'TODOS',
+                        child: Text('Todos os alunos'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'ATIVO(A)',
+                        child: Text('Somente ativos'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'INATIVO(A)',
+                        child: Text('Somente inativos'),
+                      ),
                     ],
                     onChanged: (v) {
                       if (v != null) setLocalState(() => filtro = v);
@@ -229,8 +366,11 @@ class _AlunosScreenState extends State<AlunosScreen> {
                     contentPadding: EdgeInsets.zero,
                     value: anonimizar,
                     title: const Text('Ocultar dados pessoais (recomendado)'),
-                    subtitle: const Text('Preserva nomes de campos, estruturas e tipos, mas oculta valores pessoais.'),
-                    onChanged: (v) => setLocalState(() => anonimizar = v ?? true),
+                    subtitle: const Text(
+                      'Preserva nomes de campos, estruturas e tipos, mas oculta valores pessoais.',
+                    ),
+                    onChanged: (v) =>
+                        setLocalState(() => anonimizar = v ?? true),
                   ),
                   if (!anonimizar)
                     Text(
@@ -248,7 +388,8 @@ class _AlunosScreenState extends State<AlunosScreen> {
               FilledButton.icon(
                 icon: const Icon(Icons.download_rounded),
                 label: const Text('Gerar JSON'),
-                onPressed: () => Navigator.pop(dialogContext, (filtro, anonimizar)),
+                onPressed: () =>
+                    Navigator.pop(dialogContext, (filtro, anonimizar)),
               ),
             ],
           );
@@ -268,7 +409,9 @@ class _AlunosScreenState extends State<AlunosScreen> {
           .doc(user.uid)
           .get(const GetOptions(source: Source.server));
       final peso = permissao.data()?['peso_permissao'];
-      if (peso is! num || peso < 90) throw StateError('Permissão administrativa necessária.');
+      if (peso is! num || peso < 90) {
+        throw StateError('Permissão administrativa necessária.');
+      }
 
       etapaExportacao = 'lendo a lista de alunos já carregada';
       final filtroSelecionado = configuracao.$1;
@@ -312,16 +455,21 @@ class _AlunosScreenState extends State<AlunosScreen> {
         'total_documentos': registros.length,
         'total_documentos_na_lista': documentos.length,
         'dados_em_cache_local': _docsAlunosVieramDoCache,
-        'observacao': 'Somente documentos da coleção alunos. Não inclui subcoleções.',
+        'observacao':
+            'Somente documentos da coleção alunos. Não inclui subcoleções.',
         'documentos': registros,
       };
       etapaExportacao = 'serializando documentos em JSON';
       final conteudo = const JsonEncoder.withIndent('  ').convert(exportacao);
       if (!mounted) return;
       final agora = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-      final tipo = filtroSelecionado == 'TODOS' ? 'todos' :
-          filtroSelecionado == 'ATIVO(A)' ? 'ativos' : 'inativos';
-      final filename = 'uai_alunos_${tipo}_${anonimizarDados ? 'anonimo' : 'completo'}_$agora.json';
+      final tipo = filtroSelecionado == 'TODOS'
+          ? 'todos'
+          : filtroSelecionado == 'ATIVO(A)'
+          ? 'ativos'
+          : 'inativos';
+      final filename =
+          'uai_alunos_${tipo}_${anonimizarDados ? 'anonimo' : 'completo'}_$agora.json';
       // Gravação nativa, sem diálogo de plugins: em Windows utiliza Downloads.
       // A versão Web/Android não executa este caminho (botão oculto).
       etapaExportacao = 'gravando em Downloads';
@@ -331,17 +479,25 @@ class _AlunosScreenState extends State<AlunosScreen> {
         bytes,
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('JSON salvo: ${registros.length} documento(s).\n$caminhoSalvo'),
-        backgroundColor: context.uai.success,
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'JSON salvo: ${registros.length} documento(s).\n$caminhoSalvo',
+          ),
+          backgroundColor: context.uai.success,
+        ),
+      );
     } catch (e, stack) {
-      debugPrint('Falha na exportação JSON dos alunos na etapa $etapaExportacao: $e\n$stack');
+      debugPrint(
+        'Falha na exportação JSON dos alunos na etapa $etapaExportacao: $e\n$stack',
+      );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Falha ao exportar ($etapaExportacao): $e'),
-        backgroundColor: context.uai.error,
-      ));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Falha ao exportar ($etapaExportacao): $e'),
+          backgroundColor: context.uai.error,
+        ),
+      );
     } finally {
       if (mounted) setState(() => _exportandoAlunos = false);
     }
@@ -572,8 +728,13 @@ class _AlunosScreenState extends State<AlunosScreen> {
   }
 
   void _abrirDetalheAluno(String alunoId) {
-    unawaited(SessionLogService.instance.recordEntityAccess(
-      module: 'alunos.detalhe', entityType: 'aluno', entityId: alunoId));
+    unawaited(
+      SessionLogService.instance.recordEntityAccess(
+        module: 'alunos.detalhe',
+        entityType: 'aluno',
+        entityId: alunoId,
+      ),
+    );
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -643,7 +804,12 @@ class _AlunosScreenState extends State<AlunosScreen> {
                 : const Icon(Icons.file_download_outlined),
             onPressed: _exportandoAlunos ? null : _abrirExportacaoAlunos,
           ),
- IconButton(tooltip: "Organizar parentescos", icon: const Icon(Icons.family_restroom), onPressed: () => abrirRedeParentesco(context, abrirPerfil: _abrirDetalheAluno)),
+        IconButton(
+          tooltip: "Organizar parentescos",
+          icon: const Icon(Icons.family_restroom),
+          onPressed: () =>
+              abrirRedeParentesco(context, abrirPerfil: _abrirDetalheAluno),
+        ),
         IconButton(
           icon: Icon(_viewModeIcons[_viewMode], color: appBarFg),
           tooltip: _viewModeTooltips[_viewMode],
@@ -693,15 +859,11 @@ class _AlunosScreenState extends State<AlunosScreen> {
                         ),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(t.buttonRadius),
-                          borderSide: BorderSide(
-                            color: appBarFg.withAlpha(36),
-                          ),
+                          borderSide: BorderSide(color: appBarFg.withAlpha(36)),
                         ),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(t.buttonRadius),
-                          borderSide: BorderSide(
-                            color: appBarFg.withAlpha(36),
-                          ),
+                          borderSide: BorderSide(color: appBarFg.withAlpha(36)),
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(t.buttonRadius),
@@ -1084,7 +1246,11 @@ class _AlunosScreenState extends State<AlunosScreen> {
                 clipBehavior: Clip.antiAlias,
                 child: InkWell(
                   onTap: () => _abrirDetalheAluno(aluno.id),
- onLongPress: () => abrirRedeParentesco(context, alunoId: aluno.id, abrirPerfil: _abrirDetalheAluno),
+                  onLongPress: () => abrirRedeParentesco(
+                    context,
+                    alunoId: aluno.id,
+                    abrirPerfil: _abrirDetalheAluno,
+                  ),
                   child: Container(
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(t.cardRadius - 5),
@@ -1099,12 +1265,15 @@ class _AlunosScreenState extends State<AlunosScreen> {
                               width: 92,
                               height: 92,
                               child: fotoUrl != null && fotoUrl.isNotEmpty
-                                  ? UaiStudentPhoto(
-                                      studentId: aluno.id,
-                                      imageUrl: fotoUrl,
-                                      profile: UaiStudentPhotoProfile.list,
-                                      fit: BoxFit.cover,
-                                      fallback: _placeholderIcon(),
+                                  ? _fotoDisciplinar(
+                                      aluno.id,
+                                      UaiStudentPhoto(
+                                        studentId: aluno.id,
+                                        imageUrl: fotoUrl,
+                                        profile: UaiStudentPhotoProfile.list,
+                                        fit: BoxFit.cover,
+                                        fallback: _placeholderIcon(),
+                                      ),
                                     )
                                   : _placeholderIcon(),
                             ),
@@ -1167,7 +1336,15 @@ class _AlunosScreenState extends State<AlunosScreen> {
                             ),
                           ),
                         ),
-                        IconButton(tooltip: "Ver parentes", icon: const Icon(Icons.family_restroom, size: 20), onPressed: () => abrirRedeParentesco(context, alunoId: aluno.id, abrirPerfil: _abrirDetalheAluno)),
+                        IconButton(
+                          tooltip: "Ver parentes",
+                          icon: const Icon(Icons.family_restroom, size: 20),
+                          onPressed: () => abrirRedeParentesco(
+                            context,
+                            alunoId: aluno.id,
+                            abrirPerfil: _abrirDetalheAluno,
+                          ),
+                        ),
                         if (hasValidGraduation)
                           Container(
                             width: 66,
@@ -1226,7 +1403,11 @@ class _AlunosScreenState extends State<AlunosScreen> {
               clipBehavior: Clip.antiAlias,
               child: InkWell(
                 onTap: () => _abrirDetalheAluno(aluno.id),
- onLongPress: () => abrirRedeParentesco(context, alunoId: aluno.id, abrirPerfil: _abrirDetalheAluno),
+                onLongPress: () => abrirRedeParentesco(
+                  context,
+                  alunoId: aluno.id,
+                  abrirPerfil: _abrirDetalheAluno,
+                ),
                 child: Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(t.cardRadius - 5),
@@ -1241,12 +1422,15 @@ class _AlunosScreenState extends State<AlunosScreen> {
                           children: [
                             Positioned.fill(
                               child: fotoUrl != null && fotoUrl.isNotEmpty
-                                  ? UaiStudentPhoto(
-                                      studentId: aluno.id,
-                                      imageUrl: fotoUrl,
-                                      profile: UaiStudentPhotoProfile.grid,
-                                      fit: BoxFit.cover,
-                                      fallback: _placeholderIcon(size: 74),
+                                  ? _fotoDisciplinar(
+                                      aluno.id,
+                                      UaiStudentPhoto(
+                                        studentId: aluno.id,
+                                        imageUrl: fotoUrl,
+                                        profile: UaiStudentPhotoProfile.grid,
+                                        fit: BoxFit.cover,
+                                        fallback: _placeholderIcon(size: 74),
+                                      ),
                                     )
                                   : _placeholderIcon(size: 74),
                             ),
@@ -1372,7 +1556,11 @@ class _AlunosScreenState extends State<AlunosScreen> {
                 clipBehavior: Clip.antiAlias,
                 child: InkWell(
                   onTap: () => _abrirDetalheAluno(aluno.id),
- onLongPress: () => abrirRedeParentesco(context, alunoId: aluno.id, abrirPerfil: _abrirDetalheAluno),
+                  onLongPress: () => abrirRedeParentesco(
+                    context,
+                    alunoId: aluno.id,
+                    abrirPerfil: _abrirDetalheAluno,
+                  ),
                   child: Container(
                     height: 58,
                     padding: const EdgeInsets.symmetric(horizontal: 9),
@@ -1391,15 +1579,18 @@ class _AlunosScreenState extends State<AlunosScreen> {
                           ),
                           child: fotoUrl != null && fotoUrl.isNotEmpty
                               ? ClipOval(
-                                  child: UaiStudentPhoto(
-                                    studentId: aluno.id,
-                                    imageUrl: fotoUrl,
-                                    profile: UaiStudentPhotoProfile.compact,
-                                    fit: BoxFit.cover,
-                                    fallback: Icon(
-                                      Icons.person_rounded,
-                                      size: 28,
-                                      color: t.textMuted,
+                                  child: _fotoDisciplinar(
+                                    aluno.id,
+                                    UaiStudentPhoto(
+                                      studentId: aluno.id,
+                                      imageUrl: fotoUrl,
+                                      profile: UaiStudentPhotoProfile.compact,
+                                      fit: BoxFit.cover,
+                                      fallback: Icon(
+                                        Icons.person_rounded,
+                                        size: 28,
+                                        color: t.textMuted,
+                                      ),
                                     ),
                                   ),
                                 )

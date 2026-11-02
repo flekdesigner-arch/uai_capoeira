@@ -1,11 +1,11 @@
+import '../services/uniformes_admin_service.dart';
+import '../services/uniformes_service.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/uniformes/services/remessa_service.dart';
-import 'package:uai_capoeira/modules/uniformes/services/uniformes_service.dart';
 
 class EditarPedidoScreen extends StatefulWidget {
   final String pedidoId;
@@ -51,8 +51,6 @@ class _EditarPedidoScreenState extends State<EditarPedidoScreen> {
         ? const Color(0xFF111827)
         : const Color(0xFFFFFFFF);
   }
-
-
 
   @override
   void initState() {
@@ -271,23 +269,58 @@ class _EditarPedidoScreenState extends State<EditarPedidoScreen> {
   Future<void> _salvar() async {
     setState(() => _isLoading = true);
     try {
-      Map<String, dynamic> dadosAtualizados = {
+      final wanted = _statusPagamento == 'pago' ? _valorTotal : _valorPago;
+      final previous =
+          (widget.pedidoData['valor_pago'] as num?)?.toDouble() ?? 0;
+      String? forma;
+      if (wanted > previous + .001) {
+        forma = await showDialog<String>(
+          context: context,
+          builder: (ctx) => SimpleDialog(
+            title: Text(
+              'Registrar recebimento de ${_realFormat.format(wanted - previous)}',
+            ),
+            children:
+                [
+                      'PIX',
+                      'DINHEIRO',
+                      'TRANSFERÊNCIA',
+                      'CARTÃO DE CRÉDITO',
+                      'CARTÃO DE DÉBITO',
+                    ]
+                    .map(
+                      (method) => SimpleDialogOption(
+                        onPressed: () => Navigator.pop(ctx, method),
+                        child: Text(method),
+                      ),
+                    )
+                    .toList(),
+          ),
+        );
+        if (forma == null) return;
+      }
+      final result = await UniformesAdminService().operar('editar_pedido', {
+        'pedidoId': widget.pedidoId,
         'itens': _itens,
         'observacoes': _observacoesController.text,
-        'data_previsao': _dataPrevisaoController.text,
+        'dataPrevisao': _dataPrevisaoController.text,
         'status': _status,
-        'status_pagamento': _statusPagamento,
-        'valor_total': _valorTotal,
-        'valor_pago': _statusPagamento == 'pago' ? _valorTotal : _valorPago,
-        'remessa_id': _remessaId,
-        'ultima_edicao': FieldValue.serverTimestamp(),
-        'editado_por': FirebaseAuth.instance.currentUser?.uid,
-      };
-
-      await FirebaseFirestore.instance
-          .collection('pedidos_uniformes')
-          .doc(widget.pedidoId)
-          .update(dadosAtualizados);
+        'valorPagoPretendido': wanted,
+      });
+      final pending = (result['recebimentoPendente'] as num?)?.toDouble() ?? 0;
+      if (pending > 0) {
+        if (forma == null) {
+          throw StateError(
+            'Pedido atualizado. Registre o recebimento informando o método de pagamento.',
+          );
+        }
+        await _uniformesService.registrarPagamentoPedido(
+          pedidoId: widget.pedidoId,
+          valorPagamento: pending,
+          formaPagamento: forma,
+          pedidoData: widget.pedidoData,
+        );
+      }
 
       final remessaAtual = widget.pedidoData['remessa_id'];
       if (remessaAtual != _remessaId) {
@@ -948,12 +981,6 @@ class _SelecionarRemessaDialogState extends State<_SelecionarRemessaDialog> {
     super.dispose();
   }
 
-  Color _readableOn(Color background) {
-    return background.computeLuminance() > 0.48
-        ? const Color(0xFF111827)
-        : const Color(0xFFFFFFFF);
-  }
-
   @override
   Widget build(BuildContext context) {
     final primary = context.uai.primary;
@@ -1005,10 +1032,11 @@ class _SelecionarRemessaDialogState extends State<_SelecionarRemessaDialog> {
                     .orderBy('criado_em', descending: true)
                     .snapshots(),
                 builder: (context, snapshot) {
-                  if (!snapshot.hasData)
-                    { return Center(
+                  if (!snapshot.hasData) {
+                    return Center(
                       child: CircularProgressIndicator(color: primary),
-                    ); }
+                    );
+                  }
                   var docs = snapshot.data!.docs;
                   if (_search.isNotEmpty) {
                     docs = docs.where((d) {
@@ -1017,13 +1045,14 @@ class _SelecionarRemessaDialogState extends State<_SelecionarRemessaDialog> {
                       return nome.toLowerCase().contains(_search);
                     }).toList();
                   }
-                  if (docs.isEmpty)
-                    { return Center(
+                  if (docs.isEmpty) {
+                    return Center(
                       child: Text(
                         'Nenhuma remessa encontrada',
                         style: TextStyle(color: textMuted),
                       ),
-                    ); }
+                    );
+                  }
                   return ListView.builder(
                     itemCount: docs.length,
                     itemBuilder: (_, i) {
@@ -1188,7 +1217,7 @@ class _SelecionarItemPedidoDialogState
         .where('item_base_id', isEqualTo: baseId)
         .get()
         .then((snapshot) {
-          if (!mounted) return;
+          if (!mounted || !context.mounted) return;
 
           if (snapshot.docs.isEmpty) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -1263,7 +1292,7 @@ class _SelecionarItemPedidoDialogState
           );
         })
         .catchError((e) {
-          if (mounted) {
+          if (mounted && context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text('Erro ao carregar variações: $e'),
@@ -1375,10 +1404,11 @@ class _SelecionarItemPedidoDialogState
                     .where('status', isEqualTo: 'ativo')
                     .snapshots(),
                 builder: (context, snapshot) {
-                  if (!snapshot.hasData)
-                    { return Center(
+                  if (!snapshot.hasData) {
+                    return Center(
                       child: CircularProgressIndicator(color: primary),
-                    ); }
+                    );
+                  }
 
                   var docs = snapshot.data!.docs.where((doc) {
                     final data = doc.data() as Map<String, dynamic>;

@@ -47,12 +47,6 @@ class _AdicionarParticipanteModalState
         .toColor();
   }
 
-  Color _onCard() => _readableOn(context.uai.card);
-  Color _onCardMuted() => _onCard().withAlpha(173);
-  Color _appBarBg() =>
-      Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
-  Color _appBarFg() =>
-      Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(_appBarBg());
 
   InputDecoration _uaiInputDecoration({
     required String label,

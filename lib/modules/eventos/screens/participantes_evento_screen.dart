@@ -12,7 +12,6 @@ import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/eventos/models/evento_model.dart';
 import 'package:uai_capoeira/modules/eventos/models/participacao_model.dart';
 import 'package:uai_capoeira/modules/eventos/reports/evento_financeiro_pdf_service.dart';
-import 'package:uai_capoeira/modules/eventos/services/certificado_service.dart';
 import 'package:uai_capoeira/modules/eventos/services/participacao_service.dart';
 import 'package:uai_capoeira/modules/eventos/widgets/adicionar_participante_modal.dart';
 import 'package:uai_capoeira/modules/graduacoes/services/graduacao_service.dart';
@@ -153,7 +152,6 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     service: _permissaoService,
   );
   final GraduacaoService _graduacaoService = GraduacaoService();
-  final CertificadoService _certificadoService = CertificadoService();
 
   late TabController _tabController;
 
@@ -167,7 +165,6 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
   final FocusNode _searchConcluidosFocusNode = FocusNode();
 
   String _searchQuery = '';
-  String _searchParticipantesQuery = '';
   String _searchConcluidosQuery = '';
   String _filtroConcluidosWhatsapp = 'todos';
   List<Map<String, dynamic>> _alunosDisponiveis = [];
@@ -196,9 +193,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
   List<Map<String, dynamic>> _graduacoes = [];
   final Map<String, Map<String, String>> _coresGraduacao = {};
 
-  List<Map<String, dynamic>> _usosPatrocinio = [];
   Set<String> _participantesPatrocinados = {};
-  List<ParticipacaoModel> _allParticipants = [];
 
   Timer? _debounceTimer;
 
@@ -366,14 +361,6 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     _debounceTimer = Timer(const Duration(milliseconds: 260), () {
       if (!mounted) return;
       setState(() => _searchQuery = value.toLowerCase().trim());
-    });
-  }
-
-  void _onSearchParticipantesChanged(String value) {
-    _debounceTimer?.cancel();
-    _debounceTimer = Timer(const Duration(milliseconds: 260), () {
-      if (!mounted) return;
-      setState(() => _searchParticipantesQuery = value.toLowerCase().trim());
     });
   }
 
@@ -601,7 +588,6 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
 
       if (!mounted) return;
       setState(() {
-        _usosPatrocinio = usos;
         _participantesPatrocinados = usos
             .map((u) => u['aluno_nome']?.toString() ?? '')
             .where((nome) => nome.isNotEmpty)
@@ -800,7 +786,9 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
         : '0';
     final evento = widget.evento ?? _eventoCarregado;
     final temCamisa = evento?.temCamisa ?? false;
+    final temInscricao = evento?.temCobrancaInscricao ?? true;
     final r = context.uaiResponsive;
+    final compactHeader = r.isPhone;
 
     return Container(
       margin: EdgeInsets.fromLTRB(
@@ -809,7 +797,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
         r.pagePadding,
         8,
       ),
-      padding: EdgeInsets.all(r.cardPadding),
+      padding: EdgeInsets.all(compactHeader ? 14 : r.cardPadding),
       decoration: BoxDecoration(
         color: context.uai.card,
         borderRadius: BorderRadius.circular(context.uai.cardRadius),
@@ -820,9 +808,14 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _dashboardIconBox(Icons.analytics_rounded, context.uai.primary),
-              const SizedBox(width: 11),
+              _dashboardIconBox(
+                Icons.analytics_rounded,
+                context.uai.primary,
+                compact: compactHeader,
+              ),
+              SizedBox(width: compactHeader ? 10 : 11),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -831,18 +824,18 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                       'Resumo dos participantes',
                       style: TextStyle(
                         color: _onCard(),
-                        fontSize: 16,
+                        fontSize: compactHeader ? 15 : 16,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       'Pagamentos, pendências e camisas do evento.',
-                      maxLines: 2,
+                      maxLines: compactHeader ? 1 : 2,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: _onCardMuted(),
-                        fontSize: 11.5,
+                        fontSize: compactHeader ? 11 : 11.5,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -850,39 +843,54 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 7,
+                padding: EdgeInsets.symmetric(
+                  horizontal: compactHeader ? 9 : 10,
+                  vertical: compactHeader ? 6 : 7,
                 ),
                 decoration: BoxDecoration(
                   color: context.uai.primary.withAlpha(26),
                   borderRadius: BorderRadius.circular(99),
-                  border: Border.all(
-                    color: context.uai.primary.withAlpha(46),
-                  ),
+                  border: Border.all(color: context.uai.primary.withAlpha(46)),
                 ),
-                child: Text(
-                  '$percentualPago%',
-                  style: TextStyle(
-                    color: _ensureVisible(
-                      context.uai.primary,
-                      context.uai.card,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '$percentualPago%',
+                      style: TextStyle(
+                        color: _ensureVisible(
+                          context.uai.primary,
+                          context.uai.card,
+                        ),
+                        fontWeight: FontWeight.w900,
+                        fontSize: compactHeader ? 13 : 12,
+                      ),
                     ),
-                    fontWeight: FontWeight.w900,
-                    fontSize: 12,
-                  ),
+                    if (!compactHeader)
+                      Text(
+                        'quitado',
+                        style: TextStyle(
+                          color: _onCardMuted(),
+                          fontWeight: FontWeight.w700,
+                          fontSize: 10,
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          SizedBox(height: compactHeader ? 12 : 14),
           LayoutBuilder(
             builder: (context, constraints) {
               final responsive = UaiResponsive.fromConstraints(
                 context,
                 constraints,
               );
-              final columns = responsive.participantDashboardUseFourColumns
+              final compactCards =
+                  responsive.isPhone || constraints.maxWidth < 420;
+              final columns =
+                  responsive.participantDashboardUseFourColumns && !compactCards
                   ? 4
                   : 2;
               const spacing = 10.0;
@@ -928,6 +936,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                           value: item.value,
                           label: item.label,
                           color: item.color,
+                          compact: compactCards,
                         ),
                       ),
                     )
@@ -935,44 +944,48 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
               );
             },
           ),
-          const SizedBox(height: 12),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final wide = constraints.maxWidth >= 480;
-              final children = [
-                _financeCard(
-                  icon: Icons.attach_money_rounded,
-                  label: 'Arrecadado',
-                  value: 'R\$ ${_totalArrecadado.toStringAsFixed(2)}',
-                  color: context.uai.success,
-                ),
-                _financeCard(
-                  icon: Icons.trending_down_rounded,
-                  label: 'A receber',
-                  value: 'R\$ ${saldoDevedor.toStringAsFixed(2)}',
-                  color: context.uai.error,
-                ),
-              ];
+          if (temInscricao || temCamisa) const SizedBox(height: 12),
+          if (temInscricao || temCamisa)
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final compactFinance = constraints.maxWidth < 430;
+                final dualColumn = constraints.maxWidth >= 320;
+                final children = [
+                  _financeCard(
+                    icon: Icons.attach_money_rounded,
+                    label: 'Arrecadado',
+                    value: 'R\$ ${_totalArrecadado.toStringAsFixed(2)}',
+                    color: context.uai.success,
+                    compact: compactFinance,
+                  ),
+                  _financeCard(
+                    icon: Icons.trending_down_rounded,
+                    label: 'A receber',
+                    value: 'R\$ ${saldoDevedor.toStringAsFixed(2)}',
+                    color: context.uai.error,
+                    compact: compactFinance,
+                  ),
+                ];
 
-              if (wide) {
-                return Row(
+                if (dualColumn) {
+                  return Row(
+                    children: [
+                      Expanded(child: children[0]),
+                      const SizedBox(width: 10),
+                      Expanded(child: children[1]),
+                    ],
+                  );
+                }
+
+                return Column(
                   children: [
-                    Expanded(child: children[0]),
-                    const SizedBox(width: 10),
-                    Expanded(child: children[1]),
+                    children[0],
+                    const SizedBox(height: 10),
+                    children[1],
                   ],
                 );
-              }
-
-              return Column(
-                children: [
-                  children[0],
-                  const SizedBox(height: 10),
-                  children[1],
-                ],
-              );
-            },
-          ),
+              },
+            ),
           if (temCamisa && _camisasPorTamanho.isNotEmpty) ...[
             const SizedBox(height: 13),
             Divider(color: context.uai.border, height: 1),
@@ -1084,47 +1097,90 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     required String value,
     required String label,
     required Color color,
+    bool compact = false,
   }) {
     final accent = _ensureVisible(color, context.uai.card);
     final r = context.uaiResponsive;
 
     return Container(
-      constraints: BoxConstraints(minHeight: r.isPhone ? 92 : 86),
-      padding: const EdgeInsets.all(11),
+      constraints: BoxConstraints(
+        minHeight: compact ? 52 : (r.isPhone ? 92 : 86),
+      ),
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 10 : 11,
+        vertical: compact ? 7 : 11,
+      ),
       decoration: BoxDecoration(
         color: Color.alphaBlend(accent.withAlpha(20), context.uai.cardAlt),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: accent.withAlpha(41)),
       ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, color: accent, size: 22),
-          const SizedBox(height: 7),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(
-              value,
-              maxLines: 1,
-              style: TextStyle(
-                color: accent,
-                fontWeight: FontWeight.w900,
-                fontSize: 18,
-              ),
+      child: compact
+          ? Row(
+              mainAxisAlignment: MainAxisAlignment.start,
+              children: [
+                Icon(icon, color: accent, size: 18),
+                const SizedBox(width: 6),
+                Flexible(
+                  fit: FlexFit.loose,
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: _onCardMuted(),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 5),
+                Flexible(
+                  fit: FlexFit.loose,
+                  child: Text(
+                    value,
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: accent,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 15,
+                    ),
+                  ),
+                ),
+              ],
+            )
+          : Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, color: accent, size: 22),
+                const SizedBox(height: 7),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    value,
+                    maxLines: 1,
+                    style: TextStyle(
+                      color: accent,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 18,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: _onCardMuted(),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            label,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: _onCardMuted(),
-              fontWeight: FontWeight.w700,
-              fontSize: 11,
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -1133,11 +1189,12 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
     required String label,
     required String value,
     required Color color,
+    bool compact = false,
   }) {
     final accent = _ensureVisible(color, context.uai.card);
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: EdgeInsets.all(compact ? 10 : 12),
       decoration: BoxDecoration(
         color: Color.alphaBlend(accent.withAlpha(20), context.uai.cardAlt),
         borderRadius: BorderRadius.circular(18),
@@ -1146,7 +1203,7 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
       child: Row(
         children: [
           _dashboardIconBox(icon, accent, compact: true),
-          const SizedBox(width: 10),
+          SizedBox(width: compact ? 8 : 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1158,16 +1215,18 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                   style: TextStyle(
                     color: accent,
                     fontWeight: FontWeight.w900,
-                    fontSize: 15.5,
+                    fontSize: compact ? 14 : 15.5,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: _onCardMuted(),
                     fontWeight: FontWeight.w700,
-                    fontSize: 11.5,
+                    fontSize: compact ? 10.5 : 11.5,
                   ),
                 ),
               ],
@@ -1345,8 +1404,13 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
         status: 'pendente',
         graduacaoNova: novaGraduacao,
         graduacaoNovaId: novaGraduacaoId,
-        valorInscricao: evento?.valorInscricao ?? 0,
-        valorCamisa: evento?.temCamisa == true
+        valorInscricao: evento?.temCobrancaInscricao == true
+            ? evento!.valorInscricao
+            : 0,
+        valorCamisa:
+            evento?.temCamisa == true &&
+                (evento!.camisaObrigatoria ||
+                    (tamanhoCamisa?.trim().isNotEmpty ?? false))
             ? (valorCamisa ?? _valorCamisaEventoPorTipo(tipoCamisa))
             : 0,
       );
@@ -3325,7 +3389,6 @@ class _ParticipantesEventoScreenState extends State<ParticipantesEventoScreen>
                 ),
               )
               .toList();
-          _allParticipants = participantes;
 
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) _calcularEstatisticas(participantes);

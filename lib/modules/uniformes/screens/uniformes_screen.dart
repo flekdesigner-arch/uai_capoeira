@@ -1,3 +1,6 @@
+import '../admin/uniformes_auditoria_screen.dart';
+import '../services/uniformes_admin_service.dart';
+import '../../../core/permissions/permission_access_guard.dart';
 import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
@@ -9,7 +12,6 @@ import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/core/permissions/permissao_service.dart';
 import 'package:uai_capoeira/modules/uniformes/services/uniformes_service.dart';
 import 'package:uai_capoeira/modules/uniformes/services/remessa_service.dart';
-import 'package:uai_capoeira/modules/usuarios/services/usuario_service.dart';
 
 // Widgets
 import 'package:uai_capoeira/modules/uniformes/widgets/resumo_cards.dart';
@@ -22,7 +24,6 @@ import 'package:uai_capoeira/modules/uniformes/widgets/remessa_card.dart';
 // Telas
 import 'adicionar_estoque_screen.dart';
 import 'nova_venda_screen.dart';
-import 'novo_pedido_screen.dart';
 import 'package:uai_capoeira/modules/uniformes/reports/relatorio_financeiro_screen.dart';
 import 'editar_venda_screen.dart';
 import 'editar_pedido_screen.dart';
@@ -35,7 +36,6 @@ import 'package:uai_capoeira/modules/uniformes/dialogs/quantidade_dialog.dart';
 import 'package:uai_capoeira/modules/uniformes/dialogs/pagamento_dialog.dart';
 import 'package:uai_capoeira/modules/uniformes/dialogs/pedidos_relatorio_dialog.dart';
 import 'package:uai_capoeira/modules/uniformes/widgets/detalhes_venda_bottom_sheet.dart';
-
 
 bool get _uaiUniformesWindowsSafeMode =>
     !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
@@ -51,6 +51,7 @@ Stream<QuerySnapshot> _uaiUniformesQueryStream(Query query) {
   }
   return query.snapshots();
 }
+
 class UniformesScreen extends StatefulWidget {
   const UniformesScreen({super.key});
 
@@ -65,7 +66,6 @@ class _UniformesScreenState extends State<UniformesScreen>
   final PermissaoService _permissaoService = PermissaoService();
   final UniformesService _uniformesService = UniformesService();
   final RemessaService _remessaService = RemessaService();
-  final UsuarioService _usuarioService = UsuarioService();
   final NumberFormat _realFormat = NumberFormat.currency(
     locale: 'pt_BR',
     symbol: 'R\$',
@@ -76,9 +76,78 @@ class _UniformesScreenState extends State<UniformesScreen>
 
   bool _podeEditar = false;
   bool _podeExcluir = false;
-  bool _ehAdmin = false;
-  bool _carregandoPermissoes = true;
+  bool _admin100 = false;
+  Map<String, bool> _permissions = {};
+  bool _can(String key) => _permissions[key] == true;
+  Future<bool> _allow(String key) => PermissionAccessGuard().revalidate(
+    context,
+    permission: key,
+    message: 'Sem permissão para esta operação de Uniformes.',
+  );
   bool _acaoVendaEmAndamento = false;
+  int _dadosRevision = 0;
+  bool _cicloCarregado = false;
+  String? _cicloAtualId;
+  String? _cicloErro;
+
+  bool _documentoDoCiclo(QueryDocumentSnapshot doc) {
+    if (_cicloAtualId == null) return true; // Modo legado pré-ativação.
+    final dados = doc.data();
+    return dados is Map<String, dynamic> && dados['ciclo_id'] == _cicloAtualId;
+  }
+
+  Future<void> _carregarCicloAtual() async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('uniformes_config').doc('ciclo_atual')
+          .get(const GetOptions(source: Source.server));
+      final dados = snap.data();
+      if (!mounted) return;
+      setState(() {
+        _cicloAtualId = null;
+        if (dados?['estado'] == 'ativo') {
+          final id = dados?['ciclo_id'];
+          if (id is String) {
+            _cicloAtualId = id;
+          }
+        }
+        _cicloErro = dados?['estado'] == 'ativando'
+            ? 'Virada de ciclo em andamento. Reabra após a conclusão.' : null;
+        _cicloCarregado = true;
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _cicloCarregado = true;
+          _cicloErro = 'Não foi possível confirmar o ciclo ativo no servidor: $e';
+        });
+      }
+    }
+  }
+
+  void _atualizarDadosUniformes() {
+    _carregarCicloAtual();
+    if (mounted) setState(() => _dadosRevision++);
+  }
+
+  void _feedbackPagamentoConfirmado(double valor) {
+    if (!mounted) return;
+    _atualizarDadosUniformes();
+    final t = context.uai;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      backgroundColor: t.success,
+      duration: const Duration(seconds: 3),
+      content: Row(children: [
+        Icon(Icons.verified_rounded, color: _readableOn(t.success)),
+        const SizedBox(width: 10),
+        Expanded(child: Text('Pagamento de ${_realFormat.format(valor)} confirmado. Dados atualizados.',
+          style: TextStyle(fontWeight: FontWeight.w700, color: _readableOn(t.success)))),
+      ]),
+    ));
+  }
 
   // IDs confirmados como excluídos nesta sessão. Protege a UI contra um
   // snapshot local/stale do Firestore (especialmente no Windows).
@@ -93,20 +162,6 @@ class _UniformesScreenState extends State<UniformesScreen>
     return background.computeLuminance() > 0.48
         ? const Color(0xFF111827)
         : const Color(0xFFFFFFFF);
-  }
-
-  Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance())
-        .abs();
-    if (diff >= 0.26) return color;
-
-    final bgIsDark = background.computeLuminance() < 0.45;
-    final hsl = HSLColor.fromColor(color);
-
-    return hsl
-        .withLightness(bgIsDark ? 0.72 : 0.32)
-        .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
-        .toColor();
   }
 
   Color _appBarBg() =>
@@ -124,10 +179,11 @@ class _UniformesScreenState extends State<UniformesScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(() => setState(() {}));
     _verificarPermissoes();
     _verificarPermissoesEdicao();
+    _carregarCicloAtual();
   }
 
   Future<void> _verificarPermissoes() async {
@@ -146,44 +202,98 @@ class _UniformesScreenState extends State<UniformesScreen>
   }
 
   Future<void> _verificarPermissoesEdicao() async {
-    final uid = currentUser?.uid;
-    if (uid != null) {
-      try {
-        final userDoc = await FirebaseFirestore.instance
-            .collection('usuarios')
-            .doc(uid)
-            .get();
-        final userData = userDoc.data() ?? const <String, dynamic>{};
-        final peso = (userData['peso_permissao'] as num?)?.toInt() ?? 0;
-        final tipo = (userData['tipo'] ?? '').toString().toLowerCase();
-        _ehAdmin = peso >= 90 ||
-            tipo == 'admin' ||
-            tipo == 'administrador' ||
-            userData['admin'] == true ||
-            userData['administrador'] == true ||
-            userData['isAdmin'] == true ||
-            userData['super_admin'] == true ||
-            userData['superadmin'] == true;
+    try {
+      final keys = [
+        'pode_editar_venda',
+        'pode_excluir_venda',
+        'pode_criar_venda',
+        'pode_criar_pedido',
+        'pode_editar_pedido',
+        'pode_excluir_pedido',
+        'pode_registrar_pagamento_uniforme',
+        'pode_registrar_pagamento_pedido',
+        'pode_alterar_status_pedido',
+        'pode_gerenciar_estoque',
+        'pode_gerenciar_remessas_uniformes',
+        'pode_gerenciar_fornecedores_uniformes',
+        'pode_ver_relatorio_uniformes',
+        'pode_ver_auditoria_uniformes',
+        'pode_registrar_entrega_uniforme',
+      ];
+      final permissions = await _permissaoService.verificarMultiplasPermissoes(
+        keys,
+      );
+      final admin = await UniformesAdminService().admin100();
+      if (mounted) {
+        setState(() {
+          _permissions = permissions;
+          _admin100 = admin;
+          _podeEditar = permissions['pode_editar_venda'] == true;
+          _podeExcluir = permissions['pode_excluir_venda'] == true;
+        });
+      }
+    } catch (e) {
+      developer.log('Erro ao carregar permissões de Uniformes: $e');
+    }
+  }
 
-        final permissoesDoc = await FirebaseFirestore.instance
-            .collection('usuarios')
-            .doc(uid)
-            .collection('permissoes_usuario')
-            .doc('configuracoes')
-            .get();
-        if (permissoesDoc.exists) {
-          final permissoes = permissoesDoc.data()!;
-          _podeEditar = _ehAdmin || (permissoes['pode_editar_venda'] ?? false);
-          _podeExcluir = _ehAdmin || (permissoes['pode_excluir_venda'] ?? false);
-        } else {
-          _podeEditar = _ehAdmin;
-          _podeExcluir = _ehAdmin;
-        }
-      } catch (e) {
-        developer.log('Erro ao verificar permissões: $e');
+  Future<String?> _pedirMotivo(String title) async {
+    final controller = TextEditingController();
+    final value = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          maxLength: 500,
+          decoration: const InputDecoration(
+            labelText: 'Motivo (mínimo 3 caracteres)',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (controller.text.trim().length >= 3) {
+                Navigator.pop(ctx, controller.text.trim());
+              }
+            },
+            child: const Text('Confirmar'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return value;
+  }
+
+  Future<void> _entregarVenda(String id, Map<String, dynamic> data) async {
+    if (!await _allow('pode_registrar_entrega_uniforme')) return;
+    if (!mounted) return;
+    try {
+      await _executarAcaoVenda(
+        mensagem: 'Registrando entrega...',
+        acao: () => _uniformesService.atualizarStatusEntregaVenda(
+          vendaId: id,
+          statusEntrega: 'entregue',
+        ),
+      );
+      if (mounted) {
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Entrega registrada com sucesso.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Não foi possível registrar a entrega: $e')),
+        );
       }
     }
-    if (mounted) setState(() => _carregandoPermissoes = false);
   }
 
   @override
@@ -204,9 +314,6 @@ class _UniformesScreenState extends State<UniformesScreen>
       case 2:
         break;
       case 3:
-        _abrirNovoPedido();
-        break;
-      case 4:
         _abrirNovaRemessa();
         break;
     }
@@ -241,9 +348,7 @@ class _UniformesScreenState extends State<UniformesScreen>
             padding: const EdgeInsets.symmetric(vertical: 6),
             decoration: BoxDecoration(
               color: _appBarFg().withAlpha(20),
-              border: Border(
-                top: BorderSide(color: _appBarFg().withAlpha(26)),
-              ),
+              border: Border(top: BorderSide(color: _appBarFg().withAlpha(26))),
             ),
             child: TabBar(
               controller: _tabController,
@@ -265,42 +370,51 @@ class _UniformesScreenState extends State<UniformesScreen>
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
               ),
-              overlayColor: WidgetStatePropertyAll(
-                _appBarFg().withAlpha(20),
-              ),
+              overlayColor: WidgetStatePropertyAll(_appBarFg().withAlpha(20)),
               tabs: const [
                 Tab(icon: Icon(Icons.inventory_rounded), text: 'ESTOQUE'),
                 Tab(icon: Icon(Icons.sell_rounded), text: 'VENDAS'),
                 Tab(icon: Icon(Icons.payment_rounded), text: 'PENDÊNCIAS'),
-                Tab(icon: Icon(Icons.shopping_cart_rounded), text: 'PEDIDOS'),
-                Tab(icon: Icon(Icons.local_shipping_rounded), text: 'REMESSAS'),
+                Tab(icon: Icon(Icons.local_shipping_rounded), text: 'PEDIDOS / REMESSAS'),
               ],
             ),
           ),
         ),
         actions: [
-          if (_tabController.index != 2)
+          if (_tabController.index != 2 && _tabController.index != 3 &&
+              (_tabController.index == 0
+                  ? _admin100
+                  : _tabController.index == 1
+                  ? _can('pode_criar_venda')
+                  : _can('pode_gerenciar_remessas_uniformes')))
             IconButton(
-              icon: const Icon(Icons.add_circle_outline_rounded, size: 28),
+              icon: const Icon(Icons.add_circle_outline_rounded),
               tooltip: _getAddTooltip(),
               onPressed: _onAddPressed,
             ),
-          IconButton(
-            icon: const Icon(Icons.bar_chart_rounded),
-            tooltip: 'Relatório Financeiro',
-            onPressed: () => _abrirRelatorioFinanceiro(),
-          ),
-          if (_tabController.index == 3)
-            IconButton(
-              icon: const Icon(Icons.more_vert_rounded),
-              tooltip: 'Relatório de pedidos',
-              onPressed: () => PedidosRelatorioDialog.show(context),
-            ),
-          if (_tabController.index == 4)
-            IconButton(
-              icon: const Icon(Icons.business_rounded),
-              tooltip: 'Fornecedores',
-              onPressed: () async {
+          FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+            future: FirebaseFirestore.instance
+                .doc('uniformes_config/politicas')
+                .get(),
+            builder: (context, policySnapshot) {
+              // Fail closed: a opção só aparece após a política ser lida.
+              final auditVisible = policySnapshot.hasData &&
+                  policySnapshot.data!.data()?['auditoria_visivel'] == true;
+              return PopupMenuButton<String>(
+            tooltip: 'Mais ações',
+            onSelected: (value) async {
+              if (value == 'auditoria') {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const UniformesAuditoriaScreen(),
+                  ),
+                );
+              }
+              if (!context.mounted) return;
+              if (value == 'relatorio') _abrirRelatorioFinanceiro();
+              if (value == 'pedidos') PedidosRelatorioDialog.show(context);
+              if (value == 'fornecedores') {
                 await Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -308,17 +422,59 @@ class _UniformesScreenState extends State<UniformesScreen>
                   ),
                 );
                 if (mounted) setState(() {});
-              },
-            ),
+              }
+            },
+            itemBuilder: (_) => [
+              if (auditVisible && (_admin100 || _can('pode_ver_auditoria_uniformes')))
+                const PopupMenuItem(
+                  value: 'auditoria',
+                  child: Text('Auditoria'),
+                ),
+              if (_can('pode_ver_relatorio_uniformes'))
+                const PopupMenuItem(
+                  value: 'relatorio',
+                  child: Text('Relatório financeiro'),
+                ),
+              if (_tabController.index == 3 &&
+                  _can('pode_ver_relatorio_uniformes'))
+                const PopupMenuItem(
+                  value: 'pedidos',
+                  child: Text('Relatório de pedidos'),
+                ),
+              if (_can('pode_gerenciar_fornecedores_uniformes'))
+                const PopupMenuItem(
+                  value: 'fornecedores',
+                  child: Text('Fornecedores'),
+                ),
+            ],
+          );
+            },
+          ),
         ],
       ),
-      body: LayoutBuilder(
+      floatingActionButton: _tabController.index == 3 &&
+              _can('pode_gerenciar_remessas_uniformes')
+          ? FloatingActionButton.extended(
+              onPressed: _abrirNovaRemessa,
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('NOVA REMESSA',
+                style: TextStyle(fontWeight: FontWeight.w900)),
+              backgroundColor: context.uai.primary,
+              foregroundColor: Colors.white,
+            )
+          : null,
+      body: !_cicloCarregado
+          ? const Center(child: CircularProgressIndicator())
+          : _cicloErro != null
+              ? Center(child: Padding(padding: const EdgeInsets.all(24),
+                  child: SelectableText(_cicloErro!)))
+              : LayoutBuilder(
         builder: (context, constraints) {
           final maxWidth = constraints.maxWidth >= 1500
               ? 1420.0
               : constraints.maxWidth >= 1100
-                  ? 1280.0
-                  : constraints.maxWidth;
+              ? 1280.0
+              : constraints.maxWidth;
 
           return Align(
             alignment: Alignment.topCenter,
@@ -326,9 +482,20 @@ class _UniformesScreenState extends State<UniformesScreen>
               constraints: BoxConstraints(maxWidth: maxWidth),
               child: Column(
                 children: [
+                  if (_cicloAtualId != null)
+                    Padding(padding: const EdgeInsets.fromLTRB(12, 6, 12, 2),
+                      child: Row(children: [
+                        Icon(Icons.event_available, size: 17,
+                          color: context.uai.success),
+                        const SizedBox(width: 6),
+                        Expanded(child: Text('Ciclo ativo: $_cicloAtualId · Histórico anterior preservado',
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
+                      ])),
                   _buildSearchBar(),
                   ResumoCards(
+                    key: ValueKey('uniformes_resumo_$_dadosRevision'),
                     realFormat: _realFormat,
+                    cicloId: _cicloAtualId,
                     onNovaVenda: _abrirNovaVenda,
                   ),
                   const SizedBox(height: 8),
@@ -341,8 +508,7 @@ class _UniformesScreenState extends State<UniformesScreen>
                               _buildEstoqueTab(),
                               _buildVendasTab(),
                               _buildPendenciasTab(),
-                              _buildPedidosTab(),
-                              _buildRemessasTab(),
+                              _buildPedidosRemessasTab(),
                             ],
                           ),
                   ),
@@ -364,13 +530,12 @@ class _UniformesScreenState extends State<UniformesScreen>
       case 2:
         return _buildPendenciasTab();
       case 3:
-        return _buildPedidosTab();
-      case 4:
-        return _buildRemessasTab();
+        return _buildPedidosRemessasTab();
       default:
         return _buildEstoqueTab();
     }
   }
+
   String _getAddTooltip() {
     switch (_tabController.index) {
       case 0:
@@ -378,8 +543,6 @@ class _UniformesScreenState extends State<UniformesScreen>
       case 1:
         return 'Nova Venda';
       case 3:
-        return 'Novo Pedido';
-      case 4:
         return 'Nova Remessa';
       default:
         return 'Adicionar';
@@ -429,6 +592,7 @@ class _UniformesScreenState extends State<UniformesScreen>
   // ==================== ABA ESTOQUE (CATEGORIAS EXPANSÍVEIS) ====================
   Widget _buildEstoqueTab() {
     return StreamBuilder<QuerySnapshot>(
+      key: ValueKey('uniformes_query_1_$_dadosRevision'),
       stream: _uaiUniformesQueryStream(
         FirebaseFirestore.instance
             .collection('uniformes_estoque')
@@ -477,7 +641,7 @@ class _UniformesScreenState extends State<UniformesScreen>
                 ),
                 const SizedBox(height: 8),
                 ElevatedButton.icon(
-                  onPressed: _abrirAdicionarEstoque,
+                  onPressed: _admin100 ? _abrirAdicionarEstoque : null,
                   icon: Icon(
                     Icons.add,
                     color: _readableOn(context.uai.primary),
@@ -513,6 +677,8 @@ class _UniformesScreenState extends State<UniformesScreen>
             final bool isBase = data['tipo'] == 'base';
             if (isBase) {
               return _CategoriaEstoqueExpansivel(
+                dadosRevision: _dadosRevision,
+                podeConfigurar: _admin100,
                 categoriaId: doc.id,
                 categoriaData: data,
                 realFormat: _realFormat,
@@ -520,12 +686,14 @@ class _UniformesScreenState extends State<UniformesScreen>
                 onRegistrarEntrada: _registrarEntrada,
                 onRegistrarSaida: _registrarSaida,
                 onExcluirItem: _excluirItemEstoque,
-                onExcluirCategoria: () =>
-                    _excluirCategoriaEstoque(doc.id, data),
+                onExcluirCategoria: _admin100
+                    ? () => _excluirCategoriaEstoque(doc.id, data)
+                    : null,
               );
             } else {
               final int quantidade = data['quantidade'] ?? 0;
               return ItemEstoqueCard(
+                podeConfigurar: _admin100,
                 docId: doc.id,
                 data: data,
                 realFormat: _realFormat,
@@ -548,17 +716,14 @@ class _UniformesScreenState extends State<UniformesScreen>
     Map<String, dynamic> data,
   ) async {
     try {
-      final variacoes = await FirebaseFirestore.instance
-          .collection('uniformes_estoque')
-          .where('item_base_id', isEqualTo: categoriaId)
-          .get();
-      for (var doc in variacoes.docs) {
-        await doc.reference.delete();
-      }
-      await FirebaseFirestore.instance
-          .collection('uniformes_estoque')
-          .doc(categoriaId)
-          .delete();
+      if (!await UniformesAdminService().admin100() || !mounted) return;
+      final motivo = await _pedirMotivo('Justificativa para excluir categoria');
+      if (motivo == null) return;
+      await UniformesAdminService().operar('excluir_produto', {
+        'itemId': categoriaId,
+        'motivo': motivo,
+        'confirmacao': true,
+      });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -590,6 +755,7 @@ class _UniformesScreenState extends State<UniformesScreen>
   // ==================== ABA VENDAS ====================
   Widget _buildVendasTab() {
     return StreamBuilder<QuerySnapshot>(
+      key: ValueKey('uniformes_query_2_$_dadosRevision'),
       stream: _uaiUniformesQueryStream(
         FirebaseFirestore.instance
             .collection('vendas_uniformes')
@@ -612,7 +778,7 @@ class _UniformesScreenState extends State<UniformesScreen>
         }
 
         var vendas = (snapshot.data?.docs ?? [])
-            .where((doc) => !_vendasExcluidasLocal.contains(doc.id))
+            .where((doc) => !_vendasExcluidasLocal.contains(doc.id) && _documentoDoCiclo(doc))
             .toList();
 
         if (vendas.isEmpty) {
@@ -653,10 +819,10 @@ class _UniformesScreenState extends State<UniformesScreen>
             final colunas = width >= 1700
                 ? 4
                 : width >= 1250
-                    ? 3
-                    : width >= 900
-                        ? 2
-                        : 1;
+                ? 3
+                : width >= 900
+                ? 2
+                : 1;
 
             Widget buildVenda(dynamic doc) {
               final data = doc.data() as Map<String, dynamic>;
@@ -682,8 +848,8 @@ class _UniformesScreenState extends State<UniformesScreen>
             final maxWidth = width >= 1700
                 ? 1500.0
                 : width >= 1250
-                    ? 1220.0
-                    : 920.0;
+                ? 1220.0
+                : 920.0;
             final contentWidth = width < maxWidth ? width : maxWidth;
             final cardWidth =
                 (contentWidth - 24 - (spacing * (colunas - 1))) / colunas;
@@ -698,10 +864,7 @@ class _UniformesScreenState extends State<UniformesScreen>
                     runSpacing: spacing,
                     alignment: WrapAlignment.start,
                     children: vendas.map((doc) {
-                      return SizedBox(
-                        width: cardWidth,
-                        child: buildVenda(doc),
-                      );
+                      return SizedBox(width: cardWidth, child: buildVenda(doc));
                     }).toList(),
                   ),
                 ),
@@ -716,6 +879,7 @@ class _UniformesScreenState extends State<UniformesScreen>
   // ==================== ABA PENDÊNCIAS ====================
   Widget _buildPendenciasTab() {
     return StreamBuilder<QuerySnapshot>(
+      key: ValueKey('uniformes_query_3_$_dadosRevision'),
       stream: _uaiUniformesQueryStream(
         FirebaseFirestore.instance
             .collection('vendas_uniformes')
@@ -739,7 +903,7 @@ class _UniformesScreenState extends State<UniformesScreen>
         }
 
         var vendasPendentes = (snapshot.data?.docs ?? []).where((doc) {
-          if (_vendasExcluidasLocal.contains(doc.id)) return false;
+          if (_vendasExcluidasLocal.contains(doc.id) || !_documentoDoCiclo(doc)) return false;
           final data = doc.data() as Map<String, dynamic>;
           return (data['status'] ?? 'ativa').toString().toLowerCase() !=
               'cancelada';
@@ -831,6 +995,9 @@ class _UniformesScreenState extends State<UniformesScreen>
                     docId: doc.id,
                     data: data,
                     realFormat: _realFormat,
+                    podeReceberPagamento: _can(
+                      'pode_registrar_pagamento_uniforme',
+                    ),
                     onRegistrarPagamento: _registrarPagamento,
                   );
                 },
@@ -842,9 +1009,10 @@ class _UniformesScreenState extends State<UniformesScreen>
     );
   }
 
-  // ==================== ABA PEDIDOS ====================
-  Widget _buildPedidosTab() {
+  // Pedidos legados sem remessa continuam acessíveis e editáveis.
+  Widget _buildPedidosSemRemessa(Set<String> remessasConhecidas) {
     return StreamBuilder<QuerySnapshot>(
+      key: ValueKey('uniformes_query_4_$_dadosRevision'),
       stream: _uaiUniformesQueryStream(
         FirebaseFirestore.instance
             .collection('pedidos_uniformes')
@@ -867,46 +1035,15 @@ class _UniformesScreenState extends State<UniformesScreen>
         }
 
         var pedidos = (snapshot.data?.docs ?? [])
-            .where((doc) => !_pedidosExcluidosLocal.contains(doc.id))
+            .where((doc) {
+              final data = doc.data() as Map<String, dynamic>;
+              final remessaId = (data['remessa_id'] ?? '').toString();
+              return !_pedidosExcluidosLocal.contains(doc.id) && _documentoDoCiclo(doc) &&
+                  (remessaId.isEmpty || !remessasConhecidas.contains(remessaId));
+            })
             .toList();
 
-        if (pedidos.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.shopping_cart_outlined,
-                  size: 80,
-                  color: context.uai.textMuted,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Nenhum pedido de encomenda',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: context.uai.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                ElevatedButton.icon(
-                  onPressed: _abrirNovoPedido,
-                  icon: Icon(
-                    Icons.add,
-                    color: _readableOn(context.uai.primary),
-                  ),
-                  label: Text(
-                    'NOVO PEDIDO',
-                    style: TextStyle(color: _readableOn(context.uai.primary)),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: context.uai.primary,
-                  ),
-                ),
-              ],
-            ),
-          );
-        }
+        if (pedidos.isEmpty) return const SizedBox.shrink();
 
         if (_searchQuery.isNotEmpty) {
           pedidos = pedidos.where((doc) {
@@ -920,37 +1057,58 @@ class _UniformesScreenState extends State<UniformesScreen>
           }).toList();
         }
 
-        return ListView.builder(
-          padding: const EdgeInsets.all(12),
-          itemCount: pedidos.length,
-          itemBuilder: (context, index) {
-            var doc = pedidos[index];
-            var data = doc.data() as Map<String, dynamic>;
-            return PedidoCard(
-              docId: doc.id,
-              data: data,
-              realFormat: _realFormat,
-              onMarcarConfeccao: _marcarPedidoComoConfeccao,
-              onFinalizar: _marcarPedidoComoFinalizado,
-              onRegistrarPagamento: _registrarPagamentoPedido,
-              onEditar: _podeEditar ? _editarPedido : null,
-              onExcluir: _podeExcluir ? _excluirPedido : null,
-              podeEditar: _podeEditar,
-              podeExcluir: _podeExcluir,
-              podeRegistrarPagamento: _podeEditar,
-              podeAlterarStatus: _podeEditar,
-              onTap: _abrirDetalhesPedido,
-            );
-          },
+        if (pedidos.isEmpty) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(top: 14, bottom: 18),
+          child: Card(
+            child: ExpansionTile(
+              leading: Icon(Icons.inventory_2_outlined, color: context.uai.warning),
+              title: Text('Pedidos sem remessa (${pedidos.length})',
+                  style: const TextStyle(fontWeight: FontWeight.w800)),
+              subtitle: const Text('Registros sem vínculo ativo; consulte e regularize na edição.'),
+              children: [
+                ListView.builder(
+                  padding: const EdgeInsets.all(12),
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: pedidos.length,
+                  itemBuilder: (context, index) {
+                    final doc = pedidos[index];
+                    final data = doc.data() as Map<String, dynamic>;
+                    return PedidoCard(
+                      docId: doc.id,
+                      data: data,
+                      realFormat: _realFormat,
+                      onMarcarConfeccao: _marcarPedidoComoConfeccao,
+                      onFinalizar: _marcarPedidoComoFinalizado,
+                      onRegistrarPagamento: _registrarPagamentoPedido,
+                      onEditar: _can('pode_editar_pedido') ? _editarPedido : null,
+                      onExcluir: _can('pode_excluir_pedido') ? _excluirPedido : null,
+                      podeEditar: _can('pode_editar_pedido'),
+                      podeExcluir: _can('pode_excluir_pedido'),
+                      podeRegistrarPagamento: _can('pode_registrar_pagamento_pedido'),
+                      podeAlterarStatus: _can('pode_alterar_status_pedido'),
+                      onTap: _abrirDetalhesPedido,
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
         );
       },
     );
   }
 
-  // ==================== ABA REMESSAS ====================
-  Widget _buildRemessasTab() {
+  // ==================== PEDIDOS + REMESSAS ====================
+  Widget _buildPedidosRemessasTab() {
     return StreamBuilder<QuerySnapshot>(
-      stream: _remessaService.getTodasRemessas(),
+      key: ValueKey('uniformes_query_5_$_dadosRevision'),
+      stream: _uaiUniformesWindowsSafeMode
+          ? _uaiUniformesQueryStream(FirebaseFirestore.instance
+              .collection('remessas')
+              .orderBy('criado_em', descending: true))
+          : _remessaService.getTodasRemessas(),
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           return Center(
@@ -967,43 +1125,29 @@ class _UniformesScreenState extends State<UniformesScreen>
         }
 
         var remessas = (snapshot.data?.docs ?? [])
-            .where((doc) => !_remessasExcluidasLocal.contains(doc.id))
+            .where((doc) => !_remessasExcluidasLocal.contains(doc.id) && _documentoDoCiclo(doc))
             .toList();
+        // Guarde os IDs antes do filtro de pesquisa para não tratar remessa
+        // escondida pela busca como remessa inexistente.
+        final remessasConhecidas = remessas.map((doc) => doc.id).toSet();
         if (remessas.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.local_shipping_outlined,
-                  size: 80,
-                  color: context.uai.textMuted,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Nenhuma remessa cadastrada',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: context.uai.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                ElevatedButton.icon(
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              const SizedBox(height: 28),
+              Icon(Icons.local_shipping_outlined, size: 64, color: context.uai.textMuted),
+              const SizedBox(height: 12),
+              Center(child: Text('Nenhuma remessa cadastrada',
+                  style: TextStyle(fontWeight: FontWeight.w800, color: context.uai.textPrimary))),
+              const SizedBox(height: 14),
+              if (_can('pode_gerenciar_remessas_uniformes'))
+                Center(child: FilledButton.icon(
                   onPressed: _abrirNovaRemessa,
-                  icon: Icon(
-                    Icons.add,
-                    color: _readableOn(context.uai.primary),
-                  ),
-                  label: Text(
-                    'NOVA REMESSA',
-                    style: TextStyle(color: _readableOn(context.uai.primary)),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: context.uai.primary,
-                  ),
-                ),
-              ],
-            ),
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('Criar primeira remessa'),
+                )),
+              _buildPedidosSemRemessa(remessasConhecidas),
+            ],
           );
         }
 
@@ -1016,22 +1160,36 @@ class _UniformesScreenState extends State<UniformesScreen>
           }).toList();
         }
 
-        return ListView.builder(
-          padding: const EdgeInsets.all(12),
-          itemCount: remessas.length,
-          itemBuilder: (context, index) {
-            var doc = remessas[index];
-            var data = doc.data() as Map<String, dynamic>;
-            return RemessaCard(
-              remessaId: doc.id,
-              data: data,
-              onTap: () => _abrirDetalhesRemessa(doc.id, data),
-              onEditar: () => _editarRemessa(doc.id, data),
-              onExcluir: () => _excluirRemessa(doc.id, data),
-              podeEditar: _podeEditar,
-              podeExcluir: _podeExcluir,
-            );
-          },
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 22),
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 3, 4, 14),
+              child: Row(children: [
+                Icon(Icons.local_shipping_rounded, color: context.uai.primary),
+                const SizedBox(width: 9),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Pedidos por remessa', style: TextStyle(fontSize: 17,
+                    fontWeight: FontWeight.w900, color: context.uai.textPrimary)),
+                  Text('Abra a remessa para consultar pedidos, receber pagamentos e adicionar novos.',
+                    style: TextStyle(fontSize: 12, color: context.uai.textSecondary)),
+                ])),
+              ]),
+            ),
+            for (final doc in remessas)
+              RemessaCard(
+                key: ValueKey(doc.id),
+                remessaId: doc.id,
+                data: doc.data() as Map<String, dynamic>,
+                onTap: () => _abrirDetalhesRemessa(doc.id, doc.data() as Map<String, dynamic>),
+                onEditar: () => _editarRemessa(doc.id, doc.data() as Map<String, dynamic>),
+                onExcluir: () => _excluirRemessa(doc.id, doc.data() as Map<String, dynamic>),
+                podeEditar: _can('pode_gerenciar_remessas_uniformes'),
+                podeExcluir: _can('pode_gerenciar_remessas_uniformes'),
+              ),
+            _buildPedidosSemRemessa(remessasConhecidas),
+            const SizedBox(height: 104),
+          ],
         );
       },
     );
@@ -1039,19 +1197,22 @@ class _UniformesScreenState extends State<UniformesScreen>
 
   // ==================== NAVEGAÇÃO ====================
   void _abrirNovaVenda() async {
+    if (!await _allow('pode_criar_venda')) return;
+    if (!mounted) return;
     final result = await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const NovaVendaScreen()),
     );
-    if (result == true && mounted) setState(() {});
+    if (result == true && mounted) _atualizarDadosUniformes();
   }
 
   void _abrirAdicionarEstoque() async {
+    if (!await UniformesAdminService().admin100() || !mounted) return;
     final result = await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const AdicionarEstoqueScreen()),
     );
-    if (result == true && mounted) setState(() {});
+    if (result == true && mounted) _atualizarDadosUniformes();
   }
 
   void _abrirRelatorioFinanceiro() {
@@ -1061,33 +1222,30 @@ class _UniformesScreenState extends State<UniformesScreen>
     );
   }
 
-  void _abrirNovoPedido() async {
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const NovoPedidoScreen()),
-    );
-    if (result == true && mounted) setState(() {});
-  }
-
   void _editarItemEstoque(String docId, Map<String, dynamic> data) async {
+    if (!await UniformesAdminService().admin100() || !mounted) return;
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => AdicionarEstoqueScreen(itemId: docId, itemData: data),
       ),
     );
-    if (result == true && mounted) setState(() {});
+    if (result == true && mounted) _atualizarDadosUniformes();
   }
 
   void _abrirNovaRemessa() async {
+    if (!await _allow('pode_gerenciar_remessas_uniformes')) return;
+    if (!mounted) return;
     final result = await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const RemessaFormScreen()),
     );
-    if (result == true) setState(() {});
+    if (result == true && mounted) _atualizarDadosUniformes();
   }
 
   void _editarRemessa(String remessaId, Map<String, dynamic> data) async {
+    if (!await _allow('pode_gerenciar_remessas_uniformes')) return;
+    if (!mounted) return;
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
@@ -1095,7 +1253,7 @@ class _UniformesScreenState extends State<UniformesScreen>
             RemessaFormScreen(remessaId: remessaId, remessaData: data),
       ),
     );
-    if (result == true) setState(() {});
+    if (result == true && mounted) _atualizarDadosUniformes();
   }
 
   void _abrirDetalhesRemessa(
@@ -1108,19 +1266,27 @@ class _UniformesScreenState extends State<UniformesScreen>
         builder: (_) => RemessaDetalhesScreen(
           remessaId: remessaId,
           remessaData: data,
-          podeEditar: _podeEditar,
-          podeExcluir: _podeExcluir,
+          podeEditar: _can('pode_gerenciar_remessas_uniformes'),
+          podeExcluir: _can('pode_gerenciar_remessas_uniformes'),
+          podeCriarPedido: _can('pode_criar_pedido'),
+          podeEditarPedido: _can('pode_editar_pedido'),
+          podeExcluirPedido: _can('pode_excluir_pedido'),
+          podeRegistrarPagamentoPedido: _can('pode_registrar_pagamento_pedido'),
+          podeAlterarStatusPedido: _can('pode_alterar_status_pedido'),
         ),
       ),
     );
-    setState(() {});
+    if (mounted) _atualizarDadosUniformes();
   }
 
   void _excluirRemessa(String remessaId, Map<String, dynamic> data) async {
+    if (!await _allow('pode_gerenciar_remessas_uniformes')) return;
+    if (!mounted) return;
     final pedidosSnapshot = await FirebaseFirestore.instance
         .collection('pedidos_uniformes')
         .where('remessa_id', isEqualTo: remessaId)
         .get();
+    if (!mounted) return;
     final qtdPedidos = pedidosSnapshot.docs.length;
 
     final confirmar = await showDialog<bool>(
@@ -1157,8 +1323,11 @@ class _UniformesScreenState extends State<UniformesScreen>
     if (confirmar != true) return;
 
     try {
+      final motivo = await _pedirMotivo('Justificativa para excluir remessa');
+      if (motivo == null) return;
       final removidos = await _remessaService.excluirRemessaComPedidos(
         remessaId,
+        motivo: motivo,
       );
 
       if (mounted) {
@@ -1197,84 +1366,23 @@ class _UniformesScreenState extends State<UniformesScreen>
   }
 
   // ==================== REGRAS DE REMESSA ↔ PEDIDOS ====================
-  Future<void> _alterarStatusRemessa(
-    String remessaId,
-    String novoStatus,
-  ) async {
-    if (novoStatus == 'em_confeccao') {
-      final pedidos = await FirebaseFirestore.instance
-          .collection('pedidos_uniformes')
-          .where('remessa_id', isEqualTo: remessaId)
-          .get();
-      for (var doc in pedidos.docs) {
-        await doc.reference.update({'status': 'em_confeccao'});
-      }
-    }
-    await _remessaService.atualizarRemessa(remessaId, {'status': novoStatus});
-    setState(() {});
-  }
-
-  Future<bool> _verificarSePodeFinalizarRemessa(String remessaId) async {
-    final pedidos = await FirebaseFirestore.instance
-        .collection('pedidos_uniformes')
-        .where('remessa_id', isEqualTo: remessaId)
-        .get();
-    if (pedidos.docs.isEmpty) return true;
-    for (var doc in pedidos.docs) {
-      final data = doc.data();
-      final status = data['status'] as String?;
-      final statusPgto = data['status_pagamento'] as String?;
-      if (status != 'finalizado' || statusPgto != 'pago') {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  void _mostrarDialogoPedidosPendentes(String acao) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(
-          'Ação não permitida',
-          style: TextStyle(color: context.uai.textPrimary),
-        ),
-        content: Text(
-          'Todos os pedidos vinculados devem estar finalizados e pagos antes de finalizar/excluir a remessa.',
-          style: TextStyle(color: context.uai.textSecondary),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Entendi'),
-          ),
-        ],
-      ),
-    );
-  }
 
   // ==================== ESTOQUE ====================
-  void _registrarEntrada(String docId, Map<String, dynamic> data) {
+  void _registrarEntrada(String docId, Map<String, dynamic> data) async {
+    if (!await UniformesAdminService().admin100() || !mounted) return;
     _showQuantidadeDialog(
       titulo: 'Registrar Entrada',
       itemNome: data['nome'],
       precoUnitario: data['preco_venda']?.toDouble(),
       onConfirm: (quantidade) async {
-        int novaQuantidade = (data['quantidade'] ?? 0) + quantidade;
-        await FirebaseFirestore.instance
-            .collection('uniformes_estoque')
-            .doc(docId)
-            .update({
-              'quantidade': novaQuantidade,
-              'ultima_atualizacao': FieldValue.serverTimestamp(),
-            });
-        await _uniformesService.registrarMovimentacao(
-          itemId: docId,
-          itemNome: data['nome'],
-          tipo: 'entrada',
-          quantidade: quantidade,
-          quantidadeAnterior: data['quantidade'] ?? 0,
-        );
+        final motivo = await _pedirMotivo('Justificativa do ajuste de estoque');
+        if (motivo == null) return;
+        await UniformesAdminService().operar('ajustar_estoque', {
+          'itemId': docId,
+          'tipo': 'entrada',
+          'quantidade': quantidade,
+          'motivo': motivo,
+        });
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -1290,7 +1398,8 @@ class _UniformesScreenState extends State<UniformesScreen>
     );
   }
 
-  void _registrarSaida(String docId, Map<String, dynamic> data) {
+  void _registrarSaida(String docId, Map<String, dynamic> data) async {
+    if (!await UniformesAdminService().admin100() || !mounted) return;
     _showQuantidadeDialog(
       titulo: 'Registrar Saída',
       itemNome: data['nome'],
@@ -1310,20 +1419,14 @@ class _UniformesScreenState extends State<UniformesScreen>
           );
           return;
         }
-        await FirebaseFirestore.instance
-            .collection('uniformes_estoque')
-            .doc(docId)
-            .update({
-              'quantidade': novaQuantidade,
-              'ultima_atualizacao': FieldValue.serverTimestamp(),
-            });
-        await _uniformesService.registrarMovimentacao(
-          itemId: docId,
-          itemNome: data['nome'],
-          tipo: 'saida',
-          quantidade: quantidade,
-          quantidadeAnterior: data['quantidade'] ?? 0,
-        );
+        final motivo = await _pedirMotivo('Justificativa do ajuste de estoque');
+        if (motivo == null) return;
+        await UniformesAdminService().operar('ajustar_estoque', {
+          'itemId': docId,
+          'tipo': 'saida',
+          'quantidade': quantidade,
+          'motivo': motivo,
+        });
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -1351,7 +1454,23 @@ class _UniformesScreenState extends State<UniformesScreen>
       builder: (_) => QuantidadeDialog(
         titulo: titulo,
         itemNome: itemNome,
-        onConfirm: onConfirm,
+        onConfirm: (quantidade) async {
+          if (_acaoVendaEmAndamento) return;
+          setState(() => _acaoVendaEmAndamento = true);
+          try {
+            await onConfirm(quantidade);
+          } catch (e) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Não foi possível ajustar o estoque: $e'),
+                ),
+              );
+            }
+          } finally {
+            if (mounted) setState(() => _acaoVendaEmAndamento = false);
+          }
+        },
         precoUnitario: precoUnitario,
         maxQuantidade: maxQuantidade,
       ),
@@ -1363,10 +1482,14 @@ class _UniformesScreenState extends State<UniformesScreen>
     Map<String, dynamic> data,
   ) async {
     try {
-      await FirebaseFirestore.instance
-          .collection('uniformes_estoque')
-          .doc(docId)
-          .delete();
+      if (!await UniformesAdminService().admin100() || !mounted) return;
+      final motivo = await _pedirMotivo('Justificativa para excluir produto');
+      if (motivo == null) return;
+      await UniformesAdminService().operar('excluir_produto', {
+        'itemId': docId,
+        'motivo': motivo,
+        'confirmacao': true,
+      });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1395,128 +1518,61 @@ class _UniformesScreenState extends State<UniformesScreen>
   }
 
   // ==================== PAGAMENTOS ====================
-  void _registrarPagamento(
-    String docId,
-    Map<String, dynamic> data,
-    double valorRestante,
-  ) {
-    if (valorRestante <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Esta venda já está totalmente paga!',
-            style: TextStyle(color: _readableOn(context.uai.warning)),
-          ),
-          backgroundColor: context.uai.warning,
-        ),
-      );
-      return;
-    }
-    showDialog(
+  Future<void> _registrarPagamento(
+    String docId, Map<String, dynamic> data, double valorRestante,
+  ) async {
+    if (!await _allow('pode_registrar_pagamento_uniforme') || !mounted) return;
+    if (valorRestante <= 0) return;
+    double? valorConfirmado;
+    final sucesso = await showDialog<bool>(
       context: context,
+      barrierDismissible: false,
       builder: (_) => PagamentoDialog(
-        alunoNome: data['aluno_nome'] ?? 'Aluno',
-        valorTotal: data['valor_total']?.toDouble() ?? 0,
-        valorPago: data['valor_pago']?.toDouble() ?? 0,
+        alunoNome: (data['aluno_nome'] ?? 'Aluno').toString(),
+        valorTotal: (data['valor_total'] as num?)?.toDouble() ?? 0,
+        valorPago: (data['valor_pago'] as num?)?.toDouble() ?? 0,
         valorRestante: valorRestante,
         onConfirm: (valor, formaPagamento) async {
-          try {
-            await _uniformesService.registrarPagamentoVenda(
-              vendaId: docId,
-              valorPagamento: valor,
-              formaPagamento: formaPagamento,
-              vendaData: data,
-            );
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    '✅ Pagamento de ${_realFormat.format(valor)} registrado!',
-                    style: TextStyle(color: _readableOn(context.uai.success)),
-                  ),
-                  backgroundColor: context.uai.success,
-                ),
-              );
-            }
-          } catch (e) {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    'Não foi possível registrar o pagamento agora. Verifique os dados e tente novamente.',
-                    style: TextStyle(color: _readableOn(context.uai.error)),
-                  ),
-                  backgroundColor: context.uai.error,
-                ),
-              );
-            }
-          }
+          await _uniformesService.registrarPagamentoVenda(
+            vendaId: docId, valorPagamento: valor, formaPagamento: formaPagamento,
+            vendaData: data,
+          );
+          valorConfirmado = valor;
         },
       ),
     );
+    if (sucesso == true && valorConfirmado != null) {
+      _feedbackPagamentoConfirmado(valorConfirmado!);
+    }
   }
 
   Future<void> _registrarPagamentoPedido(
-    String docId,
-    Map<String, dynamic> data,
+    String docId, Map<String, dynamic> data,
   ) async {
-    double total = (data['valor_total'] ?? 0).toDouble();
-    double pago = (data['valor_pago'] ?? 0).toDouble();
-    double restante = total - pago;
-    if (restante <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Este pedido já está totalmente pago!',
-            style: TextStyle(color: _readableOn(context.uai.warning)),
-          ),
-          backgroundColor: context.uai.warning,
-        ),
-      );
-      return;
-    }
-    showDialog(
+    if (!await _allow('pode_registrar_pagamento_pedido') || !mounted) return;
+    final total = (data['valor_total'] as num?)?.toDouble() ?? 0;
+    final pago = (data['valor_pago'] as num?)?.toDouble() ?? 0;
+    final restante = total - pago;
+    if (restante <= 0) return;
+    double? valorConfirmado;
+    final sucesso = await showDialog<bool>(
       context: context,
+      barrierDismissible: false,
       builder: (_) => PagamentoDialog(
-        alunoNome: data['aluno_nome'] ?? 'Aluno',
-        valorTotal: total,
-        valorPago: pago,
-        valorRestante: restante,
+        alunoNome: (data['aluno_nome'] ?? 'Aluno').toString(),
+        valorTotal: total, valorPago: pago, valorRestante: restante,
         onConfirm: (valor, formaPagamento) async {
-          try {
-            await _uniformesService.registrarPagamentoPedido(
-              pedidoId: docId,
-              valorPagamento: valor,
-              formaPagamento: formaPagamento,
-              pedidoData: data,
-            );
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    '✅ Pagamento de ${_realFormat.format(valor)} registrado!',
-                    style: TextStyle(color: _readableOn(context.uai.success)),
-                  ),
-                  backgroundColor: context.uai.success,
-                ),
-              );
-            }
-          } catch (e) {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    'Não foi possível registrar o pagamento agora. Verifique os dados e tente novamente.',
-                    style: TextStyle(color: _readableOn(context.uai.error)),
-                  ),
-                  backgroundColor: context.uai.error,
-                ),
-              );
-            }
-          }
+          await _uniformesService.registrarPagamentoPedido(
+            pedidoId: docId, valorPagamento: valor, formaPagamento: formaPagamento,
+            pedidoData: data,
+          );
+          valorConfirmado = valor;
         },
       ),
     );
+    if (sucesso == true && valorConfirmado != null) {
+      _feedbackPagamentoConfirmado(valorConfirmado!);
+    }
   }
 
   // ==================== DETALHES ====================
@@ -1534,11 +1590,16 @@ class _UniformesScreenState extends State<UniformesScreen>
         docId: docId,
         data: data,
         realFormat: _realFormat,
+        onEntregar: _can('pode_registrar_entrega_uniforme')
+            ? _entregarVenda
+            : null,
+        podeReceberPagamento: _can('pode_registrar_pagamento_uniforme'),
         onRegistrarPagamento: _registrarPagamento,
         onEditar: _podeEditar ? _editarVenda : null,
         onCancelar: _podeExcluir ? _cancelarVenda : null,
-        onExcluirDefinitivamente:
-            _podeExcluir ? _excluirVendaDefinitivamente : null,
+        onExcluirDefinitivamente: _podeExcluir
+            ? _excluirVendaDefinitivamente
+            : null,
         podeEditar: _podeEditar,
         podeExcluir: _podeExcluir,
       ),
@@ -1557,6 +1618,8 @@ class _UniformesScreenState extends State<UniformesScreen>
 
   // ==================== EDIÇÃO/EXCLUSÃO ====================
   void _editarVenda(String docId, Map<String, dynamic> data) async {
+    if (!await _allow('pode_editar_venda')) return;
+    if (!mounted) return;
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
@@ -1593,7 +1656,11 @@ class _UniformesScreenState extends State<UniformesScreen>
         child: AlertDialog(
           content: Row(
             children: [
-              const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2.5)),
+              const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2.5),
+              ),
               const SizedBox(width: 16),
               Expanded(child: Text(mensagem)),
             ],
@@ -1608,7 +1675,7 @@ class _UniformesScreenState extends State<UniformesScreen>
       if (mounted) {
         Navigator.of(context, rootNavigator: true).pop();
         _acaoVendaEmAndamento = false;
-        setState(() {});
+        _atualizarDadosUniformes();
       } else {
         _acaoVendaEmAndamento = false;
       }
@@ -1616,8 +1683,12 @@ class _UniformesScreenState extends State<UniformesScreen>
   }
 
   Future<void> _cancelarVenda(String docId, Map<String, dynamic> data) async {
+    if (!await _allow('pode_excluir_venda')) return;
+    if (!mounted) return;
     if (_acaoVendaEmAndamento) return;
-    final motivoController = TextEditingController(text: 'Cancelamento administrativo');
+    final motivoController = TextEditingController(
+      text: 'Cancelamento administrativo',
+    );
     final confirmar = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1626,19 +1697,29 @@ class _UniformesScreenState extends State<UniformesScreen>
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('A venda ficará cancelada e continuará disponível para auditoria.\n\nAluno: ${data['aluno_nome']}'),
+            Text(
+              'A venda ficará cancelada e continuará disponível para auditoria.\n\nAluno: ${data['aluno_nome']}',
+            ),
             const SizedBox(height: 12),
             TextField(
               controller: motivoController,
               minLines: 1,
               maxLines: 3,
-              decoration: const InputDecoration(labelText: 'Motivo do cancelamento'),
+              decoration: const InputDecoration(
+                labelText: 'Motivo do cancelamento',
+              ),
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('VOLTAR')),
-          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('CANCELAR VENDA')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('VOLTAR'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('CANCELAR VENDA'),
+          ),
         ],
       ),
     );
@@ -1650,18 +1731,31 @@ class _UniformesScreenState extends State<UniformesScreen>
     final motivo = motivoController.text.trim();
     motivoController.dispose();
     if (motivo.length < 3) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Informe um motivo para cancelar a venda.')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Informe um motivo para cancelar a venda.'),
+          ),
+        );
+      }
       return;
     }
 
     try {
       await _executarAcaoVenda(
         mensagem: 'Cancelando venda...',
-        acao: () => _uniformesService.cancelarVenda(vendaId: docId, motivo: motivo),
+        acao: () =>
+            _uniformesService.cancelarVenda(vendaId: docId, motivo: motivo),
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Venda cancelada com sucesso', style: TextStyle(color: _readableOn(context.uai.success))), backgroundColor: context.uai.success),
+          SnackBar(
+            content: Text(
+              'Venda cancelada com sucesso',
+              style: TextStyle(color: _readableOn(context.uai.success)),
+            ),
+            backgroundColor: context.uai.success,
+          ),
         );
       }
     } catch (e, st) {
@@ -1669,83 +1763,94 @@ class _UniformesScreenState extends State<UniformesScreen>
       debugPrintStack(stackTrace: st);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Não foi possível cancelar a venda agora. Tente novamente.', style: TextStyle(color: _readableOn(context.uai.error))), backgroundColor: context.uai.error),
+          SnackBar(
+            content: Text(
+              'Não foi possível cancelar a venda agora. Tente novamente.',
+              style: TextStyle(color: _readableOn(context.uai.error)),
+            ),
+            backgroundColor: context.uai.error,
+          ),
         );
       }
     }
   }
 
-  Future<void> _excluirVendaDefinitivamente(String docId, Map<String, dynamic> data) async {
-    if (_acaoVendaEmAndamento) return;
-
-    String? bloqueio;
+  Future<void> _excluirVendaDefinitivamente(
+    String docId,
+    Map<String, dynamic> data,
+  ) async {
+    if (_acaoVendaEmAndamento || !await _allow('pode_excluir_venda')) return;
     try {
-      bloqueio = await _uniformesService.verificarExclusaoDefinitiva(docId);
-    } catch (e, st) {
-      debugPrint('[UNIFORMES] erro ao verificar exclusão $docId: $e');
-      debugPrintStack(stackTrace: st);
-      bloqueio = 'Não foi possível verificar se esta venda pode ser excluída com segurança.';
-    }
-
-    if (bloqueio != null) {
+      final bloqueio = await _uniformesService.verificarExclusaoDefinitiva(
+        docId,
+      );
       if (!mounted) return;
-      await showDialog<void>(
+      if (bloqueio != null) {
+        await showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Exclusão definitiva indisponível'),
+            content: Text(bloqueio),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Entendi'),
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+      final motivo = await _pedirMotivo(
+        'Excluir venda de ${data['aluno_nome']}',
+      );
+      if (motivo == null || !mounted) return;
+      final confirmar = await showDialog<bool>(
         context: context,
+        barrierDismissible: false,
         builder: (ctx) => AlertDialog(
-          title: const Text('Exclusão definitiva indisponível'),
-          content: Text(bloqueio!),
-          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('ENTENDI'))],
+          title: const Text('Excluir definitivamente'),
+          content: const Text(
+            'O histórico do aluno, a auditoria e os registros contábeis da Associação serão preservados. Confirmar exclusão desta venda cancelada?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Voltar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Confirmar exclusão'),
+            ),
+          ],
         ),
       );
-      return;
-    }
-
-    if (!mounted) return;
-    final confirmar = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Excluir definitivamente'),
-        content: Text(
-          '${_ehAdmin
-              ? 'Esta ação ADMINISTRATIVA removerá definitivamente a venda, seus eventos vinculados e os lançamentos financeiros automáticos desta venda. O estoque vinculado será restaurado.\n\n'
-              : 'Esta ação removerá definitivamente esta venda e restaurará o estoque vinculado.\n\n'}Aluno: ${data['aluno_nome']}\nValor: ${_realFormat.format(data['valor_total'] ?? 0)}\n\nDeseja continuar?',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('NÃO EXCLUIR')),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: context.uai.error, foregroundColor: _readableOn(context.uai.error)),
-            child: const Text('EXCLUIR DEFINITIVAMENTE'),
-          ),
-        ],
-      ),
-    );
-    if (confirmar != true) return;
-
-    try {
+      if (confirmar != true) return;
       await _executarAcaoVenda(
         mensagem: 'Excluindo venda...',
-        acao: () => _uniformesService.excluirVendaDefinitivamente(vendaId: docId),
+        acao: () => _uniformesService.excluirVendaDefinitivamente(
+          vendaId: docId,
+          motivo: motivo,
+        ),
       );
       if (mounted) {
         setState(() => _vendasExcluidasLocal.add(docId));
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Venda excluída com sucesso', style: TextStyle(color: _readableOn(context.uai.success))), backgroundColor: context.uai.success),
+          const SnackBar(content: Text('Venda excluída com sucesso.')),
         );
       }
-    } catch (e, st) {
-      debugPrint('[UNIFORMES] erro ao excluir venda $docId: $e');
-      debugPrintStack(stackTrace: st);
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Não foi possível excluir esta venda com segurança.', style: TextStyle(color: _readableOn(context.uai.error))), backgroundColor: context.uai.error),
+          SnackBar(content: Text('Não foi possível excluir a venda: $e')),
         );
       }
     }
   }
 
   void _editarPedido(String docId, Map<String, dynamic> data) async {
+    if (!await _allow('pode_editar_pedido')) return;
+    if (!mounted) return;
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
@@ -1767,6 +1872,8 @@ class _UniformesScreenState extends State<UniformesScreen>
   }
 
   void _excluirPedido(String docId, Map<String, dynamic> data) async {
+    if (!await _allow('pode_excluir_pedido')) return;
+    if (!mounted) return;
     final confirmar = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1800,10 +1907,13 @@ class _UniformesScreenState extends State<UniformesScreen>
     if (confirmar != true) return;
 
     try {
+      final motivo = await _pedirMotivo('Justificativa para excluir pedido');
+      if (motivo == null) return;
       final remessaId = data['remessa_id']?.toString();
       await _remessaService.excluirPedidoDefinitivamente(
         docId,
         remessaId: remessaId,
+        motivo: motivo,
       );
 
       if (mounted) {
@@ -1839,8 +1949,13 @@ class _UniformesScreenState extends State<UniformesScreen>
     String docId,
     Map<String, dynamic> data,
   ) async {
+    if (!await _allow('pode_alterar_status_pedido')) return;
+    if (!mounted) return;
     try {
-      await _uniformesService.atualizarStatusPedido(docId, 'em_confeccao');
+      await _executarAcaoVenda(
+        mensagem: 'Atualizando pedido...',
+        acao: () => _uniformesService.atualizarStatusPedido(docId, 'em_confeccao'),
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1871,8 +1986,13 @@ class _UniformesScreenState extends State<UniformesScreen>
     String docId,
     Map<String, dynamic> data,
   ) async {
+    if (!await _allow('pode_alterar_status_pedido')) return;
+    if (!mounted) return;
     try {
-      await _uniformesService.atualizarStatusPedido(docId, 'finalizado');
+      await _executarAcaoVenda(
+        mensagem: 'Finalizando pedido...',
+        acao: () => _uniformesService.atualizarStatusPedido(docId, 'finalizado'),
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1902,6 +2022,8 @@ class _UniformesScreenState extends State<UniformesScreen>
 
 // ==================== WIDGET AUXILIAR: CATEGORIA EXPANSÍVEL ====================
 class _CategoriaEstoqueExpansivel extends StatefulWidget {
+  final int dadosRevision;
+  final bool podeConfigurar;
   final String categoriaId;
   final Map<String, dynamic> categoriaData;
   final NumberFormat realFormat;
@@ -1912,6 +2034,8 @@ class _CategoriaEstoqueExpansivel extends StatefulWidget {
   final VoidCallback? onExcluirCategoria;
 
   const _CategoriaEstoqueExpansivel({
+    required this.dadosRevision,
+    this.podeConfigurar = false,
     required this.categoriaId,
     required this.categoriaData,
     required this.realFormat,
@@ -2105,6 +2229,7 @@ class _CategoriaEstoqueExpansivelState
             children: [
               if (_expanded)
                 StreamBuilder<QuerySnapshot>(
+                  key: ValueKey('uniformes_query_6_${widget.dadosRevision}'),
                   stream: _uaiUniformesQueryStream(
                     FirebaseFirestore.instance
                         .collection('uniformes_estoque')
@@ -2112,12 +2237,13 @@ class _CategoriaEstoqueExpansivelState
                         .where('status', isEqualTo: 'ativo'),
                   ),
                   builder: (context, snapshot) {
-                    if (!snapshot.hasData)
-                      { return Center(
+                    if (!snapshot.hasData) {
+                      return Center(
                         child: CircularProgressIndicator(
                           color: context.uai.primary,
                         ),
-                      ); }
+                      );
+                    }
                     final variacoes = snapshot.data!.docs;
                     if (variacoes.isEmpty) {
                       return Padding(
@@ -2133,6 +2259,7 @@ class _CategoriaEstoqueExpansivelState
                         var varData = doc.data() as Map<String, dynamic>;
                         final int quantidade = varData['quantidade'] ?? 0;
                         return ItemEstoqueCard(
+                          podeConfigurar: widget.podeConfigurar,
                           docId: doc.id,
                           data: varData,
                           realFormat: widget.realFormat,
@@ -2154,4 +2281,3 @@ class _CategoriaEstoqueExpansivelState
     );
   }
 }
-

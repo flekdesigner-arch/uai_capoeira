@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter_svg/flutter_svg.dart';
 
 import 'cadastro_screen.dart';
@@ -265,6 +265,32 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
+      // O plugin google_sign_in não executa o fluxo nativo de seleção
+      // de contas no Windows. O Firebase Auth possui provedor OAuth
+      // próprio nessa plataforma; não usar login WebView nem tokens manuais.
+      if (defaultTargetPlatform == TargetPlatform.windows) {
+        final provider = GoogleAuthProvider()
+          ..setCustomParameters({'prompt': 'select_account'});
+        final userCredential = await FirebaseAuth.instance
+            .signInWithProvider(provider);
+        final user = userCredential.user;
+        if (user == null) {
+          throw FirebaseAuthException(
+            code: 'user-not-found',
+            message: 'A autenticação Google não retornou um usuário.',
+          );
+        }
+        await _atualizarSessaoAposLogin();
+        await UserService.createOrUpdateUserDocument(
+          user: user,
+          isGoogleLogin: true,
+          origem: 'login_google_gestao',
+        );
+        if (!mounted) return;
+        await _verificarAcessoENavegar(user, provider: 'google');
+        return;
+      }
+
       final GoogleSignIn googleSignIn = GoogleSignIn();
       final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
 
@@ -319,6 +345,12 @@ class _LoginScreenState extends State<LoginScreen> {
       } else if (e.code == 'popup-blocked') {
         message =
             'O navegador bloqueou a janela de login. Libere pop-ups para este site.';
+      } else if (e.code == 'unsupported-platform' ||
+          e.code == 'operation-not-supported-in-this-environment') {
+        message = 'Login Google indisponível nesta versão do Windows. '
+            'Atualize o aplicativo e o Firebase Auth.';
+      } else if (e.code == 'operation-not-allowed') {
+        message = 'Login Google não habilitado no Firebase Authentication.';
       }
 
       _showErrorSnackBar(message);

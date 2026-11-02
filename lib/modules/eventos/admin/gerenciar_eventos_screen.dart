@@ -6,6 +6,7 @@ import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
 import 'package:uai_capoeira/core/permissions/permissao_service.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/eventos/admin/criar_evento_screen.dart';
+import 'package:uai_capoeira/modules/eventos/auditoria/evento_auditoria_screen.dart';
 import 'package:uai_capoeira/modules/eventos/admin/gerenciar_participacoes_screen.dart';
 import 'package:uai_capoeira/modules/eventos/screens/participantes_evento_screen.dart';
 import 'package:uai_capoeira/modules/eventos/models/evento_model.dart';
@@ -38,6 +39,8 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
   String _statusFiltro = 'todos';
   int _viewMode = 1;
 
+  bool _podeVerAuditoria = false;
+  bool _adminAuditoria = false;
   bool _podeCriarEvento = false;
   bool _podeEditarEvento = false;
   bool _podeExcluirEvento = false;
@@ -120,6 +123,9 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
         _permissaoService.temPermissao('pode_criar_evento'),
         _permissaoService.temPermissao('pode_editar_evento'),
         _permissaoService.temPermissao('pode_excluir_evento'),
+        _permissaoService.temPermissao('pode_ver_auditoria_evento'),
+        _permissaoService.usuarioAtualEhAdmin(),
+        _permissaoService.temPermissao('pode_ver_eventos_andamento'),
       ]);
 
       if (!mounted) return;
@@ -128,6 +134,8 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
         _podeCriarEvento = results[0];
         _podeEditarEvento = results[1];
         _podeExcluirEvento = results[2];
+        _podeVerAuditoria = results[3] && results[5];
+        _adminAuditoria = results[4];
         _acessoNegado = false;
         _carregandoPermissoes = false;
       });
@@ -300,9 +308,7 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
                               borderRadius: BorderRadius.circular(
                                 t.inputRadius,
                               ),
-                              border: Border.all(
-                                color: error.withAlpha(46),
-                              ),
+                              border: Border.all(color: error.withAlpha(46)),
                             ),
                             child: Text(
                               nomeEvento,
@@ -1145,7 +1151,9 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Não foi possível abrir a prévia do evento: $e')),
+        SnackBar(
+          content: Text('Não foi possível abrir a prévia do evento: $e'),
+        ),
       );
     }
   }
@@ -1156,16 +1164,9 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
 
     final Widget screen = evento.status == 'andamento'
         ? DetalhesEventoAndamentoScreen(evento: evento, eventoId: id)
-        : DetalhesEventoScreen(
-            evento: evento,
-            eventoId: id,
-            adminMode: true,
-          );
+        : DetalhesEventoScreen(evento: evento, eventoId: id, adminMode: true);
 
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => screen),
-    );
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
   }
 
   Widget _buildListView(List<EventoModel> eventos) {
@@ -1234,12 +1235,13 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
             : 1;
 
         const gap = 14.0;
-        final cellWidth = (width - (gap * (crossAxisCount - 1))) / crossAxisCount;
+        final cellWidth =
+            (width - (gap * (crossAxisCount - 1))) / crossAxisCount;
         final coverAspect = cellWidth <= 260
             ? 1.0
             : cellWidth <= 420
-                ? 4 / 3
-                : 16 / 9;
+            ? 4 / 3
+            : 16 / 9;
         final bodyHeight = cellWidth <= 260 ? 104.0 : 112.0;
         final tileHeight = (cellWidth / coverAspect) + bodyHeight + 3;
 
@@ -1403,9 +1405,9 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
             evento: evento,
           );
 
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => destino),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => destino));
   }
 
   Widget _buildStatusShortcut(EventoModel evento) {
@@ -1434,6 +1436,16 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
     );
   }
 
+  bool _podeAbrirAuditoria(EventoModel evento) {
+    if (evento.id == null) return false;
+    if (_adminAuditoria) return true;
+    final uid = _permissaoService.usuarioAtual?.uid;
+    return _podeVerAuditoria &&
+        evento.auditoriaVisivelGestores &&
+        uid != null &&
+        (evento.gestoresAutorizadosUids?.contains(uid) ?? false);
+  }
+
   Widget _buildAdminActionsMenu(EventoModel evento) {
     final t = context.uai;
     return Material(
@@ -1451,15 +1463,21 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
         onSelected: (value) {
           if (value == 'module_preview') {
             _abrirPreviewModuloEventos(evento);
+          } else if (value == 'audit' && _podeAbrirAuditoria(evento)) {
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => EventoAuditoriaScreen(
+                  eventoId: evento.id!,
+                  eventoNome: evento.nome,
+                ),
+              ),
+            );
           } else if (value == 'participants') {
             _abrirGerenciamentoParticipacoes(evento);
           } else if (value == 'edit') {
             _abrirCadastroEvento(evento: evento);
           } else if (value == 'visibility' && evento.id != null) {
-            _alternarPortfolioWeb(
-              evento.id!,
-              evento.mostrarNoPortfolioWeb,
-            );
+            _alternarPortfolioWeb(evento.id!, evento.mostrarNoPortfolioWeb);
           } else if (value == 'status' && evento.id != null) {
             _alterarStatus(evento.id!, evento.status);
           } else if (value == 'delete' && evento.id != null) {
@@ -1477,6 +1495,17 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
               ],
             ),
           ),
+          if (_podeAbrirAuditoria(evento))
+            const PopupMenuItem(
+              value: 'audit',
+              child: Row(
+                children: [
+                  Icon(Icons.history_rounded, size: 20),
+                  SizedBox(width: 12),
+                  Text('Auditoria do evento'),
+                ],
+              ),
+            ),
           const PopupMenuItem(
             value: 'participants',
             child: Row(
@@ -1550,50 +1579,6 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
               ),
             ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildCompactEventMenu(EventoModel evento) {
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton.icon(
-        onPressed: () => showModalBottomSheet<void>(
-          context: context,
-          showDragHandle: true,
-          builder: (_) => SafeArea(
-            child: Wrap(
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.visibility_rounded),
-                  title: const Text('Visualizar no módulo Eventos'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _abrirPreviewModuloEventos(evento);
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.groups_2_rounded),
-                  title: const Text('Gerenciar participações'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _abrirGerenciamentoParticipacoes(evento);
-                  },
-                ),
-                if (_podeEditarEvento)
-                  ListTile(leading: const Icon(Icons.edit_rounded), title: const Text('Editar evento'), onTap: () { Navigator.pop(context); _abrirCadastroEvento(evento: evento); }),
-                if (_podeEditarEvento)
-                  ListTile(leading: const Icon(Icons.public_rounded), title: Text(evento.mostrarNoPortfolioWeb ? 'Remover do site' : 'Adicionar ao site'), onTap: () { Navigator.pop(context); _alternarPortfolioWeb(evento.id!, evento.mostrarNoPortfolioWeb); }),
-                if (_podeEditarEvento)
-                  ListTile(leading: Icon(evento.status == 'andamento' ? Icons.stop_circle_rounded : Icons.play_circle_fill_rounded), title: Text(evento.status == 'andamento' ? 'Finalizar evento' : 'Iniciar evento'), onTap: () { Navigator.pop(context); _alterarStatus(evento.id!, evento.status); }),
-                if (_podeEditarEvento)
-                  ListTile(leading: const Icon(Icons.delete_outline_rounded), title: const Text('Excluir'), onTap: () { Navigator.pop(context); _excluirEvento(evento.id!, evento.nome); }),
-              ],
-            ),
-          ),
-        ),
-        icon: const Icon(Icons.more_horiz_rounded, size: 18),
-        label: const Text('AÇÕES'),
       ),
     );
   }
@@ -1769,9 +1754,9 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
         child: InkWell(
           onTap: _podeEditarEvento && evento.id != null
               ? () => _alternarPortfolioWeb(
-                    evento.id!,
-                    evento.mostrarNoPortfolioWeb,
-                  )
+                  evento.id!,
+                  evento.mostrarNoPortfolioWeb,
+                )
               : null,
           child: Container(
             padding: const EdgeInsets.all(7),
@@ -1798,18 +1783,6 @@ class _GerenciarEventosScreenState extends State<GerenciarEventosScreen> {
         _buildStatusAction(evento),
         _buildEditAction(evento),
         _buildDeleteAction(evento),
-      ],
-    );
-  }
-
-  Widget _buildActionRow(EventoModel evento) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        _buildPortfolioAction(evento, small: true),
-        _buildStatusAction(evento, small: true),
-        _buildEditAction(evento, small: true),
-        _buildDeleteAction(evento, small: true),
       ],
     );
   }

@@ -138,13 +138,6 @@ class _CentralTemasScreenState extends State<CentralTemasScreen> {
     Future.microtask(() => _carregarLogoTemaAtual());
   }
 
-  void _markDirty() {
-    if (!_dirty) {
-      setState(() => _dirty = true);
-      return;
-    }
-    setState(() {});
-  }
 
   Future<void> _carregarLogoTemaAtual({bool force = false}) async {
     final themeId = _draft.temaPadraoGlobal.trim();

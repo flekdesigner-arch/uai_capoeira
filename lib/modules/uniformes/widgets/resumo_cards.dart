@@ -7,11 +7,13 @@ import 'package:uai_capoeira/core/theme/app_theme.dart';
 class ResumoCards extends StatelessWidget {
   final NumberFormat realFormat;
   final VoidCallback onNovaVenda;
+  final String? cicloId;
 
   const ResumoCards({
     super.key,
     required this.realFormat,
     required this.onNovaVenda,
+    this.cicloId,
   });
 
   static bool get _windowsSafeMode =>
@@ -68,6 +70,7 @@ class ResumoCards extends StatelessWidget {
             if (vendasSnapshot.hasData) {
               for (final doc in vendasSnapshot.data!.docs) {
                 final data = doc.data();
+                if (cicloId != null && data['ciclo_id'] != cicloId) continue;
                 totalPendente += ((data['valor_total'] ?? 0) as num).toDouble();
                 if (data['status_pagamento'] == 'pendente') {
                   vendasPendentes++;
@@ -82,8 +85,10 @@ class ResumoCards extends StatelessWidget {
                     .where('status', whereIn: ['pendente', 'em_confeccao']),
               ),
               builder: (context, pedidosSnapshot) {
-                final pedidosPendentes =
-                    pedidosSnapshot.hasData ? pedidosSnapshot.data!.docs.length : 0;
+                final pedidosPendentes = pedidosSnapshot.hasData
+                    ? pedidosSnapshot.data!.docs.where((doc) =>
+                        cicloId == null || doc.data()['ciclo_id'] == cicloId).length
+                    : 0;
 
                 final cards = <Widget>[
                   _buildResumoCard(

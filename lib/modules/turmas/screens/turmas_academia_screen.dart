@@ -1,3 +1,6 @@
+import 'package:uai_capoeira/core/access_simulation/access_simulation_controller.dart';
+import 'package:uai_capoeira/core/access_simulation/mirror_academia_reader.dart';
+import 'package:uai_capoeira/core/permissions/permissao_service.dart';
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -37,6 +40,7 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
   bool _isLoading = true;
   bool _erroCarregamento = false;
   bool _atualizando = false;
+  int? _totalInativos;
   bool _cacaBugRegistrouEntrada = false;
   bool _cacaBugRegistrouCarregamentoTurmas = false;
   bool _cacaBugRegistrouErroCarregamento = false;
@@ -54,12 +58,53 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
   @override
   void initState() {
     super.initState();
+    AccessSimulationController.instance.addListener(_simulationChanged);
     _registrarEntradaCacaBug();
     _carregarDadosIniciais();
+    _carregarTotalInativos();
+  }
+
+  @override
+  void dispose() {
+    AccessSimulationController.instance.removeListener(_simulationChanged);
+    super.dispose();
+  }
+
+  void _simulationChanged() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _turmas = [];
+      _turmasCache = [];
+      _ultimoCacheTurmas = null;
+      _permissoes = {};
+      _pesoUsuarioLogado = 1;
+    });
+    unawaited(_carregarDadosIniciais());
+  }
+
+  bool _blockUnreviewedChild() {
+    if (!AccessSimulationController.instance.active) {
+      return false;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Cobertura limitada no Modo Espelho: alunos, chamadas e ativação ainda não estão integrados.',
+        ),
+      ),
+    );
+    return true;
   }
 
   void _registrarEntradaCacaBug() {
-    if (_cacaBugRegistrouEntrada) return;
+    if (AccessSimulationController.instance.active) {
+      return;
+    }
+    if (_cacaBugRegistrouEntrada) {
+      return;
+    }
     _cacaBugRegistrouEntrada = true;
     unawaited(
       CacaBugService.instance
@@ -83,7 +128,12 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
   }
 
   void _registrarCarregouTurmasCacaBug({required bool refreshManual}) {
-    if (!refreshManual && _cacaBugRegistrouCarregamentoTurmas) return;
+    if (AccessSimulationController.instance.active) {
+      return;
+    }
+    if (!refreshManual && _cacaBugRegistrouCarregamentoTurmas) {
+      return;
+    }
     if (!refreshManual) _cacaBugRegistrouCarregamentoTurmas = true;
     unawaited(
       CacaBugService.instance.registrarEvento(
@@ -109,7 +159,12 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
   }
 
   void _registrarErroCarregarTurmasCacaBug(Object erro) {
-    if (_cacaBugRegistrouErroCarregamento) return;
+    if (AccessSimulationController.instance.active) {
+      return;
+    }
+    if (_cacaBugRegistrouErroCarregamento) {
+      return;
+    }
     _cacaBugRegistrouErroCarregamento = true;
     unawaited(
       CacaBugService.instance.registrarErro(
@@ -128,6 +183,9 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
   }
 
   void _registrarAbriuTurmaCacaBug(Map<String, dynamic> turma) {
+    if (AccessSimulationController.instance.active) {
+      return;
+    }
     unawaited(
       CacaBugService.instance
           .registrarEvento(
@@ -152,27 +210,10 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
     );
   }
 
-  void _registrarVoltouParaAcademiaCacaBug() {
-    unawaited(
-      CacaBugService.instance.registrarEvento(
-        tipo: 'navegacao',
-        acao: CacaBugActions.voltouParaAcademia,
-        descricao:
-            'Usu\u00e1rio voltou para as turmas da academia ${widget.academiaNome}',
-        tela: 'TurmasAcademiaScreen',
-        arquivo: 'lib/modules/turmas/screens/turmas_academia_screen.dart',
-        rota: '/academias/turmas',
-        status: 'success',
-        dados: {
-          'academiaId': widget.academiaId,
-          'academiaNome': widget.academiaNome,
-        },
-      ),
-    );
-  }
-
   bool _podeUsarCache() {
-    if (_turmasCache.isEmpty || _ultimoCacheTurmas == null) return false;
+    if (_turmasCache.isEmpty || _ultimoCacheTurmas == null) {
+      return false;
+    }
     return DateTime.now().difference(_ultimoCacheTurmas!) <= _cacheValidade;
   }
 
@@ -195,8 +236,23 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
     }
   }
 
+  Future<void> _carregarTotalInativos() async {
+    try {
+      final resultado = await _firestore.collection('alunos')
+          .where('academia_id', isEqualTo: widget.academiaId)
+          .where('status_atividade', isEqualTo: 'INATIVO(A)')
+          .count().get();
+      if (mounted) setState(() => _totalInativos = resultado.count);
+    } catch (e) {
+      debugPrint('Contagem de alunos inativos indisponível: $e');
+    }
+  }
+
   Future<void> _carregarDadosIniciais() async {
-    if (!mounted) return;
+    final revision = AccessSimulationController.instance.revision;
+    if (!mounted) {
+      return;
+    }
 
     setState(() {
       _isLoading = true;
@@ -206,9 +262,12 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
 
     try {
       await _carregarDadosUsuario();
+      if (revision != AccessSimulationController.instance.revision) return;
       await _carregarTurmas();
 
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
       setState(() {
         _ultimaAtualizacao = DateTime.now();
       });
@@ -216,9 +275,12 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
       _registrarErroCarregarTurmasCacaBug(e);
       debugPrint('Erro ao carregar dados iniciais: $e');
 
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
-      if (_turmasCache.isNotEmpty) {
+      if (!AccessSimulationController.instance.active &&
+          _turmasCache.isNotEmpty) {
         setState(() {
           _turmas = List<Map<String, dynamic>>.from(_turmasCache);
           _erroCarregamento = false;
@@ -237,8 +299,25 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
   }
 
   Future<void> _carregarDadosUsuario({bool forcarServidor = false}) async {
+    if (AccessSimulationController.instance.active) {
+      final revision = AccessSimulationController.instance.revision;
+      final service = PermissaoService();
+      final peso = await service.getPesoUsuarioAtual();
+      final permissoes = await service.getTodasPermissoes();
+      if (!mounted ||
+          revision != AccessSimulationController.instance.revision) {
+        return;
+      }
+      setState(() {
+        _pesoUsuarioLogado = peso;
+        _permissoes = permissoes;
+      });
+      return;
+    }
     final user = _auth.currentUser;
-    if (user == null) return;
+    if (user == null) {
+      return;
+    }
 
     await _carregarUsuarioLogado(user.uid, forcarServidor: forcarServidor);
     await _carregarPermissoesUsuario(user.uid, forcarServidor: forcarServidor);
@@ -248,6 +327,7 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
     String uid, {
     bool forcarServidor = false,
   }) async {
+    final revision = AccessSimulationController.instance.revision;
     final sources = forcarServidor
         ? const [Source.server, Source.cache]
         : const [Source.cache, Source.server];
@@ -259,12 +339,18 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
             .doc(uid)
             .get(GetOptions(source: source));
 
+        if (AccessSimulationController.instance.active ||
+            revision != AccessSimulationController.instance.revision) {
+          return;
+        }
         if (!userDoc.exists) continue;
 
         final userData = userDoc.data() ?? {};
         final rawPeso = userData['peso_permissao'];
 
-        if (!mounted) return;
+        if (!mounted) {
+          return;
+        }
         setState(() {
           if (rawPeso is int) {
             _pesoUsuarioLogado = rawPeso;
@@ -287,6 +373,7 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
     String uid, {
     bool forcarServidor = false,
   }) async {
+    final revision = AccessSimulationController.instance.revision;
     final sources = forcarServidor
         ? const [Source.server, Source.cache]
         : const [Source.cache, Source.server];
@@ -300,11 +387,17 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
             .doc('configuracoes')
             .get(GetOptions(source: source));
 
+        if (AccessSimulationController.instance.active ||
+            revision != AccessSimulationController.instance.revision) {
+          return;
+        }
         if (!doc.exists) continue;
 
         final data = doc.data() ?? {};
 
-        if (!mounted) return;
+        if (!mounted) {
+          return;
+        }
         setState(() {
           _permissoes = {
             'pode_ativar_alunos': data['pode_ativar_alunos'] ?? false,
@@ -330,27 +423,47 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
   }
 
   Future<bool> _usarTurmasPacoteOffline() async {
+    if (AccessSimulationController.instance.active) {
+      return false;
+    }
+    final revision = AccessSimulationController.instance.revision;
     final snapshot = await EmergencyOfflineService.instance.read();
+    if (AccessSimulationController.instance.active ||
+        revision != AccessSimulationController.instance.revision) {
+      return false;
+    }
     final entries = (snapshot?['turmas'] as List?) ?? const [];
-    if (snapshot == null) return false;
+    if (snapshot == null) {
+      return false;
+    }
     final roster = (snapshot['alunos'] as List?) ?? const [];
-    final selected = entries.whereType<Map>().where(
-      (t) => t['academiaId']?.toString() == widget.academiaId,
-    ).map((t) {
-      final id = (t['id'] ?? '').toString();
-      return <String, dynamic>{
-        ...Map<String, dynamic>.from(t),
-        'id': id,
-        'nome': t['nome'] ?? 'Turma',
-        'alunos_ativos': roster.where((a) => a is Map && a['turmaId'] == id).length,
-        'capacidade_maxima': t['capacidade_maxima'] ?? 0,
-        'status': 'ATIVA',
-        'horario': t['horario'] ?? '',
-        'dias_semana': t['dias_semana'] ?? '',
-        'cor_turma': t['cor_turma'] ?? '#059669',
-      };
-    }).toList()..sort((a, b) => a['nome'].toString().compareTo(b['nome'].toString()));
-    if (!mounted) return true;
+    final selected =
+        entries
+            .whereType<Map>()
+            .where((t) => t['academiaId']?.toString() == widget.academiaId)
+            .map((t) {
+              final id = (t['id'] ?? '').toString();
+              return <String, dynamic>{
+                ...Map<String, dynamic>.from(t),
+                'id': id,
+                'nome': t['nome'] ?? 'Turma',
+                'alunos_ativos': roster
+                    .where((a) => a is Map && a['turmaId'] == id)
+                    .length,
+                'capacidade_maxima': t['capacidade_maxima'] ?? 0,
+                'status': 'ATIVA',
+                'horario': t['horario'] ?? '',
+                'dias_semana': t['dias_semana'] ?? '',
+                'cor_turma': t['cor_turma'] ?? '#059669',
+              };
+            })
+            .toList()
+          ..sort(
+            (a, b) => a['nome'].toString().compareTo(b['nome'].toString()),
+          );
+    if (!mounted) {
+      return true;
+    }
     setState(() {
       _turmas = selected;
       _turmasCache = List<Map<String, dynamic>>.from(selected);
@@ -362,9 +475,37 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
   }
 
   Future<void> _carregarTurmas({bool forcarServidor = false}) async {
+    final revision = AccessSimulationController.instance.revision;
+    if (AccessSimulationController.instance.active) {
+      try {
+        final rows = await MirrorAcademiaReader().carregarTurmas(
+          widget.academiaId,
+        );
+        if (!mounted ||
+            revision != AccessSimulationController.instance.revision) {
+          return;
+        }
+        await _processarTurmas(rows);
+      } catch (_) {
+        if (!mounted ||
+            revision != AccessSimulationController.instance.revision) {
+          return;
+        }
+        setState(() {
+          _turmas = [];
+          _turmasCache = [];
+          _erroCarregamento = true;
+          _mensagemErro =
+              'Leitura online indisponível no Modo Espelho. Tente atualizar.';
+        });
+      }
+      return;
+    }
     try {
       if (!forcarServidor && _podeUsarCache()) {
-        if (!mounted) return;
+        if (!mounted) {
+          return;
+        }
 
         setState(() {
           _turmas = List<Map<String, dynamic>>.from(_turmasCache);
@@ -375,10 +516,15 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
       }
 
       final online = await _temInternet();
+      if (revision != AccessSimulationController.instance.revision) {
+        return;
+      }
 
       if (!online) {
         if (_turmasCache.isNotEmpty) {
-          if (!mounted) return;
+          if (!mounted) {
+            return;
+          }
 
           setState(() {
             _turmas = List<Map<String, dynamic>>.from(_turmasCache);
@@ -388,8 +534,12 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
           return;
         }
 
-        if (await _usarTurmasPacoteOffline()) return;
-        if (!mounted) return;
+        if (await _usarTurmasPacoteOffline()) {
+          return;
+        }
+        if (!mounted) {
+          return;
+        }
         setState(() {
           _erroCarregamento = true;
           _mensagemErro = 'Sem conexão e nenhum pacote local disponível.';
@@ -404,13 +554,25 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
           .orderBy('nome')
           .get(const GetOptions(source: Source.server));
 
-      await _processarTurmas(turmasSnapshot.docs);
+      if (revision != AccessSimulationController.instance.revision) {
+        return;
+      }
+      await _processarTurmas(
+        turmasSnapshot.docs
+            .map((d) => <String, dynamic>{...d.data(), 'id': d.id})
+            .toList(),
+      );
       _registrarCarregouTurmasCacaBug(refreshManual: false);
     } catch (e) {
       _registrarErroCarregarTurmasCacaBug(e);
       debugPrint('Erro ao carregar turmas: $e');
+      if (revision != AccessSimulationController.instance.revision) {
+        return;
+      }
 
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       if (_turmasCache.isNotEmpty) {
         setState(() {
@@ -421,25 +583,24 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
       } else if (!await _usarTurmasPacoteOffline()) {
         setState(() {
           _erroCarregamento = true;
-          _mensagemErro = 'Erro ao carregar turmas. Puxe para baixo para tentar novamente.';
+          _mensagemErro =
+              'Erro ao carregar turmas. Puxe para baixo para tentar novamente.';
         });
       }
     }
   }
 
-  Future<void> _processarTurmas(
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-  ) async {
+  Future<void> _processarTurmas(List<Map<String, dynamic>> docs) async {
     final turmasAcessiveis = <Map<String, dynamic>>[];
 
     for (final doc in docs) {
-      final data = doc.data();
+      final data = doc;
       final pesoTurma = _parseInt(data['peso_do_usuario_para_acessar'], 1);
 
       if (_pesoUsuarioLogado < pesoTurma) continue;
 
       final turma = {
-        'id': doc.id,
+        'id': doc['id'],
         'nome': data['nome'] ?? 'Sem nome',
         'nivel': data['nivel'] ?? '',
         'faixa_etaria': data['faixa_etaria'] ?? '',
@@ -466,7 +627,9 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
       (a, b) => a['nome'].toString().compareTo(b['nome'].toString()),
     );
 
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
 
     setState(() {
       _turmas = turmasAcessiveis;
@@ -479,8 +642,12 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
   }
 
   int _parseInt(dynamic value, int fallback) {
-    if (value is int) return value;
-    if (value is num) return value.toInt();
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.toInt();
+    }
     return int.tryParse(value?.toString() ?? '') ?? fallback;
   }
 
@@ -508,10 +675,14 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
   }
 
   Future<void> _recarregarDados({bool mostrarMensagem = false}) async {
+    final revision = AccessSimulationController.instance.revision;
     final online = await _temInternet();
+    if (revision != AccessSimulationController.instance.revision) return;
 
     if (!online) {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -522,7 +693,9 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
       return;
     }
 
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
 
     setState(() {
       _atualizando = true;
@@ -534,6 +707,7 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
 
     try {
       await _carregarDadosUsuario(forcarServidor: true);
+      if (revision != AccessSimulationController.instance.revision) return;
       await _carregarTurmas(forcarServidor: true);
       _registrarCarregouTurmasCacaBug(refreshManual: true);
 
@@ -556,6 +730,7 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
 
   Future<void> _onRefresh() async {
     await _recarregarDados(mostrarMensagem: false);
+    await _carregarTotalInativos();
   }
 
   Widget _buildLogoTurma(Map<String, dynamic> turma, {double size = 40}) {
@@ -578,7 +753,9 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
               return _buildFallbackLogo(turma, size, corTurma);
             },
             loadingBuilder: (context, child, loadingProgress) {
-              if (loadingProgress == null) return child;
+              if (loadingProgress == null) {
+                return child;
+              }
 
               return Center(
                 child: SizedBox(
@@ -637,8 +814,12 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
   }
 
   Color _capacidadeColor(double porcentagem) {
-    if (porcentagem >= 90) return context.uai.error;
-    if (porcentagem >= 70) return context.uai.warning;
+    if (porcentagem >= 90) {
+      return context.uai.error;
+    }
+    if (porcentagem >= 70) {
+      return context.uai.warning;
+    }
     return context.uai.success;
   }
 
@@ -656,13 +837,11 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
         t.background.computeLuminance() < 0.45 ||
         t.surface.computeLuminance() < 0.45;
 
-    if (temaEscuro) return Colors.white;
+    if (temaEscuro) {
+      return Colors.white;
+    }
 
     return _readableOn(t.primary);
-  }
-
-  Color _onPrimarySoft(UaiThemeTokens t, double opacity) {
-    return _onPrimaryText(t).withAlpha((255.0 * (opacity)).round());
   }
 
   Widget _buildTurmaCard(Map<String, dynamic> turma, {bool gridMode = false}) {
@@ -685,6 +864,9 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: () {
+            if (_blockUnreviewedChild()) {
+              return;
+            }
             _registrarAbriuTurmaCacaBug(turma);
             Navigator.push(
               context,
@@ -979,6 +1161,9 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
   }
 
   Future<void> _abrirTelaVincularAluno() async {
+    if (_blockUnreviewedChild()) {
+      return;
+    }
     if (_permissoes['pode_ativar_alunos'] != true) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -993,7 +1178,9 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
     }
 
     final online = await _temInternet();
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
     if (!online) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1017,195 +1204,23 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
       return;
     }
 
-    if (_turmas.length == 1) {
-      await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => VincularAlunoInativoTurmaScreen(
-            turmaId: _turmas[0]['id'],
-            turmaNome: _turmas[0]['nome'],
-            academiaId: widget.academiaId,
-            academiaNome: widget.academiaNome,
-          ),
+    final resultado = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => VincularAlunoInativoTurmaScreen(
+          academiaId: widget.academiaId,
+          academiaNome: widget.academiaNome,
+          turmasDisponiveis: List<Map<String, dynamic>>.from(_turmas),
         ),
-      );
-    } else {
-      _mostrarDialogoSelecionarTurma();
-    }
-  }
-
-  void _mostrarDialogoSelecionarTurma() {
-    final t = context.uai;
-
-    final onPrimary = _onPrimaryText(t);
-
-    showDialog<void>(
-      context: context,
-      builder: (context) {
-        return Dialog(
-          backgroundColor: t.surface,
-          surfaceTintColor: Colors.transparent,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(t.cardRadius),
-          ),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 520),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(18),
-                  decoration: BoxDecoration(
-                    gradient: t.primaryGradient,
-                    borderRadius: BorderRadius.vertical(
-                      top: Radius.circular(t.cardRadius),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 42,
-                        height: 42,
-                        decoration: BoxDecoration(
-                          color: onPrimary.withAlpha(36),
-                          borderRadius: BorderRadius.circular(15),
-                        ),
-                        child: Icon(
-                          Icons.group_add_rounded,
-                          color: onPrimary,
-                          size: 23,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'Selecione uma turma',
-                          style: TextStyle(
-                            color: onPrimary,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Flexible(
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-                    itemCount: _turmas.length,
-                    itemBuilder: (context, index) {
-                      final turma = _turmas[index];
-                      final corTurma = _getColorFromHex(turma['cor_turma']);
-
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Material(
-                          color: t.card,
-                          borderRadius: BorderRadius.circular(t.cardRadius - 6),
-                          clipBehavior: Clip.antiAlias,
-                          child: InkWell(
-                            onTap: () {
-                              Navigator.pop(context);
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) =>
-                                      VincularAlunoInativoTurmaScreen(
-                                        turmaId: turma['id'],
-                                        turmaNome: turma['nome'],
-                                        academiaId: widget.academiaId,
-                                        academiaNome: widget.academiaNome,
-                                      ),
-                                ),
-                              );
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.all(13),
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(
-                                  t.cardRadius - 6,
-                                ),
-                                border: Border.all(color: t.border),
-                              ),
-                              child: Row(
-                                children: [
-                                  _buildLogoTurma(turma, size: 44),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          turma['nome']?.toString() ?? 'Turma',
-                                          style: TextStyle(
-                                            fontSize: 14.5,
-                                            fontWeight: FontWeight.w900,
-                                            color: t.textPrimary,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          _descricaoCurtaTurma(turma),
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: t.textSecondary,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  Icon(
-                                    Icons.chevron_right_rounded,
-                                    color: corTurma,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: Text('CANCELAR'),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
+      ),
     );
-  }
-
-  String _descricaoCurtaTurma(Map<String, dynamic> turma) {
-    final dias = turma['dias_semana']?.toString() ?? '';
-    final horario = turma['horario']?.toString() ?? '';
-    final alunos = turma['alunos_ativos']?.toString() ?? '0';
-    final capacidade = turma['capacidade_maxima']?.toString() ?? '0';
-
-    final partes = <String>[
-      if (dias.isNotEmpty) dias,
-      if (horario.isNotEmpty) horario,
-      '$alunos/$capacidade alunos',
-    ];
-
-    return partes.join(' • ');
+    if (!mounted) {
+      return;
+    }
+    if (resultado == true) {
+      await _carregarTurmas(forcarServidor: true);
+      await _carregarTotalInativos();
+    }
   }
 
   PreferredSizeWidget _buildAppBar() {
@@ -1245,40 +1260,17 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
         ],
       ),
       actions: [
-        Padding(
-          padding: const EdgeInsets.only(right: 8),
-          child: MediaQuery.of(context).size.width < 380
-              ? IconButton(
-                  tooltip: 'Ativar alunos inativos',
-                  onPressed: _abrirTelaVincularAluno,
-                  icon: const Icon(Icons.person_add_alt_1_rounded),
-                  style: IconButton.styleFrom(
-                    foregroundColor: appBarFg,
-                    backgroundColor: appBarFg.withAlpha(31),
-                  ),
-                )
-              : TextButton.icon(
-                  onPressed: _abrirTelaVincularAluno,
-                  icon: Icon(Icons.person_add_alt_1_rounded, size: 18),
-                  label: Text('INATIVOS'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: appBarFg,
-                    backgroundColor: appBarFg.withAlpha(31),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(t.buttonRadius),
-                      side: BorderSide(color: appBarFg.withAlpha(36)),
-                    ),
-                    textStyle: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
+        IconButton(
+          tooltip: 'Atualizar turmas e contadores',
+          onPressed: _atualizando ? null : () async {
+            await _onRefresh();
+          },
+          icon: _atualizando
+              ? const SizedBox(width: 19, height: 19,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+              : const Icon(Icons.refresh_rounded),
         ),
+        const SizedBox(width: 6),
       ],
     );
   }
@@ -1422,64 +1414,51 @@ class _TurmasAcademiaScreenState extends State<TurmasAcademiaScreen> {
 
   Widget _buildSectionHeader() {
     final t = context.uai;
-
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: t.card,
-          borderRadius: BorderRadius.circular(t.cardRadius),
-          border: Border.all(color: t.border),
-          boxShadow: t.softShadow,
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 43,
-              height: 43,
-              decoration: BoxDecoration(
-                color: t.primary.withAlpha(26),
-                borderRadius: BorderRadius.circular(t.buttonRadius),
-              ),
-              child: Icon(Icons.list_alt_rounded, color: t.primary),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+      child: Material(
+        color: t.card,
+        borderRadius: BorderRadius.circular(t.cardRadius),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: _abrirTelaVincularAluno,
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(t.cardRadius),
+              border: Border.all(color: t.border),
             ),
-            const SizedBox(width: 11),
-            Expanded(
-              child: Column(
+            child: Row(children: [
+              Container(
+                width: 48, height: 48,
+                decoration: BoxDecoration(
+                  color: t.primary.withAlpha(28),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(Icons.person_add_alt_1_rounded, color: t.primary),
+              ),
+              const SizedBox(width: 12),
+              Expanded(child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Turmas disponíveis',
-                    style: TextStyle(
-                      fontSize: 15.5,
-                      fontWeight: FontWeight.w900,
-                      color: t.textPrimary,
-                    ),
-                  ),
-                  SizedBox(height: 2),
-                  Text(
-                    'Puxe para baixo para atualizar os dados.',
-                    style: TextStyle(
-                      color: t.textSecondary,
-                      fontSize: 11.5,
-                      height: 1.25,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                  Text('Alunos inativos',
+                    style: TextStyle(color: t.textPrimary,
+                      fontSize: 15.5, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 4),
+                  Text('Toque para consultar e reativar um aluno.',
+                    style: TextStyle(color: t.textSecondary,
+                      fontSize: 11.5, height: 1.3)),
+                  if (_totalInativos != null) ...[
+                    const SizedBox(height: 6),
+                    Text('$_totalInativos inativo(s) nesta academia',
+                      style: TextStyle(color: t.primary,
+                        fontSize: 11, fontWeight: FontWeight.w800)),
+                  ],
                 ],
-              ),
-            ),
-            if (_atualizando)
-              SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: t.primary,
-                ),
-              ),
-          ],
+              )),
+              Icon(Icons.chevron_right_rounded, color: t.primary),
+            ]),
+          ),
         ),
       ),
     );

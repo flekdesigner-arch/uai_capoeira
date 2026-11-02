@@ -1,5 +1,8 @@
+import '../dialogs/uniformes_motivo_dialog.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:intl/intl.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/uniformes/services/uniformes_service.dart';
@@ -10,12 +13,29 @@ import 'package:uai_capoeira/modules/uniformes/widgets/pedido_card.dart';
 import 'package:uai_capoeira/modules/uniformes/dialogs/pagamento_dialog.dart';
 import 'package:uai_capoeira/modules/uniformes/screens/editar_pedido_screen.dart';
 import 'package:uai_capoeira/modules/uniformes/screens/remessa_form_screen.dart';
+import 'package:uai_capoeira/modules/uniformes/screens/remessa_financeiro_screen.dart';
+import 'package:uai_capoeira/modules/uniformes/screens/novo_pedido_screen.dart';
+import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
+import 'package:uai_capoeira/modules/uniformes/utils/remessa_status_utils.dart';
+
+String _mensagemErroRemessa(Object error) {
+  if (error is FirebaseFunctionsException) {
+    return error.message ?? 'A operação foi recusada pelo servidor.';
+  }
+  final primeiraLinha = error.toString().split('\n').first.trim();
+  return primeiraLinha.replaceFirst(RegExp(r'^(Bad state:|StateError:)\s*'), '');
+}
 
 class RemessaDetalhesScreen extends StatefulWidget {
   final String remessaId;
   final Map<String, dynamic> remessaData;
   final bool podeEditar;
   final bool podeExcluir;
+  final bool podeCriarPedido;
+  final bool podeEditarPedido;
+  final bool podeExcluirPedido;
+  final bool podeRegistrarPagamentoPedido;
+  final bool podeAlterarStatusPedido;
 
   const RemessaDetalhesScreen({
     super.key,
@@ -23,6 +43,11 @@ class RemessaDetalhesScreen extends StatefulWidget {
     required this.remessaData,
     this.podeEditar = false,
     this.podeExcluir = false,
+    this.podeCriarPedido = false,
+    this.podeEditarPedido = false,
+    this.podeExcluirPedido = false,
+    this.podeRegistrarPagamentoPedido = false,
+    this.podeAlterarStatusPedido = false,
   });
 
   @override
@@ -40,6 +65,50 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
 
   String? _fornecedorNome;
   bool _carregandoFornecedor = false;
+  int _revisaoPedidos = 0;
+  String? _statusRemessaLocal;
+  late Stream<QuerySnapshot> _streamPedidos;
+
+  bool get _remessaAberta {
+    final status = _statusRemessaLocal ?? normalizarStatusRemessa(widget.remessaData['status']);
+    return !{'finalizada', 'finalizado', 'cancelada', 'cancelado', 'recebida', 'recebido'}.contains(status);
+  }
+
+  Stream<QuerySnapshot> _pedidosDaRemessa() {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+      return Stream.fromFuture(FirebaseFirestore.instance
+          .collection('pedidos_uniformes')
+          .where('remessa_id', isEqualTo: widget.remessaId)
+          .orderBy('data_pedido', descending: true)
+          .get(const GetOptions(source: Source.serverAndCache)));
+    }
+    return _remessaService.getPedidosDaRemessa(widget.remessaId);
+  }
+
+  void _atualizarPedidos() {
+    if (!mounted) return;
+    setState(() {
+      _revisaoPedidos++;
+      _streamPedidos = _pedidosDaRemessa();
+    });
+  }
+
+  Future<void> _novoPedido() async {
+    if (!widget.podeCriarPedido || !_remessaAberta) return;
+    final autorizado = await PermissionAccessGuard().revalidate(
+      context,
+      permission: 'pode_criar_pedido',
+      message: 'Sem permissão para cadastrar pedidos de Uniformes.',
+    );
+    if (!autorizado || !mounted) return;
+    final result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => NovoPedidoScreen(
+        remessaInicialId: widget.remessaId,
+        remessaInicial: widget.remessaData,
+      )),
+    );
+    if (result == true) _atualizarPedidos();
+  }
 
   // Helpers de contraste
   Color _readableOn(Color background) {
@@ -48,11 +117,10 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
         : const Color(0xFFFFFFFF);
   }
 
-
-
   @override
   void initState() {
     super.initState();
+    _streamPedidos = _pedidosDaRemessa();
     _carregarFornecedor();
   }
 
@@ -112,6 +180,8 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
                   widget.remessaId,
                   data,
                 );
+              } else if (value == 'custos_remessa') {
+                await Navigator.of(context).push(MaterialPageRoute(builder: (_) => RemessaFinanceiroScreen(remessaId: widget.remessaId)));
               } else if (value == 'editar') {
                 _editarRemessa();
               } else if (value == 'alterar_status') {
@@ -138,6 +208,7 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
                 ),
               ),
               const PopupMenuDivider(),
+              if (widget.podeEditar) const PopupMenuItem(value: 'custos_remessa', child: Text('💰 Custos e pagamento ao fornecedor')),
               if (widget.podeEditar)
                 PopupMenuItem(
                   value: 'editar',
@@ -172,6 +243,15 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
           ),
         ],
       ),
+      floatingActionButton: widget.podeCriarPedido && _remessaAberta
+          ? FloatingActionButton.extended(
+              onPressed: _novoPedido,
+              backgroundColor: primary,
+              foregroundColor: onPrimary,
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('NOVO PEDIDO', style: TextStyle(fontWeight: FontWeight.w900)),
+            )
+          : null,
       body: Column(
         children: [
           _buildCabecalho(
@@ -189,20 +269,40 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
           ),
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
-              stream: _remessaService.getPedidosDaRemessa(widget.remessaId),
+              key: ValueKey('remessa_pedidos_${widget.remessaId}_$_revisaoPedidos'),
+              stream: _streamPedidos,
               builder: (context, snapshot) {
-                if (!snapshot.hasData)
-                  { return Center(
+                if (snapshot.hasError) {
+                  return Center(child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      Text('Não foi possível carregar os pedidos.', style: TextStyle(color: error)),
+                      const SizedBox(height: 8),
+                      TextButton.icon(onPressed: _atualizarPedidos,
+                        icon: const Icon(Icons.refresh_rounded), label: const Text('Tentar novamente')),
+                    ]),
+                  ));
+                }
+                if (!snapshot.hasData) {
+                  return Center(
                     child: CircularProgressIndicator(color: primary),
-                  ); }
+                  );
+                }
                 final pedidos = snapshot.data!.docs;
                 if (pedidos.isEmpty) {
-                  return Center(
-                    child: Text(
-                      'Nenhum pedido vinculado',
-                      style: TextStyle(color: textMuted),
-                    ),
-                  );
+                  return Center(child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.shopping_bag_outlined, size: 52, color: textMuted),
+                      const SizedBox(height: 10),
+                      Text('Nenhum pedido nesta remessa', style: TextStyle(color: textPrimary,
+                          fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 5),
+                      Text('Use Novo pedido para cadastrar diretamente aqui.',
+                        style: TextStyle(color: textSecondary, fontSize: 12)),
+                      if (widget.podeCriarPedido && _remessaAberta) const SizedBox(height: 78),
+                    ],
+                  ));
                 }
                 return LayoutBuilder(
                   builder: (context, constraints) {
@@ -210,16 +310,14 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
                     final colunas = width >= 1700
                         ? 4
                         : width >= 1250
-                            ? 3
-                            : width >= 900
-                                ? 2
-                                : 1;
+                        ? 3
+                        : width >= 900
+                        ? 2
+                        : 1;
 
                     Widget buildPedido(QueryDocumentSnapshot pedido) {
-                      final pedidoData =
-                          pedido.data() as Map<String, dynamic>;
-                      final bool ehEstoque =
-                          pedidoData['tipo_estoque'] == true;
+                      final pedidoData = pedido.data() as Map<String, dynamic>;
+                      final bool ehEstoque = pedidoData['tipo_estoque'] == true;
 
                       final card = PedidoCard(
                         docId: pedido.id,
@@ -227,13 +325,14 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
                         realFormat: _realFormat,
                         onMarcarConfeccao: _marcarPedidoComoConfeccao,
                         onFinalizar: _marcarPedidoComoFinalizado,
+                        onRegistrarEntrega: _confirmarEntregaAluno,
                         onRegistrarPagamento: _registrarPagamentoPedido,
-                        onEditar: widget.podeEditar ? _editarPedido : null,
-                        onExcluir: widget.podeExcluir ? _excluirPedido : null,
-                        podeEditar: widget.podeEditar,
-                        podeExcluir: widget.podeExcluir,
-                        podeRegistrarPagamento: widget.podeEditar,
-                        podeAlterarStatus: widget.podeEditar,
+                        onEditar: widget.podeEditarPedido ? _editarPedido : null,
+                        onExcluir: widget.podeExcluirPedido ? _excluirPedido : null,
+                        podeEditar: widget.podeEditarPedido,
+                        podeExcluir: widget.podeExcluirPedido,
+                        podeRegistrarPagamento: widget.podeRegistrarPagamentoPedido,
+                        podeAlterarStatus: widget.podeAlterarStatusPedido,
                         onTap: (id, d) {},
                       );
 
@@ -284,7 +383,7 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
 
                     if (colunas == 1) {
                       return ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 104),
                         itemCount: pedidos.length,
                         itemBuilder: (_, i) => buildPedido(pedidos[i]),
                       );
@@ -294,18 +393,15 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
                     final maxWidth = width >= 1700
                         ? 1500.0
                         : width >= 1250
-                            ? 1220.0
-                            : 920.0;
-                    final contentWidth =
-                        width < maxWidth ? width : maxWidth;
+                        ? 1220.0
+                        : 920.0;
+                    final contentWidth = width < maxWidth ? width : maxWidth;
                     final cardWidth =
-                        (contentWidth -
-                                24 -
-                                (spacing * (colunas - 1))) /
-                            colunas;
+                        (contentWidth - 24 - (spacing * (colunas - 1))) /
+                        colunas;
 
                     return SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 20),
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 104),
                       child: Center(
                         child: ConstrainedBox(
                           constraints: BoxConstraints(maxWidth: maxWidth),
@@ -347,16 +443,20 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
     Color info,
   ) {
     final pedidosIds = (data['pedidos_ids'] as List?) ?? const [];
-    final status = (data['status'] ?? 'pendente').toString();
+    final status = _statusRemessaLocal ?? normalizarStatusRemessa(data['status']);
     final statusColor = switch (status) {
       'finalizada' => context.uai.success,
+      'em_confeccao' => info,
       'em_producao' => info,
+      'enviada' => info,
       'cancelada' => error,
       _ => warning,
     };
     final statusLabel = switch (status) {
       'finalizada' => 'Finalizada',
-      'em_producao' => 'Em produção',
+      'em_confeccao' => 'Em confecção',
+      'em_producao' => 'Em produção (legado)',
+      'enviada' => 'Enviada',
       'cancelada' => 'Cancelada',
       _ => 'Pendente',
     };
@@ -390,10 +490,7 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    label,
-                    style: TextStyle(fontSize: 11, color: textMuted),
-                  ),
+                  Text(label, style: TextStyle(fontSize: 11, color: textMuted)),
                   const SizedBox(height: 2),
                   Text(
                     value,
@@ -556,10 +653,7 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
                 ),
                 if (_carregandoFornecedor) ...[
                   const SizedBox(height: 6),
-                  LinearProgressIndicator(
-                    minHeight: 2,
-                    color: primary,
-                  ),
+                  LinearProgressIndicator(minHeight: 2, color: primary),
                 ],
                 if (data['observacoes'] != null &&
                     data['observacoes'].toString().isNotEmpty) ...[
@@ -577,10 +671,7 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
                           data['observacoes'].toString(),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: textSecondary,
-                            fontSize: 10,
-                          ),
+                          style: TextStyle(color: textSecondary, fontSize: 10),
                         ),
                       ),
                     ],
@@ -734,26 +825,33 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
       }
     }
 
-    bool todosAlunosOk = pedidosAluno.every((doc) {
+    // Recebimento físico e confecção finalizada são independentes de cobrança
+    // e entrega. Um aluno ainda poderá pagar/retirar sua camisa depois.
+    final emAberto = pedidosAluno.where((doc) {
       final d = doc.data() as Map<String, dynamic>;
-      return d['status'] == 'finalizado' && d['status_pagamento'] == 'pago';
-    });
-
-    if (!todosAlunosOk) {
-      _mostrarDialogoPedidosPendentes();
-      return;
-    }
-
+      final total = (d['valor_total'] as num?)?.toDouble() ?? 0;
+      final pago = (d['valor_pago'] as num?)?.toDouble() ?? 0;
+      return total - pago > 0.005;
+    }).length;
+    final aguardandoEntrega = pedidosAluno.where((doc) {
+      final d = doc.data() as Map<String, dynamic>;
+      return d['status_entrega'] != 'entregue';
+    }).length;
     final int qtdEstoque = pedidosEstoque.length;
-    final String mensagem = qtdEstoque > 0
-        ? 'Todos os pedidos de aluno estão finalizados. $qtdEstoque pedido(s) de estoque serão adicionados ao estoque. Deseja finalizar?'
-        : 'Todos os pedidos estão finalizados e pagos. Deseja finalizar a remessa?';
+    final mensagem = 'Confirma que a fábrica entregou as peças desta remessa?\n\n'
+        '• ${pedidosAluno.length} pedido(s) de alunos ficarão com a confecção finalizada.\n'
+        '• $emAberto pedido(s) ainda têm valores a receber.\n'
+        '• $aguardandoEntrega pedido(s) ainda aguardam entrega ao aluno.\n'
+        '• $qtdEstoque pedido(s) para estoque terão entrada física registrada.\n\n'
+        'Não serão marcados pagamentos nem entregas automaticamente.';
+
+    if (!mounted) return;
 
     final confirmar = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(
-          'Finalizar Remessa',
+          'Receber remessa da fábrica',
           style: TextStyle(color: context.uai.textPrimary),
         ),
         content: Text(
@@ -774,7 +872,7 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
               backgroundColor: context.uai.success,
               foregroundColor: _readableOn(context.uai.success),
             ),
-            child: const Text('Finalizar'),
+            child: const Text('Confirmar recebimento'),
           ),
         ],
       ),
@@ -782,24 +880,13 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
     if (confirmar != true) return;
 
     try {
-      for (var doc in pedidosEstoque) {
-        final pedido = doc.data() as Map<String, dynamic>;
-        final itens = pedido['itens'] as List? ?? [];
-        for (var item in itens) {
-          await _adicionarAoEstoque(item);
-        }
-        await doc.reference.delete();
-      }
-
-      await _remessaService.atualizarRemessa(widget.remessaId, {
-        'status': 'finalizada',
-      });
+      await _remessaService.receberRemessa(widget.remessaId);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '✅ Remessa finalizada! ${qtdEstoque > 0 ? "$qtdEstoque itens de estoque adicionados." : ""}',
+              'Remessa recebida! Cobranças e entregas continuam separadas. ${qtdEstoque > 0 ? "$qtdEstoque pedido(s) para estoque recebidos." : ""}',
               style: TextStyle(color: _readableOn(context.uai.success)),
             ),
             backgroundColor: context.uai.success,
@@ -812,7 +899,7 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Erro: $e',
+              'Não foi possível receber a remessa: ${_mensagemErroRemessa(e)}',
               style: TextStyle(color: _readableOn(context.uai.error)),
             ),
             backgroundColor: context.uai.error,
@@ -822,69 +909,13 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
     }
   }
 
-  Future<void> _adicionarAoEstoque(Map<String, dynamic> item) async {
-    final nome = item['nome'] ?? 'Item sem nome';
-    final tamanho = item['tamanho'] ?? 'Único';
-    final quantidade = item['quantidade'] ?? 0;
-    if (quantidade <= 0) return;
-
-    final query = await FirebaseFirestore.instance
-        .collection('uniformes_estoque')
-        .where('nome', isEqualTo: nome)
-        .where('tamanho', isEqualTo: tamanho)
-        .where('status', isEqualTo: 'ativo')
-        .limit(1)
-        .get();
-
-    if (query.docs.isNotEmpty) {
-      await query.docs.first.reference.update({
-        'quantidade': FieldValue.increment(quantidade),
-      });
-    } else {
-      await FirebaseFirestore.instance.collection('uniformes_estoque').add({
-        'nome': nome,
-        'tamanho': tamanho,
-        'quantidade': quantidade,
-        'preco_venda': item['preco_unitario'] ?? 0,
-        'preco_custo': 0,
-        'categoria': 'Geral',
-        'controla_estoque': true,
-        'status': 'ativo',
-        'fornecedor': '',
-        'descricao': 'Adicionado via remessa ${widget.remessaData['nome']}',
-        'possui_variacoes': false,
-        'tipo': 'base',
-      });
-    }
-  }
-
-  void _mostrarDialogoPedidosPendentes() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(
-          'Ação não permitida',
-          style: TextStyle(color: context.uai.textPrimary),
-        ),
-        content: Text(
-          'Todos os pedidos com aluno devem estar finalizados e pagos antes de finalizar a remessa.',
-          style: TextStyle(color: context.uai.textSecondary),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(
-              'Entendi',
-              style: TextStyle(color: context.uai.primary),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _mostrarAlterarStatus() {
-    final statusAtual = (widget.remessaData['status'] as String?) ?? 'pendente';
+    final statusAtual = _statusRemessaLocal ??
+        normalizarStatusRemessa(widget.remessaData['status']);
+    // O backend grava `em_confeccao`. Remessas antigas podem ter
+    // `em_producao`/`enviada`; o valor inicial DEVE constar exatamente uma
+    // vez na lista do DropdownButtonFormField.
+    final opcoesStatus = opcoesStatusRemessa(statusAtual);
     showDialog(
       context: context,
       builder: (ctx) {
@@ -925,22 +956,15 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
                   ),
                 ),
                 dropdownColor: context.uai.card,
-                items: const [
-                  DropdownMenuItem(value: 'pendente', child: Text('Pendente')),
-                  DropdownMenuItem(
-                    value: 'em_producao',
-                    child: Text('Em produção'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'finalizada',
-                    child: Text('Finalizada'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'cancelada',
-                    child: Text('Cancelada'),
-                  ),
-                ],
-                onChanged: (v) => setState(() => novoStatus = v!),
+                items: opcoesStatus.entries
+                    .map((opcao) => DropdownMenuItem<String>(
+                          value: opcao.key,
+                          child: Text(opcao.value),
+                        ))
+                    .toList(growable: false),
+                onChanged: (v) {
+                  if (v != null) setState(() => novoStatus = v);
+                },
               ),
               actions: [
                 TextButton(
@@ -971,19 +995,32 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
 
   Future<void> _alterarStatusRemessa(String novoStatus) async {
     try {
-      if (novoStatus == 'em_producao') {
-        final pedidos = await FirebaseFirestore.instance
-            .collection('pedidos_uniformes')
-            .where('remessa_id', isEqualTo: widget.remessaId)
-            .get();
-        for (var doc in pedidos.docs) {
-          await doc.reference.update({'status': 'em_confeccao'});
+      if (novoStatus == 'finalizada') {
+        await _finalizarRemessa();
+        return;
+      } else if (novoStatus == 'em_producao' || novoStatus == 'em_confeccao') {
+        await _remessaService.iniciarConfeccao(widget.remessaId);
+      } else {
+        String? motivo;
+        if (novoStatus == 'cancelada') {
+          motivo = await solicitarMotivoUniformes(
+            context,
+            'Justificativa do cancelamento',
+          );
+          if (motivo == null) return;
         }
+        await _remessaService.atualizarRemessa(widget.remessaId, {
+          'motivo': ?motivo,
+          'status': novoStatus,
+        });
       }
-      await _remessaService.atualizarRemessa(widget.remessaId, {
-        'status': novoStatus,
-      });
       if (mounted) {
+        setState(() {
+          // `iniciar_confeccao` converte o alias legado `em_producao`
+          // no valor canônico `em_confeccao` no Firestore.
+          _statusRemessaLocal =
+              novoStatus == 'em_producao' ? 'em_confeccao' : novoStatus;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -1000,7 +1037,7 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Erro: $e',
+              'Erro: ${_mensagemErroRemessa(e)}',
               style: TextStyle(color: _readableOn(context.uai.error)),
             ),
             backgroundColor: context.uai.error,
@@ -1011,23 +1048,6 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
   }
 
   Future<void> _excluirRemessa() async {
-    final pedidos = await FirebaseFirestore.instance
-        .collection('pedidos_uniformes')
-        .where('remessa_id', isEqualTo: widget.remessaId)
-        .get();
-    bool todosOk = pedidos.docs
-        .where(
-          (doc) => (doc.data())['tipo_estoque'] != true,
-        )
-        .every((doc) {
-          final d = doc.data();
-          return d['status'] == 'finalizado' && d['status_pagamento'] == 'pago';
-        });
-    if (!todosOk) {
-      _mostrarDialogoPedidosPendentes();
-      return;
-    }
-
     final confirmar = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1036,7 +1056,7 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
           style: TextStyle(color: context.uai.textPrimary),
         ),
         content: Text(
-          'Deseja excluir a remessa? Os pedidos não serão deletados.',
+          'O servidor verifica pagamentos, entregas e histórico antes de excluir esta remessa e seus pedidos pendentes.',
           style: TextStyle(color: context.uai.textSecondary),
         ),
         actions: [
@@ -1061,7 +1081,13 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
     if (confirmar != true) return;
 
     try {
-      await _remessaService.excluirRemessa(widget.remessaId);
+      if (!mounted) return;
+      final motivo = await solicitarMotivoUniformes(
+        context,
+        'Justificativa para excluir remessa',
+      );
+      if (motivo == null) return;
+      await _remessaService.excluirRemessa(widget.remessaId, motivo: motivo);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1079,7 +1105,7 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Erro: $e',
+              'Erro: ${_mensagemErroRemessa(e)}',
               style: TextStyle(color: _readableOn(context.uai.error)),
             ),
             backgroundColor: context.uai.error,
@@ -1094,8 +1120,10 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
     String docId,
     Map<String, dynamic> data,
   ) async {
+    if (!widget.podeAlterarStatusPedido) return;
     try {
       await _uniformesService.atualizarStatusPedido(docId, 'em_confeccao');
+      _atualizarPedidos();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1112,7 +1140,7 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Erro: $e',
+              'Erro: ${_mensagemErroRemessa(e)}',
               style: TextStyle(color: _readableOn(context.uai.error)),
             ),
             backgroundColor: context.uai.error,
@@ -1122,12 +1150,51 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
     }
   }
 
+  Future<void> _confirmarEntregaAluno(
+    String pedidoId,
+    Map<String, dynamic> dados,
+  ) async {
+    if (!widget.podeAlterarStatusPedido || dados['tipo_estoque'] == true) return;
+    final total = (dados['valor_total'] as num?)?.toDouble() ?? 0;
+    final pago = (dados['valor_pago'] as num?)?.toDouble() ?? 0;
+    final falta = (total - pago).clamp(0, double.infinity).toDouble();
+    final avisoFinanceiro = falta > 0.005
+        ? 'Atenção: falta receber ${_realFormat.format(falta)}. A entrega NÃO quita esta dívida.'
+        : 'Pedido quitado.';
+    final aluno = (dados['aluno_nome'] ?? 'este aluno').toString();
+    if (!mounted) return;
+    final confirmado = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+      title: const Text('Confirmar entrega ao aluno'),
+      content: Text('A confecção está finalizada. Confirma a entrega física para $aluno?\n\n$avisoFinanceiro'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Confirmar entrega')),
+      ],
+    ));
+    if (confirmado != true) return;
+    try {
+      await _uniformesService.registrarEntregaPedido(pedidoId);
+      _atualizarPedidos();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Entrega registrada. Pagamentos permaneceram inalterados.')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Entrega não registrada: ${_mensagemErroRemessa(e)}')));
+      }
+    }
+  }
+
   Future<void> _marcarPedidoComoFinalizado(
     String docId,
     Map<String, dynamic> data,
   ) async {
+    if (!widget.podeAlterarStatusPedido) return;
     try {
       await _uniformesService.atualizarStatusPedido(docId, 'finalizado');
+      _atualizarPedidos();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1144,7 +1211,7 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Erro: $e',
+              'Erro: ${_mensagemErroRemessa(e)}',
               style: TextStyle(color: _readableOn(context.uai.error)),
             ),
             backgroundColor: context.uai.error,
@@ -1154,7 +1221,7 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
     }
   }
 
-    Future<void> _editarRemessa() async {
+  Future<void> _editarRemessa() async {
     if (!widget.podeEditar) return;
 
     final doc = await FirebaseFirestore.instance
@@ -1164,13 +1231,13 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
 
     final atual = doc.data() ?? widget.remessaData;
 
+    if (!mounted) return;
+
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => RemessaFormScreen(
-          remessaId: widget.remessaId,
-          remessaData: atual,
-        ),
+        builder: (_) =>
+            RemessaFormScreen(remessaId: widget.remessaId, remessaData: atual),
       ),
     );
 
@@ -1179,24 +1246,18 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
     }
   }
 
-  Future<void> _editarPedido(
-    String docId,
-    Map<String, dynamic> data,
-  ) async {
-    if (!widget.podeEditar) return;
+  Future<void> _editarPedido(String docId, Map<String, dynamic> data) async {
+    if (!widget.podeEditarPedido) return;
 
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => EditarPedidoScreen(
-          pedidoId: docId,
-          pedidoData: data,
-        ),
+        builder: (_) => EditarPedidoScreen(pedidoId: docId, pedidoData: data),
       ),
     );
 
     if (result == true && mounted) {
-      setState(() {});
+      _atualizarPedidos();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -1209,11 +1270,8 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
     }
   }
 
-  Future<void> _excluirPedido(
-    String docId,
-    Map<String, dynamic> data,
-  ) async {
-    if (!widget.podeExcluir) return;
+  Future<void> _excluirPedido(String docId, Map<String, dynamic> data) async {
+    if (!widget.podeExcluirPedido) return;
 
     final confirmar = await showDialog<bool>(
       context: context,
@@ -1247,13 +1305,20 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
     if (confirmar != true) return;
 
     try {
+      if (!mounted) return;
+      final motivo = await solicitarMotivoUniformes(
+        context,
+        'Justificativa para excluir pedido',
+      );
+      if (motivo == null) return;
       await _remessaService.excluirPedidoDefinitivamente(
         docId,
         remessaId: widget.remessaId,
+        motivo: motivo,
       );
 
       if (mounted) {
-        setState(() {});
+        _atualizarPedidos();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -1279,10 +1344,11 @@ class _RemessaDetalhesScreenState extends State<RemessaDetalhesScreen> {
     }
   }
 
-Future<void> _registrarPagamentoPedido(
+  Future<void> _registrarPagamentoPedido(
     String docId,
     Map<String, dynamic> data,
   ) async {
+    if (!widget.podeRegistrarPagamentoPedido) return;
     double total = (data['valor_total'] ?? 0).toDouble();
     double pago = (data['valor_pago'] ?? 0).toDouble();
     double restante = total - pago;
@@ -1313,6 +1379,7 @@ Future<void> _registrarPagamentoPedido(
               formaPagamento: formaPagamento,
               pedidoData: data,
             );
+            _atualizarPedidos();
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -1324,18 +1391,9 @@ Future<void> _registrarPagamentoPedido(
                 ),
               );
             }
-          } catch (e) {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    'Erro: $e',
-                    style: TextStyle(color: _readableOn(context.uai.error)),
-                  ),
-                  backgroundColor: context.uai.error,
-                ),
-              );
-            }
+          } catch (_) {
+            // PagamentoDialog preserva os dados e exibe a falha sem fechar.
+            rethrow;
           }
         },
       ),

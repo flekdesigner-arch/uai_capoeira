@@ -1,10 +1,16 @@
 import 'dart:developer' as developer;
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'birthday_inbox_notification.dart';
+import 'package:path_provider/path_provider.dart';
 // lib/shared/services/notification_service.dart
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:uai_capoeira/core/services/update_wifi_push_dispatcher.dart';
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -56,8 +62,15 @@ class NotificationService {
 
   // ✅ CONTROLE DE ESTADO
   bool _isInitialized = false;
+  static const String _defaultChannelId = 'uai_default_channel_v2';
+  static const String _birthdayChannelId = 'uai_birthday_channel_v2';
+  static const String _inscricaoChannelId = 'uai_inscricao_channel_v2';
+
   bool _isRequestingPermission = false;
-  Stream<String>? _tokenRefreshStream;
+  StreamSubscription<String>? _tokenRefreshSubscription;
+  StreamSubscription<RemoteMessage>? _foregroundSubscription;
+  StreamSubscription<RemoteMessage>? _openedSubscription;
+
 
   bool get _supportsFirebaseMessaging {
     if (kIsWeb) return true;
@@ -95,6 +108,9 @@ class NotificationService {
 
     if (_isInitialized) {
       developer.log('🔔 Notificações já inicializadas');
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+        await _subscribeUpdateSignals();
+      }
       await syncTokenForCurrentUser();
       return;
     }
@@ -109,6 +125,13 @@ class NotificationService {
       developer.log('🔔 Inicializando notificações...');
 
       await _initializeLocalNotifications();
+
+      // A autorização para exibir notificações é diferente do consentimento
+      // para baixar APK pelo Wi-Fi. FCM data-only precisa estar inscrito
+      // mesmo quando o usuário recusou avisos visuais do Android 13+.
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+        await _subscribeUpdateSignals();
+      }
 
       final NotificationSettings perm = await _fcm.requestPermission(
         alert: true,
@@ -142,7 +165,7 @@ class NotificationService {
         developer.log('⚠️ Permissão de notificação negada pelo usuário.');
       }
 
-      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      _foregroundSubscription ??= FirebaseMessaging.onMessage.listen((RemoteMessage message) {
         developer.log(
           '📨 Notificação recebida em primeiro plano: ${message.messageId}',
         );
@@ -150,10 +173,14 @@ class NotificationService {
         developer.log('📨 Corpo: ${message.notification?.body}');
         developer.log('📨 Data: ${message.data}');
 
-        _showLocalNotification(message);
+        if (message.data['tipo'] == 'uai_update_check') {
+          dispatchWifiUpdateSignal(message.data);
+        } else {
+          _showLocalNotification(message);
+        }
       });
 
-      FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      _openedSubscription ??= FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
         developer.log('🖱️ Notificação clicada: ${message.messageId}');
         developer.log('🖱️ Data: ${message.data}');
         _dispatchNavigation(message.data);
@@ -166,8 +193,7 @@ class NotificationService {
         _dispatchNavigation(initialMessage.data);
       }
 
-      _tokenRefreshStream ??= _fcm.onTokenRefresh;
-      _tokenRefreshStream!.listen((String newToken) async {
+      _tokenRefreshSubscription ??= _fcm.onTokenRefresh.listen((String newToken) async {
         developer.log('🔄 Token FCM atualizado: $newToken');
         await _saveTokenCleaningOld(newToken);
       });
@@ -178,6 +204,16 @@ class NotificationService {
       developer.log('❌ Erro ao inicializar notificações: $e');
     } finally {
       _isRequestingPermission = false;
+    }
+  }
+
+  Future<void> _subscribeUpdateSignals() async {
+    try {
+      await _fcm.subscribeToTopic('uai_updates_push_v183');
+      developer.log('Smart Update: sinal técnico inscrito (sem depender da permissão visual).');
+    } catch (e) {
+      // WorkManager periódico permanece ativo como alternativa.
+      developer.log('Smart Update: falha ao inscrever sinal técnico: $e');
     }
   }
 
@@ -207,9 +243,18 @@ class NotificationService {
       settings,
       onDidReceiveNotificationResponse: (NotificationResponse response) {
         developer.log('🖱️ Notificação local clicada: ${response.payload}');
-        if (response.payload == 'gerenciar_inscricoes') {
-          _dispatchNavigation(const {'rota': 'gerenciar_inscricoes'});
+        final payload = response.payload;
+        if (payload == null || payload.isEmpty) return;
+        try {
+          final decoded = jsonDecode(payload);
+          if (decoded is Map) {
+            _dispatchNavigation(Map<String, dynamic>.from(decoded));
+            return;
+          }
+        } catch (_) {
+          // Compatibilidade com notificações locais antigas (payload = rota).
         }
+        _dispatchNavigation({'rota': payload});
       },
     );
 
@@ -219,6 +264,52 @@ class NotificationService {
         >();
 
     await androidPlugin?.requestNotificationsPermission();
+
+    await androidPlugin?.createNotificationChannel(
+      const AndroidNotificationChannel(
+        _defaultChannelId,
+        'Notificações UAI',
+        description: 'Canal geral de notificações do UAI Capoeira',
+        importance: Importance.high,
+      ),
+    );
+
+    await androidPlugin?.createNotificationChannel(
+      const AndroidNotificationChannel(
+        _birthdayChannelId,
+        'Aniversariantes UAI',
+        description: 'Canal premium para aniversariantes do UAI Capoeira',
+        importance: Importance.high,
+      ),
+    );
+
+    await androidPlugin?.createNotificationChannel(
+      const AndroidNotificationChannel(
+        _inscricaoChannelId,
+        'Inscrições UAI',
+        description: 'Canal de inscrições pendentes do UAI Capoeira',
+        importance: Importance.high,
+      ),
+    );
+
+    // Ao iniciar pelo toque numa notificação local (app encerrado),
+    // o payload precisa seguir o mesmo roteador usado pelo FCM.
+    final launch = await _localNotifications.getNotificationAppLaunchDetails();
+    if (launch?.didNotificationLaunchApp == true) {
+      final payload = launch?.notificationResponse?.payload;
+      if (payload != null && payload.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(payload);
+          if (decoded is Map) {
+            _dispatchNavigation(Map<String, dynamic>.from(decoded));
+          } else {
+            _dispatchNavigation({'rota': payload});
+          }
+        } catch (_) {
+          _dispatchNavigation({'rota': payload});
+        }
+      }
+    }
   }
 
   bool _isPermissionAllowed(AuthorizationStatus status) {
@@ -330,7 +421,7 @@ class NotificationService {
       await userRef.set({
         'uid': user.uid,
         'email': user.email,
-        'fcm_tokens': [token],
+        'fcm_tokens': FieldValue.arrayUnion([token]),
         'current_fcm_token': token,
         'ultimo_token_atualizado': FieldValue.serverTimestamp(),
         'plataforma_token': kIsWeb ? 'web' : 'app',
@@ -338,9 +429,7 @@ class NotificationService {
         'token_versao_service': 2,
       }, SetOptions(merge: true));
 
-      developer.log(
-        '✅ Token atual salvo e tokens antigos substituídos para: ${user.email}',
-      );
+      developer.log('✅ Token do dispositivo preservado para: ${user.email}');
     } catch (e) {
       developer.log('❌ Erro ao salvar token no Firestore: $e');
     }
@@ -374,17 +463,17 @@ class NotificationService {
           .collection('usuarios')
           .doc(user.uid);
 
-      final docSnapshot = await userRef.get();
-
-      if (docSnapshot.exists) {
-        await userRef.set({
+      await _firestore.runTransaction((tx) async {
+        final snapshot = await tx.get(userRef);
+        if (!snapshot.exists) return;
+        final current = snapshot.data()?['current_fcm_token']?.toString();
+        tx.set(userRef, {
           'fcm_tokens': FieldValue.arrayRemove([token]),
-          'current_fcm_token': FieldValue.delete(),
+          if (current == token) 'current_fcm_token': FieldValue.delete(),
           'ultimo_token_removido': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
-
-        developer.log('✅ Token removido do Firestore para: ${user.email}');
-      }
+      });
+      developer.log('✅ Token deste dispositivo removido: ${user.email}');
     } catch (e) {
       developer.log('❌ Erro ao remover token: $e');
     }
@@ -492,6 +581,28 @@ class NotificationService {
     }
   }
 
+  String _channelIdForMessage(RemoteMessage message) {
+    switch (message.data['tipo']?.toString()) {
+      case 'aniversario':
+        return _birthdayChannelId;
+      case 'nova_inscricao':
+        return _inscricaoChannelId;
+      default:
+        return _defaultChannelId;
+    }
+  }
+
+  String _channelNameForMessage(RemoteMessage message) {
+    switch (message.data['tipo']?.toString()) {
+      case 'aniversario':
+        return 'Aniversariantes UAI';
+      case 'nova_inscricao':
+        return 'Inscrições UAI';
+      default:
+        return 'Notificações UAI';
+    }
+  }
+
   String _resolvedBody(RemoteMessage message) {
     final data = message.data;
     final direct = message.notification?.body?.trim();
@@ -528,16 +639,35 @@ class NotificationService {
     try {
       final isNovaInscricao =
           message.data['tipo']?.toString() == 'nova_inscricao';
+      final isBirthday = message.data['tipo']?.toString() == 'aniversario';
+      // A lista por aluno usa estilo de conversa com avatares (Android).
+      // O estilo anterior de foto única permanece como fallback para payloads antigos.
+      final birthdayInbox = isBirthday && defaultTargetPlatform == TargetPlatform.android
+          ? await BirthdayInboxNotification.style(message.data)
+          : null;
+      final birthdayPhoto = isBirthday && birthdayInbox == null
+          ? await _birthdayImage(message.data['foto_url']?.toString())
+          : null;
       final AndroidNotificationDetails androidDetails =
           AndroidNotificationDetails(
-            'default_channel',
-            'Notificações UAI',
+            _channelIdForMessage(message),
+            _channelNameForMessage(message),
             channelDescription: 'Canal para notificações do app UAI Capoeira',
             importance: Importance.high,
             priority: Priority.high,
             icon: isNovaInscricao
                 ? '@drawable/ic_notification_inscricao'
-                : '@drawable/ic_notification',
+                : isBirthday
+                    ? '@drawable/ic_notification_birthday'
+                    : '@drawable/ic_notification',
+            styleInformation: birthdayInbox ?? (birthdayPhoto == null
+                ? BigTextStyleInformation(_resolvedBody(message))
+                : BigPictureStyleInformation(
+                    FilePathAndroidBitmap(birthdayPhoto),
+                    contentTitle: _resolvedTitle(message),
+                    summaryText: _resolvedBody(message),
+                    largeIcon: FilePathAndroidBitmap(birthdayPhoto),
+                  )),
             enableLights: true,
             enableVibration: true,
             playSound: true,
@@ -555,12 +685,41 @@ class NotificationService {
         _resolvedTitle(message),
         _resolvedBody(message),
         details,
-        payload: message.data['rota']?.toString(),
+        payload: jsonEncode(message.data),
       );
 
       developer.log('✅ Notificação local exibida com sucesso');
     } catch (e) {
       developer.log('❌ Erro ao mostrar notificação local: $e');
+    }
+  }
+
+  // Foto opcional da notificação de aniversário em primeiro plano.
+  // Só aceita HTTPS, tem timeout e nunca impede a notificação textual.
+  Future<String?> _birthdayImage(String? rawUrl) async {
+    if (rawUrl == null || rawUrl.isEmpty) return null;
+    final uri = Uri.tryParse(rawUrl);
+    if (uri == null || uri.scheme != 'https') return null;
+    HttpClient? client;
+    try {
+      client = HttpClient()..connectionTimeout = const Duration(seconds: 4);
+      final request = await client.getUrl(uri).timeout(const Duration(seconds: 4));
+      final response = await request.close().timeout(const Duration(seconds: 4));
+      if (response.statusCode != 200) return null;
+      final bytes = <int>[];
+      await for (final chunk in response.timeout(const Duration(seconds: 5))) {
+        bytes.addAll(chunk);
+        if (bytes.length > 750000) return null;
+      }
+      if (bytes.isEmpty) return null;
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/uai_birthday_notification.jpg');
+      await file.writeAsBytes(bytes, flush: true);
+      return file.path;
+    } catch (_) {
+      return null;
+    } finally {
+      client?.close(force: true);
     }
   }
 

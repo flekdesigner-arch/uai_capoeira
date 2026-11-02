@@ -639,6 +639,7 @@ class _MigracaoChamadasScreenState extends State<MigracaoChamadasScreen> {
     }
 
     // Dialog de progresso
+    if (!mounted) return;
     showDialog(
       context: context,
       barrierDismissible: false,

@@ -167,12 +167,12 @@ class AreaAlunoEventosService {
     }
   }
 
-  Future<_PatrocinioParticipacaoInfo> _carregarPatrocinioParticipacao({
+  Future<AreaAlunoPatrocinioParticipacaoInfo> _carregarPatrocinioParticipacao({
     required String? eventoId,
     required String participacaoId,
   }) async {
     if (eventoId == null || eventoId.trim().isEmpty) {
-      return const _PatrocinioParticipacaoInfo();
+      return const AreaAlunoPatrocinioParticipacaoInfo();
     }
 
     try {
@@ -197,16 +197,16 @@ class AreaAlunoEventosService {
         }
       }
 
-      return _PatrocinioParticipacaoInfo(
+      return AreaAlunoPatrocinioParticipacaoInfo(
         possuiPatrocinio: encontrouUso,
         totalPatrocinado: totalPatrocinado,
       );
     } catch (_) {
-      return const _PatrocinioParticipacaoInfo();
+      return const AreaAlunoPatrocinioParticipacaoInfo();
     }
   }
 
-  Future<_GraduacaoNovaInfo> _carregarGraduacaoNovaInfo({
+  Future<AreaAlunoGraduacaoNovaInfo> _carregarGraduacaoNovaInfo({
     required Map<String, dynamic> participacao,
   }) async {
     final nomeDireto = _textoLimpo(
@@ -258,7 +258,7 @@ class AreaAlunoEventosService {
     );
 
     if (graduacaoId == null || graduacaoId.trim().isEmpty) {
-      return _GraduacaoNovaInfo(
+      return AreaAlunoGraduacaoNovaInfo(
         id: '',
         nome: nomeDireto ?? '',
         cor1: cor1Direta ?? '',
@@ -274,7 +274,7 @@ class AreaAlunoEventosService {
       final doc = await _db.collection('graduacoes').doc(graduacaoId).get();
 
       if (!doc.exists) {
-        return _GraduacaoNovaInfo(
+        return AreaAlunoGraduacaoNovaInfo(
           id: graduacaoId,
           nome: nomeDireto ?? '',
           cor1: cor1Direta ?? '',
@@ -288,7 +288,7 @@ class AreaAlunoEventosService {
 
       final data = doc.data() ?? {};
 
-      return _GraduacaoNovaInfo(
+      return AreaAlunoGraduacaoNovaInfo(
         id: graduacaoId,
         nome:
             nomeDireto ??
@@ -334,7 +334,7 @@ class AreaAlunoEventosService {
             '',
       );
     } catch (_) {
-      return _GraduacaoNovaInfo(
+      return AreaAlunoGraduacaoNovaInfo(
         id: graduacaoId,
         nome: nomeDireto ?? '',
         cor1: cor1Direta ?? '',
@@ -489,8 +489,8 @@ class AreaAlunoEventoResumo {
     required String? eventoId,
     required Map<String, dynamic> participacao,
     required Map<String, dynamic> evento,
-    required _PatrocinioParticipacaoInfo patrocinioInfo,
-    required _GraduacaoNovaInfo graduacaoNovaInfo,
+    required AreaAlunoPatrocinioParticipacaoInfo patrocinioInfo,
+    required AreaAlunoGraduacaoNovaInfo graduacaoNovaInfo,
   }) {
     final nomeEvento =
         _textoLimpo(
@@ -838,17 +838,17 @@ class AreaAlunoEventoResumo {
   }
 }
 
-class _PatrocinioParticipacaoInfo {
+class AreaAlunoPatrocinioParticipacaoInfo {
   final bool possuiPatrocinio;
   final double totalPatrocinado;
 
-  const _PatrocinioParticipacaoInfo({
+  const AreaAlunoPatrocinioParticipacaoInfo({
     this.possuiPatrocinio = false,
     this.totalPatrocinado = 0,
   });
 }
 
-class _GraduacaoNovaInfo {
+class AreaAlunoGraduacaoNovaInfo {
   final String id;
   final String nome;
   final String cor1;
@@ -858,7 +858,7 @@ class _GraduacaoNovaInfo {
   final String frase;
   final String certificadoOuDiploma;
 
-  const _GraduacaoNovaInfo({
+  const AreaAlunoGraduacaoNovaInfo({
     required this.id,
     required this.nome,
     required this.cor1,

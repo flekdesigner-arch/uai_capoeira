@@ -18,7 +18,7 @@ class EditarUsuarioScreen extends StatefulWidget {
   const EditarUsuarioScreen({super.key, this.userId});
 
   @override
-  _EditarUsuarioScreenState createState() => _EditarUsuarioScreenState();
+  State<EditarUsuarioScreen> createState() => _EditarUsuarioScreenState();
 }
 
 class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
@@ -178,6 +178,7 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
 
   Future<void> _salvarUsuario({bool aprovar = false}) async {
     final access = await carregarAcessoGestaoUsuarios();
+    if (!mounted) return;
     if (!access.liberado) {
       _mostrarErro('Você não tem permissão para gerenciar usuários.');
       return;
@@ -527,20 +528,6 @@ class _EditarUsuarioScreenState extends State<EditarUsuarioScreen> {
     }
   }
 
-  Color _getStatusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'ativa':
-        return context.uai.success;
-      case 'pendente':
-        return context.uai.warning;
-      case 'bloqueada':
-        return context.uai.error;
-      case 'inativa':
-        return context.uai.textMuted;
-      default:
-        return context.uai.textMuted;
-    }
-  }
 
   @override
   Widget build(BuildContext context) {

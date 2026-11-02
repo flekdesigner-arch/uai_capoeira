@@ -3221,8 +3221,14 @@ Assinatura do Responsável: ${(_assinaturaUrl != null || _assinaturaBytes != nul
 
     // Esta tela roda dentro da LandingPage. Não use Scaffold/AppBar aqui,
     // para evitar duas barras na área pública.
-    return WillPopScope(
-      onWillPop: _onWillPop,
+    return PopScope<Object?>(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        final shouldPop = await _onWillPop();
+        if (!context.mounted || !shouldPop) return;
+        Navigator.of(context).pop(result);
+      },
       child: ColoredBox(color: t.background, child: _buildBodyState()),
     );
   }

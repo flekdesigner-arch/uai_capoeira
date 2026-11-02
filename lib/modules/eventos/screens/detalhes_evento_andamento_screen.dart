@@ -4,11 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/core/responsive/uai_responsive.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:uai_capoeira/modules/eventos/models/evento_model.dart';
 import 'package:uai_capoeira/modules/eventos/services/participacao_service.dart';
 import 'package:uai_capoeira/core/permissions/permissao_service.dart';
 import 'participantes_evento_screen.dart';
+import '../auditoria/evento_auditoria_screen.dart';
 import 'gastos_evento_screen.dart';
 import 'patrocinadores_evento_screen.dart';
 import 'camisas_evento_screen.dart';
@@ -38,8 +38,6 @@ class _DetalhesEventoAndamentoScreenState
         : const Color(0xFFFFFFFF);
   }
 
-
-
   Color _onCard() => _readableOn(context.uai.card);
   Color _onCardMuted() => _onCard().withAlpha(173);
   Color _appBarBg() =>
@@ -58,7 +56,6 @@ class _DetalhesEventoAndamentoScreenState
   int _totalCamisas = 0;
 
   // 🔥 LISTA COMBINADA DE CAMISAS (participações + avulsas)
-  final List<Map<String, dynamic>> _todasCamisas = [];
 
   // Permissões dinâmicas do evento
   bool _carregandoPermissoes = true;
@@ -68,6 +65,7 @@ class _DetalhesEventoAndamentoScreenState
   bool _podeGerenciarPatrocinadores = false;
   bool _podeGerenciarCamisas = false;
   bool _podeVerRelatorios = false;
+  bool _podeVerAuditoria = false;
   bool _podeGerarCertificados = false;
 
   @override
@@ -140,8 +138,15 @@ class _DetalhesEventoAndamentoScreenState
           'pode_gerar_certificados_evento',
           'pode_gerar_certificados',
         ]),
+        _permissaoService.temPermissao('pode_ver_auditoria_evento'),
       ]);
 
+      final admin = await _permissaoService.usuarioAtualEhAdmin();
+      final uid = _permissaoService.usuarioAtual?.uid;
+      final autorizado =
+          admin ||
+          (uid != null &&
+              (widget.evento.gestoresAutorizadosUids?.contains(uid) ?? false));
       if (!mounted) return;
 
       setState(() {
@@ -152,6 +157,8 @@ class _DetalhesEventoAndamentoScreenState
         _podeGerenciarCamisas = permissoes[4];
         _podeVerRelatorios = permissoes[5];
         _podeGerarCertificados = permissoes[6];
+        _podeVerAuditoria =
+            admin || (autorizado && permissoes[0]);
         _carregandoPermissoes = false;
       });
     } catch (e) {
@@ -471,14 +478,10 @@ class _DetalhesEventoAndamentoScreenState
                                   width: double.infinity,
                                   padding: EdgeInsets.all(14),
                                   decoration: BoxDecoration(
-                                    color: context.uai.warning.withAlpha(
-                                      20,
-                                    ),
+                                    color: context.uai.warning.withAlpha(20),
                                     borderRadius: BorderRadius.circular(18),
                                     border: Border.all(
-                                      color: context.uai.warning.withAlpha(
-                                        31,
-                                      ),
+                                      color: context.uai.warning.withAlpha(31),
                                     ),
                                   ),
                                   child: Row(
@@ -691,36 +694,6 @@ class _DetalhesEventoAndamentoScreenState
     );
   }
 
-  Future<void> _abrirLink(String? url) async {
-    if (url == null || url.isEmpty) return;
-
-    try {
-      final Uri uri = Uri.parse(url);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Não foi possível abrir o link'),
-              backgroundColor: context.uai.error,
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      debugPrint('Erro ao abrir link: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erro ao abrir link: ${e.toString()}'),
-            backgroundColor: context.uai.error,
-          ),
-        );
-      }
-    }
-  }
-
   String _formatarData() {
     return widget.evento.dataFormatada;
   }
@@ -798,7 +771,7 @@ class _DetalhesEventoAndamentoScreenState
         foregroundColor: _appBarFg(),
         elevation: 0,
         actions: [
-          if (_podeVerRelatorios)
+          if (_podeVerRelatorios && evento.temRelatorioFinanceiro)
             IconButton(
               icon: const Icon(Icons.assessment_rounded),
               onPressed: _abrirRelatorioFinanceiro,
@@ -1113,10 +1086,6 @@ class _DetalhesEventoAndamentoScreenState
     );
   }
 
-  Widget _buildTituloEvento(EventoModel evento) {
-    return const SizedBox.shrink();
-  }
-
   Widget _buildEstatisticasCard() {
     final r = context.uaiResponsive;
 
@@ -1136,7 +1105,6 @@ class _DetalhesEventoAndamentoScreenState
           const SizedBox(height: 14),
           LayoutBuilder(
             builder: (context, constraints) {
-
               // Correção 2.0.68:
               // No APK real, a área útil dentro do card fica menor por causa
               // de padding, SafeArea e largura em dp. Antes o resumo caía para
@@ -1162,27 +1130,30 @@ class _DetalhesEventoAndamentoScreenState
                   context.uai.info,
                   null,
                 ),
-                _StatData(
-                  Icons.shopping_bag_rounded,
-                  '$_totalCamisas',
-                  'Camisas',
-                  context.uai.warning,
-                  _mostrarDetalhesCamisas,
-                ),
-                _StatData(
-                  Icons.money_off_rounded,
-                  _formatarMoeda(_totalGastos),
-                  'Gastos',
-                  context.uai.error,
-                  null,
-                ),
-                _StatData(
-                  Icons.volunteer_activism_rounded,
-                  _formatarMoeda(_totalPatrocinioValor),
-                  'Patrocínio',
-                  context.uai.success,
-                  null,
-                ),
+                if (widget.evento.temCamisa)
+                  _StatData(
+                    Icons.shopping_bag_rounded,
+                    '$_totalCamisas',
+                    'Camisas',
+                    context.uai.warning,
+                    _mostrarDetalhesCamisas,
+                  ),
+                if (widget.evento.temControleGastos)
+                  _StatData(
+                    Icons.money_off_rounded,
+                    _formatarMoeda(_totalGastos),
+                    'Gastos',
+                    context.uai.error,
+                    null,
+                  ),
+                if (widget.evento.temPatrocinadores)
+                  _StatData(
+                    Icons.volunteer_activism_rounded,
+                    _formatarMoeda(_totalPatrocinioValor),
+                    'Patrocínio',
+                    context.uai.success,
+                    null,
+                  ),
               ];
 
               return Wrap(
@@ -1229,7 +1200,7 @@ class _DetalhesEventoAndamentoScreenState
             ).then((_) => _carregarDados());
           },
         ),
-      if (_podeGerarCertificados)
+      if (_podeGerarCertificados && evento.temCertificado)
         _buildMenuButton(
           icon: Icons.workspace_premium_rounded,
           title: 'Gerador de certificados',
@@ -1238,7 +1209,7 @@ class _DetalhesEventoAndamentoScreenState
           color: context.uai.associacao,
           onTap: _abrirGeradorCertificados,
         ),
-      if (_podeGerenciarGastos)
+      if (_podeGerenciarGastos && evento.temControleGastos)
         _buildMenuButton(
           icon: Icons.attach_money_rounded,
           title: 'Gastos',
@@ -1256,7 +1227,7 @@ class _DetalhesEventoAndamentoScreenState
             ).then((_) => _carregarDados());
           },
         ),
-      if (_podeGerenciarPatrocinadores)
+      if (_podeGerenciarPatrocinadores && evento.temPatrocinadores)
         _buildMenuButton(
           icon: Icons.volunteer_activism_rounded,
           title: 'Patrocinadores',
@@ -1274,7 +1245,7 @@ class _DetalhesEventoAndamentoScreenState
             ).then((_) => _carregarDados());
           },
         ),
-      if (_podeGerenciarCamisas)
+      if (_podeGerenciarCamisas && evento.temCamisa)
         _buildMenuButton(
           icon: Icons.shopping_bag_rounded,
           title: 'Camisas avulsas',
@@ -1292,7 +1263,23 @@ class _DetalhesEventoAndamentoScreenState
             ).then((_) => _carregarDados());
           },
         ),
-      if (_podeVerRelatorios)
+      if (_podeVerAuditoria && evento.auditoriaVisivelGestores)
+        _buildMenuButton(
+          icon: Icons.manage_search_rounded,
+          title: 'Auditoria do evento',
+          subtitle: 'Quem realizou cada operação, alterações e valores',
+          color: context.uai.info,
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute<void>(
+              builder: (_) => EventoAuditoriaScreen(
+                eventoId: widget.eventoId,
+                eventoNome: evento.nome,
+              ),
+            ),
+          ),
+        ),
+      if (_podeVerRelatorios && evento.temRelatorioFinanceiro)
         _buildMenuButton(
           icon: Icons.assessment_rounded,
           title: 'Relatório financeiro',
@@ -1352,34 +1339,6 @@ class _DetalhesEventoAndamentoScreenState
                     .toList(),
               );
             },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSemPermissaoModulo() {
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: context.uai.warning.withAlpha(20),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: context.uai.warning.withAlpha(31)),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.lock_outline_rounded, color: context.uai.warning),
-          SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'Você pode visualizar este evento, mas ainda não tem permissão para gerenciar participantes, certificados, gastos, patrocinadores, camisas ou relatórios.',
-              style: TextStyle(
-                color: context.uai.warning,
-                height: 1.28,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
           ),
         ],
       ),
@@ -1581,28 +1540,6 @@ class _DetalhesEventoAndamentoScreenState
   }
 
   Future<void> _compartilharEvento() async {
-    final String organizadores = widget.evento.organizadores is List
-        ? (widget.evento.organizadores as List).join(', ')
-        : widget.evento.organizadores?.toString() ?? 'Não informado';
-
-    String texto =
-        '''
-🎉 *${widget.evento.nome}* (EM ANDAMENTO)
-
-📅 Data: ${_formatarData()} ${widget.evento.horario.isNotEmpty ? 'às ${widget.evento.horario}' : ''}
-📍 Local: ${widget.evento.local} - ${widget.evento.cidade}
-
-👥 Organizadores: $organizadores
-
-📊 Estatísticas atuais:
-• Participantes: $_totalParticipantes
-• Gastos: ${_formatarMoeda(_totalGastos)}
-• Patrocínios: ${_formatarMoeda(_totalPatrocinioValor)}
-• Camisas: $_totalCamisas
-
-🔗 Gerencie este evento no app UAI CAPOEIRA!
-''';
-
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1622,28 +1559,4 @@ class _StatData {
   final VoidCallback? onTap;
 
   const _StatData(this.icon, this.value, this.label, this.color, this.onTap);
-}
-
-class _StatusBadge extends StatelessWidget {
-  const _StatusBadge();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: context.uai.success,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: context.uai.card, width: 2),
-      ),
-      child: Text(
-        'EM ANDAMENTO',
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: 8,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    );
-  }
 }

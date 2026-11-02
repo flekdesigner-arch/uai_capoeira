@@ -1,3 +1,6 @@
+import 'package:uai_capoeira/modules/disciplina/disciplina_dialog.dart'
+    show DisciplinaStatusChip;
+import 'package:uai_capoeira/core/services/uai_callable_client.dart';
 import 'package:uai_capoeira/core/session_log/session_log_service.dart';
 // chamada_turma_screen.dart
 import 'dart:async';
@@ -6,11 +9,10 @@ import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart';
+import 'package:uai_capoeira/modules/disciplina/disciplina_service.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:uai_capoeira/modules/chamadas/services/lock_chamada_service.dart';
-import 'package:uai_capoeira/modules/chamadas/screens/chamada_especial_screen.dart';
 import 'package:uai_capoeira/modules/chamadas/services/aluno_foto_resolver.dart';
 import 'package:uai_capoeira/core/image_cache/uai_student_photo.dart';
 
@@ -18,8 +20,7 @@ import 'package:uai_capoeira/core/image_cache/uai_student_photo.dart';
 bool chamadaEspecialPodeAbrirConfirmacao(
   BuildContext context,
   DateTime? dataSelecionada,
-) =>
-    dataSelecionada != null && context.mounted;
+) => dataSelecionada != null && context.mounted;
 
 // ============================================
 // TELA PRINCIPAL - CHAMADA TURMA (COM CLOUD FUNCTION)
@@ -31,6 +32,7 @@ class ChamadaTurmaScreen extends StatefulWidget {
   final String academiaId;
   final String academiaNome;
   final String usuarioId;
+  final DateTime? dataSelecionadaEspecial;
 
   const ChamadaTurmaScreen({
     super.key,
@@ -39,6 +41,7 @@ class ChamadaTurmaScreen extends StatefulWidget {
     required this.academiaId,
     required this.academiaNome,
     required this.usuarioId,
+    this.dataSelecionadaEspecial,
   });
 
   @override
@@ -98,8 +101,61 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
     return _ensureVisible(color, bg);
   }
 
+  bool get _ehChamadaEspecial => widget.dataSelecionadaEspecial != null;
+
+  String _formatarDataDisciplina(dynamic value) {
+    final texto = value?.toString().trim() ?? '';
+    if (texto.isEmpty) return '--/--/----';
+    final data = DateTime.tryParse(texto);
+    if (data == null) return texto;
+    return DateFormat('dd/MM/yyyy').format(data);
+  }
+
+  List<double> _matrizEscalaCinza() => const <double>[
+    0.2126,
+    0.7152,
+    0.0722,
+    0,
+    0,
+    0.2126,
+    0.7152,
+    0.0722,
+    0,
+    0,
+    0.2126,
+    0.7152,
+    0.0722,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+  ];
+
+  Map<String, dynamic>? _eventoDisciplinaAluno(String alunoId) =>
+      DisciplinaService.suspensaoAtual(
+        _disciplinaPorAluno?[alunoId],
+        _dataChamada,
+      );
+
+  Widget _buildChipSuspensoGrid(String alunoId) {
+    final evento = _eventoDisciplinaAluno(alunoId);
+    return DisciplinaStatusChip(
+      estado: DisciplinaService.estado(
+        _disciplinaPorAluno?[alunoId],
+        _dataChamada,
+        confirmado: _disciplinaPorAluno != null,
+      ),
+      retorno: _formatarDataDisciplina(
+        evento?['data_retorno'] ?? evento?['fim_exclusivo'],
+      ),
+      onTap: () => _avisarSuspensao(alunoId),
+    );
+  }
+
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseFunctions _functions = FirebaseFunctions.instance;
 
   // 🔥 ESTADOS PARA LOCK
   bool _verificandoLock = true;
@@ -118,6 +174,79 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
   // Dados da chamada
   List<Map<String, dynamic>> _alunos = [];
   Map<String, bool> _presencas = {};
+  // null = ainda não foi possível validar o status; falha fechada na UI.
+  Map<String, Map<String, dynamic>>? _disciplinaPorAluno;
+
+  bool _suspensoNaAula(String alunoId) =>
+      DisciplinaService.suspenso(_disciplinaPorAluno?[alunoId], _dataChamada);
+  bool _impedidoNaAula(String alunoId) =>
+      _disciplinaPorAluno == null || _suspensoNaAula(alunoId);
+  Timer? _disciplinaTimer;
+  bool _consultandoDisciplina = false;
+  final String _comandoCriacao =
+      'criar_${DateTime.now().microsecondsSinceEpoch}';
+  Future<void> _atualizarDisciplina() async {
+    if (_consultandoDisciplina || _alunos.isEmpty) return;
+    _consultandoDisciplina = true;
+    Map<String, Map<String, dynamic>>? dados;
+    try {
+      dados = await DisciplinaService.buscarResumos(
+        _alunos.map((a) => a['id'].toString()),
+      );
+    } catch (_) {
+      dados = null;
+    }
+    _consultandoDisciplina = false;
+    if (mounted) {
+      setState(() {
+        _disciplinaPorAluno = dados;
+        for (final aluno in _alunos) {
+          final id = aluno['id'].toString();
+          if (_suspensoNaAula(id)) {
+            _presencas[id] = false;
+          }
+        }
+      });
+    }
+  }
+
+  void _avisarSuspensao(String alunoId) {
+    final resumo = _disciplinaPorAluno?[alunoId];
+    final evento = DisciplinaService.suspensaoAtual(resumo, _dataChamada);
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          evento == null
+              ? 'Verificação pendente'
+              : evento['tipo'] == 'expulsao'
+              ? 'Aluno expulso'
+              : 'Aluno suspenso',
+        ),
+        content: Text(
+          evento == null
+              ? 'Verificação disciplinar pendente. Conecte-se para carregar o status.'
+              : 'Motivo: ${evento['motivo']}\nResponsável: ${evento['autor_nome']}\n'
+                    'Início: ${evento['inicio']}\n${evento['tipo'] == 'expulsao' ? 'Expulsão ativa — reativação administrativa obrigatória' : 'Retorno em: ${evento['data_retorno'] ?? evento['fim_exclusivo']}'}',
+        ),
+        actions: [
+          if (evento == null)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _atualizarDisciplina();
+              },
+              child: const Text('Tentar novamente'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Entendi'),
+          ),
+        ],
+      ),
+    );
+  }
+
   final Map<String, String> _observacoes = {};
   DateTime _dataChamada = DateTime.now();
 
@@ -230,6 +359,11 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
       setState(() => _alertaPiscaLigado = !_alertaPiscaLigado);
     });
 
+    _dataChamada = widget.dataSelecionadaEspecial ?? DisciplinaService.hoje();
+    _disciplinaTimer = Timer.periodic(
+      const Duration(minutes: 1),
+      (_) => _atualizarDisciplina(),
+    );
     debugPrint('🚀 ChamadaTurmaScreen initState');
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _verificarEAcessarChamada();
@@ -243,6 +377,7 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
       LockChamadaService.liberarChamada(widget.turmaId);
     }
     _buscaDebounce?.cancel();
+    _disciplinaTimer?.cancel();
     _alertaPiscaTimer?.cancel();
     _telepatiaTimer?.cancel();
     _chamadaInversaTimer?.cancel();
@@ -561,7 +696,7 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
 
   Future<void> _verificarChamadaExistenteAlternativa() async {
     try {
-      final hoje = DateTime.now();
+      final hoje = _dataChamada;
       final dataHojeFormatada = DateFormat('yyyy-MM-dd').format(hoje);
 
       final querySnapshot = await _firestore
@@ -619,7 +754,7 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
 
       setState(() => _diasTreinoTurma = diasTreino);
 
-      final agora = DateTime.now();
+      final agora = _dataChamada;
       final diaSemanaOriginal = DateFormat(
         'EEEE',
         'pt_BR',
@@ -676,10 +811,12 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
         }
       }
 
-      if (encontrouDia || _modoExtraForcado) {
+      if (encontrouDia || _modoExtraForcado || _ehChamadaEspecial) {
         setState(() {
           _podeFazerChamada = true;
-          _mensagemAulaHoje = encontrouDia
+          _mensagemAulaHoje = _ehChamadaEspecial
+              ? '📅 CHAMADA ESPECIAL: ${DateFormat('dd/MM/yyyy').format(_dataChamada)}'
+              : encontrouDia
               ? 'AULA HOJE: $diaCorrespondente'
               : '🔴 MODO ADMIN: CHAMADA EXTRA (fora do dia)';
         });
@@ -755,6 +892,15 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
       alunosList.sort(
         (a, b) => (a['nome'] as String).compareTo(b['nome'] as String),
       );
+      // Carrega o estado disciplinar em paralelo, sem alterar o cadastro original.
+      // Na falha de rede a tela não autoriza novas presenças.
+      try {
+        _disciplinaPorAluno = await DisciplinaService.buscarResumos(
+          alunosList.map((aluno) => aluno['id'].toString()),
+        );
+      } catch (_) {
+        _disciplinaPorAluno = null;
+      }
 
       final presencasIniciais = <String, bool>{};
       for (var aluno in alunosList) {
@@ -949,13 +1095,13 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
       await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => ChamadaEspecialScreen(
+          builder: (context) => ChamadaTurmaScreen(
             turmaId: widget.turmaId,
             turmaNome: widget.turmaNome,
             academiaId: widget.academiaId,
             academiaNome: widget.academiaNome,
             usuarioId: widget.usuarioId,
-            dataSelecionada: dataSelecionada,
+            dataSelecionadaEspecial: dataSelecionada,
           ),
         ),
       );
@@ -1820,12 +1966,15 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
     );
   }
 
-
   void _invalidarCacheFiltro() {
     _cacheAssinaturaFiltro = '';
   }
 
   void _togglePresenca(String alunoId) {
+    if (_impedidoNaAula(alunoId)) {
+      _avisarSuspensao(alunoId);
+      return;
+    }
     if (_telepatiaAtiva && _telepatiaUsandoChamadaReal) {
       HapticFeedback.selectionClick();
       return;
@@ -1930,7 +2079,9 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
 
     setState(() {
       for (final aluno in filtrados) {
-        _presencas[aluno['id'] as String] = presente;
+        if (!_impedidoNaAula(aluno['id'] as String)) {
+          _presencas[aluno['id'] as String] = presente;
+        }
       }
       _invalidarCacheFiltro();
     });
@@ -1947,7 +2098,9 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
     setState(() {
       for (final aluno in filtrados) {
         final id = aluno['id'] as String;
-        _presencas[id] = !(_presencas[id] ?? false);
+        if (!_impedidoNaAula(id)) {
+          _presencas[id] = !(_presencas[id] ?? false);
+        }
       }
       _invalidarCacheFiltro();
     });
@@ -2183,6 +2336,10 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
   // FUNÇÃO PRINCIPAL DE SALVAR CHAMADA (COM CLOUD FUNCTION)
   // ============================================
   Future<void> _salvarChamada() async {
+    if (_disciplinaPorAluno == null) {
+      _avisarSuspensao('');
+      return;
+    }
     if (_telepatiaAtiva && _telepatiaUsandoChamadaReal) {
       _mostrarDialogoTelepatiaFinal();
       return;
@@ -2255,11 +2412,12 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
 
     // Preparar dados para a Cloud Function
     final dadosChamada = {
+      'comandoId': _comandoCriacao,
       'turmaId': widget.turmaId,
       'turmaNome': widget.turmaNome,
       'academiaId': widget.academiaId,
       'academiaNome': widget.academiaNome,
-      'dataChamada': _dataChamada.toIso8601String(),
+      'dataChamada': DateFormat('yyyy-MM-dd').format(_dataChamada),
       'tipoAula': _tipoAulaHoje,
       'professorId': _professorId,
       'professorNome': _professorNome,
@@ -2280,7 +2438,6 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
           'foto': fotoPerfilAluno,
           'graduacao_id': aluno['graduacao_id'],
           'graduacao_nome': aluno['graduacao_nome']?.toString() ?? '',
-          'ultimo_dia_presente': aluno['ultimo_dia_presente'],
         };
       }).toList(),
     };
@@ -2298,34 +2455,37 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
         _statusMensagem = 'Processando chamada e atualizando contadores...';
       });
 
-      final HttpsCallable callable = _functions.httpsCallable(
+      final result = await UaiCallableClient.instance.call(
         'processarChamada',
+        dadosChamada,
       );
-      final result = await callable.call(dadosChamada);
 
       setState(() {
         _statusMensagem = '✅ Chamada salva com sucesso!';
       });
       await Future.delayed(const Duration(milliseconds: 500));
 
-      if (result.data['success'] == true) {
+      if (result['success'] == true) {
         chamadaConfirmada = true;
-        unawaited(SessionLogService.instance.recordEntityOperation(
-        module: 'chamadas', entityType: 'turma',
-        entityId: widget.turmaId, operation: 'criou', result: 'sucesso',
-      ));
+        unawaited(
+          SessionLogService.instance.recordEntityOperation(
+            module: 'chamadas',
+            entityType: 'turma',
+            entityId: widget.turmaId,
+            operation: 'criou',
+            result: 'sucesso',
+          ),
+        );
         // Liberar lock
         await LockChamadaService.liberarChamada(widget.turmaId);
 
         if (mounted) {
-          final int presentesResult = _parseIntSeguro(result.data['presentes']);
-          final int ausentesResult = _parseIntSeguro(result.data['ausentes']);
-          final int processadosResult = _parseIntSeguro(
-            result.data['processados'],
+          final int presentesResult = _parseIntSeguro(result['presentes']);
+          final int ausentesResult = _parseIntSeguro(result['ausentes']);
+          final int processadosResult = _parseIntSeguro(result['processados']);
+          final int percentualResult = _parseIntSeguro(
+            result['porcentagem_frequencia'],
           );
-          final int percentualResult = processadosResult > 0
-              ? ((presentesResult / processadosResult) * 100).round()
-              : 0;
 
           _mostrarTelaConclusao({
             'presentes': presentesResult,
@@ -2335,17 +2495,27 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
           });
         }
       } else {
-        unawaited(SessionLogService.instance.recordEntityOperation(
-        module: 'chamadas', entityType: 'turma',
-        entityId: widget.turmaId, operation: 'criou', result: 'falha',
-      ));
+        unawaited(
+          SessionLogService.instance.recordEntityOperation(
+            module: 'chamadas',
+            entityType: 'turma',
+            entityId: widget.turmaId,
+            operation: 'criou',
+            result: 'falha',
+          ),
+        );
       }
     } catch (e) {
       if (!chamadaConfirmada) {
-        unawaited(SessionLogService.instance.recordEntityOperation(
-          module: 'chamadas', entityType: 'turma',
-          entityId: widget.turmaId, operation: 'criou', result: 'falha',
-        ));
+        unawaited(
+          SessionLogService.instance.recordEntityOperation(
+            module: 'chamadas',
+            entityType: 'turma',
+            entityId: widget.turmaId,
+            operation: 'criou',
+            result: 'falha',
+          ),
+        );
       }
       debugPrint('❌ Erro ao processar chamada: $e');
       setState(() {
@@ -2632,6 +2802,7 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
     final alertaAtivo = _indicadorGeraAlerta(aluno) && !estaPresente;
     final alertaPiscando = alertaAtivo && _alertaPiscaLigado;
 
+    final suspenso = _suspensoNaAula(alunoId);
     return RepaintBoundary(
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
@@ -2657,7 +2828,9 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
         child: Material(
           color: Colors.transparent,
           child: InkWell(
-            onTap: () => _togglePresenca(alunoId),
+            onTap: () => _impedidoNaAula(alunoId)
+                ? _avisarSuspensao(alunoId)
+                : _togglePresenca(alunoId),
             onLongPress: () => _adicionarObservacao(alunoId, nomeAluno),
             borderRadius: BorderRadius.circular(22),
             child: AnimatedContainer(
@@ -2696,6 +2869,7 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
                                   fit: BoxFit.cover,
                                   cacheWidth: 420,
                                   placeholderSize: 68,
+                                  emEscalaCinza: suspenso,
                                 ),
                                 Positioned.fill(
                                   child: DecoratedBox(
@@ -2746,8 +2920,9 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
                                             height: 1.08,
                                             shadows: [
                                               Shadow(
-                                                color: Colors.black.withAlpha((255.0 * (
-                                                  0.55)).round()),
+                                                color: Colors.black.withAlpha(
+                                                  (255.0 * (0.55)).round(),
+                                                ),
                                                 blurRadius: 8,
                                                 offset: const Offset(0, 1),
                                               ),
@@ -2767,29 +2942,37 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
                             width: double.infinity,
                             padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
                             decoration: BoxDecoration(
-                              color: estaPresente
+                              color: suspenso
+                                  ? context.uai.error.withAlpha(18)
+                                  : estaPresente
                                   ? context.uai.success.withAlpha(26)
                                   : context.uai.error.withAlpha(26),
                             ),
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                if (_indicadoresAusenciaAtivo &&
-                                    _mostrarTextoUltimaPresencaIndicador)
+                                if (suspenso ||
+                                    (_indicadoresAusenciaAtivo &&
+                                        _mostrarTextoUltimaPresencaIndicador))
                                   Padding(
                                     padding: const EdgeInsets.only(bottom: 6),
                                     child: Text(
-                                      _textoUltimaPresenca(aluno),
+                                      suspenso
+                                          ? 'Aluno suspenso nesta data'
+                                          : _textoUltimaPresenca(aluno),
                                       textAlign: TextAlign.center,
                                       style: TextStyle(
-                                        color: indicadorColor,
+                                        color: suspenso
+                                            ? context.uai.error
+                                            : indicadorColor,
                                         fontSize: 9.8,
                                         fontWeight: FontWeight.w900,
                                         height: 1,
                                         shadows: [
                                           Shadow(
-                                            color: Colors.black.withAlpha((255.0 * (
-                                              0.10)).round()),
+                                            color: Colors.black.withAlpha(
+                                              (255.0 * (0.10)).round(),
+                                            ),
                                             blurRadius: 2,
                                             offset: const Offset(0, 1),
                                           ),
@@ -2800,46 +2983,51 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
                                     ),
                                   ),
                                 Center(
-                                  child: SizedBox(
-                                    width: 108,
-                                    height: 31,
-                                    child: ElevatedButton.icon(
-                                      onPressed: () => _togglePresenca(alunoId),
-                                      style: ElevatedButton.styleFrom(
-                                        elevation: 0,
-                                        backgroundColor: estaPresente
-                                            ? context.uai.success
-                                            : context.uai.primary,
-                                        foregroundColor: _readableOn(
-                                          estaPresente
-                                              ? context.uai.success
-                                              : context.uai.primary,
-                                        ),
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                        ),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            17,
+                                  child: _impedidoNaAula(alunoId)
+                                      ? _buildChipSuspensoGrid(alunoId)
+                                      : SizedBox(
+                                          width: 108,
+                                          height: 31,
+                                          child: ElevatedButton.icon(
+                                            onPressed: () =>
+                                                _togglePresenca(alunoId),
+                                            style: ElevatedButton.styleFrom(
+                                              elevation: 0,
+                                              backgroundColor: estaPresente
+                                                  ? context.uai.success
+                                                  : context.uai.primary,
+                                              foregroundColor: _readableOn(
+                                                estaPresente
+                                                    ? context.uai.success
+                                                    : context.uai.primary,
+                                              ),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 8,
+                                                  ),
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(17),
+                                              ),
+                                            ),
+                                            icon: Icon(
+                                              estaPresente
+                                                  ? Icons.check_circle_rounded
+                                                  : Icons
+                                                        .radio_button_unchecked_rounded,
+                                              size: 15,
+                                            ),
+                                            label: Text(
+                                              estaPresente
+                                                  ? 'Presente'
+                                                  : 'Marcar',
+                                              style: const TextStyle(
+                                                fontSize: 10.8,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                      icon: Icon(
-                                        estaPresente
-                                            ? Icons.check_circle_rounded
-                                            : Icons
-                                                  .radio_button_unchecked_rounded,
-                                        size: 15,
-                                      ),
-                                      label: Text(
-                                        estaPresente ? 'Presente' : 'Marcar',
-                                        style: const TextStyle(
-                                          fontSize: 10.8,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
                                 ),
                               ],
                             ),
@@ -2930,6 +3118,7 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
     final fotoUrl = aluno['foto'] as String?;
     final estaPresente = _presencas[alunoId] ?? false;
     final temObservacao = (_observacoes[alunoId] ?? '').trim().isNotEmpty;
+    final suspenso = _suspensoNaAula(alunoId);
     return Container(
       margin: margin ?? EdgeInsets.fromLTRB(16, 0, 16, 10),
       decoration: BoxDecoration(
@@ -2949,58 +3138,76 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
           ),
         ],
       ),
-      child: ListTile(
-        onTap: () => _togglePresenca(alunoId),
-        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        leading: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            _buildAlunoAvatarMini(alunoId, fotoUrl, nomeAluno, estaPresente),
-            if (_indicadoresAusenciaAtivo)
-              Positioned(
-                right: -1,
-                bottom: -1,
-                child: _buildIndicadorBolinha(aluno, size: 12),
+      child: Material(
+        type: MaterialType.transparency,
+        child: ListTile(
+          onTap: () => _impedidoNaAula(alunoId)
+              ? _avisarSuspensao(alunoId)
+              : _togglePresenca(alunoId),
+          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          leading: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              _buildAlunoAvatarMini(
+                alunoId,
+                fotoUrl,
+                nomeAluno,
+                estaPresente,
+                emEscalaCinza: suspenso,
               ),
-          ],
-        ),
-        title: Text(
-          nomeAlunoExibicao,
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: estaPresente ? context.uai.success : context.uai.textPrimary,
+              if (_indicadoresAusenciaAtivo)
+                Positioned(
+                  right: -1,
+                  bottom: -1,
+                  child: _buildIndicadorBolinha(aluno, size: 12),
+                ),
+            ],
           ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        subtitle: Text(
-          graduacao.isNotEmpty
-              ? graduacao
-              : (estaPresente ? 'Presente na chamada' : 'Ausente na chamada'),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(fontSize: 12, color: context.uai.textSecondary),
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (temObservacao)
-              Icon(
-                Icons.sticky_note_2_rounded,
-                color: context.uai.warning,
-                size: 20,
+          title: Text(
+            nomeAlunoExibicao,
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: estaPresente
+                  ? context.uai.success
+                  : context.uai.textPrimary,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: Text(
+            suspenso
+                ? 'SUSPENSO ATÉ ${_formatarDataDisciplina(_eventoDisciplinaAluno(alunoId)?['data_retorno'] ?? _eventoDisciplinaAluno(alunoId)?['fim_exclusivo'])}'
+                : graduacao.isNotEmpty
+                ? graduacao
+                : (estaPresente ? 'Presente na chamada' : 'Ausente na chamada'),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 12, color: context.uai.textSecondary),
+          ),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (temObservacao)
+                Icon(
+                  Icons.sticky_note_2_rounded,
+                  color: context.uai.warning,
+                  size: 20,
+                ),
+              IconButton(
+                tooltip: 'Observação',
+                onPressed: () => _adicionarObservacao(alunoId, nomeAluno),
+                icon: Icon(Icons.note_add_outlined, color: context.uai.info),
               ),
-            IconButton(
-              tooltip: 'Observação',
-              onPressed: () => _adicionarObservacao(alunoId, nomeAluno),
-              icon: Icon(Icons.note_add_outlined, color: context.uai.info),
-            ),
-            Switch(
-              value: estaPresente,
-              activeThumbColor: context.uai.success,
-              onChanged: (_) => _togglePresenca(alunoId),
-            ),
-          ],
+              if (_impedidoNaAula(alunoId))
+                _buildChipSuspensoGrid(alunoId)
+              else
+                Switch(
+                  value: estaPresente,
+                  activeThumbColor: context.uai.success,
+                  onChanged: suspenso ? null : (_) => _togglePresenca(alunoId),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -3010,9 +3217,9 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
     String alunoId,
     String? fotoUrl,
     String nome,
-    bool presente,
-  ) {
-
+    bool presente, {
+    bool emEscalaCinza = false,
+  }) {
     return Container(
       width: 48,
       height: 48,
@@ -3032,6 +3239,7 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
           cacheWidth: 140,
           placeholderSize: 24,
           circular: true,
+          emEscalaCinza: emEscalaCinza,
         ),
       ),
     );
@@ -3045,6 +3253,7 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
     required int cacheWidth,
     double placeholderSize = 50,
     bool circular = false,
+    bool emEscalaCinza = false,
   }) {
     final url = fotoUrl?.trim() ?? '';
     final inicial = nome.trim().isEmpty ? '?' : nome.trim()[0].toUpperCase();
@@ -3071,25 +3280,33 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
       );
     }
 
+    Widget child;
     if (url.isEmpty ||
         !(url.startsWith('http://') || url.startsWith('https://'))) {
-      return fallback();
+      child = fallback();
+    } else {
+      child = UaiStudentPhoto(
+        studentId: alunoId,
+        imageUrl: url,
+        profile: cacheWidth <= 192
+            ? UaiStudentPhotoProfile.compact
+            : UaiStudentPhotoProfile.grid,
+        fit: fit,
+        width: double.infinity,
+        height: double.infinity,
+        fallback: fallback(),
+        placeholder: fallback(),
+      );
     }
 
-    return UaiStudentPhoto(
-      studentId: alunoId,
-      imageUrl: url,
-      profile: cacheWidth <= 192
-          ? UaiStudentPhotoProfile.compact
-          : UaiStudentPhotoProfile.grid,
-      fit: fit,
-      width: double.infinity,
-      height: double.infinity,
-      fallback: fallback(),
-      placeholder: fallback(),
-    );
+    if (emEscalaCinza) {
+      child = ColorFiltered(
+        colorFilter: ColorFilter.matrix(_matrizEscalaCinza()),
+        child: child,
+      );
+    }
+    return child;
   }
-
 
   // ============================================
   // HEADER DA CHAMADA
@@ -3271,11 +3488,6 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
     );
   }
 
-
-
-
-
-
   Color _getTipoAulaColor(String tipoAula) {
     switch (tipoAula.toUpperCase()) {
       case 'OBJETIVA':
@@ -3390,7 +3602,8 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
                                               _telepatiaUsandoChamadaReal)
                                           ? _telepatiaScrollController
                                           : null,
-                                      scrollCacheExtent: const ScrollCacheExtent.pixels(700),
+                                      scrollCacheExtent:
+                                          const ScrollCacheExtent.pixels(700),
                                       padding: _gridPaddingForWidth(
                                         larguraTela,
                                       ),
@@ -3410,7 +3623,8 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
                                               _telepatiaUsandoChamadaReal)
                                           ? _telepatiaScrollController
                                           : null,
-                                      scrollCacheExtent: const ScrollCacheExtent.pixels(500),
+                                      scrollCacheExtent:
+                                          const ScrollCacheExtent.pixels(500),
                                       padding: const EdgeInsets.only(
                                         top: 6,
                                         bottom: 14,
@@ -3425,7 +3639,8 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
                                         _telepatiaUsandoChamadaReal)
                                     ? _telepatiaScrollController
                                     : null,
-                                scrollCacheExtent: const ScrollCacheExtent.pixels(800),
+                                scrollCacheExtent:
+                                    const ScrollCacheExtent.pixels(800),
                                 padding: _gridPaddingForWidth(larguraTela),
                                 gridDelegate: _gridDelegateForChamada(
                                   larguraTela,
@@ -3965,9 +4180,7 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
                 decoration: BoxDecoration(
                   color: context.uai.warning.withAlpha(26),
                   borderRadius: BorderRadius.circular(15),
-                  border: Border.all(
-                    color: context.uai.warning.withAlpha(71),
-                  ),
+                  border: Border.all(color: context.uai.warning.withAlpha(71)),
                 ),
                 child: Column(
                   children: [
@@ -4553,8 +4766,9 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
                                   color: context.uai.success.withAlpha(26),
                                   borderRadius: BorderRadius.circular(20),
                                   border: Border.all(
-                                    color: context.uai.success.withAlpha((255.0 * (
-                                      0.28)).round()),
+                                    color: context.uai.success.withAlpha(
+                                      (255.0 * (0.28)).round(),
+                                    ),
                                     width: 1,
                                   ),
                                 ),
@@ -4748,8 +4962,7 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
                                 ],
                               ),
                             );
-                          })
-                          ,
+                          }),
                     ],
                   ),
                 ),
@@ -4764,9 +4977,7 @@ class _ChamadaTurmaScreenState extends State<ChamadaTurmaScreen>
                   decoration: BoxDecoration(
                     color: context.uai.info.withAlpha(26),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: context.uai.info.withAlpha(71),
-                    ),
+                    border: Border.all(color: context.uai.info.withAlpha(71)),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,

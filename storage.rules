@@ -76,8 +76,12 @@ service firebase.storage {
       return isAdmin() || certPerm('pode_excluir_templates_certificados');
     }
 
-    match /{allPaths=**} {
-      allow read: if true;
+    // Backups críticos e arquivos contábeis não são mídia pública.
+    match /{firstSegment}/{remaining=**} {
+      allow read: if firstSegment != 'backups-criticos' && firstSegment != 'associacao';
+    }
+    match /associacao/{section}/{remaining=**} {
+      allow read: if section != 'exercicios';
     }
 
     match /assinaturas/{fileName} {

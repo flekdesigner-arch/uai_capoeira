@@ -36,8 +36,6 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
   int _totalVendasCount = 0;
   Map<String, double> _vendasPorMes = {};
   Map<String, double> _recebidoPorMes = {};
-  Map<String, int> _vendasPorFormaPagamento = {};
-  List<Map<String, dynamic>> _ultimasVendas = [];
   List<MapEntry<String, double>> _topAlunos = [];
 
   static final PdfColor verdeEscuro = PdfColor.fromHex('#2E7D32');
@@ -121,10 +119,6 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     }
   }
 
-  static Future<pw.Font> _carregarFontePdf(String path) async {
-    final data = await rootBundle.load(path);
-    return pw.Font.ttf(data);
-  }
 
   // ─────────────────────────── PDF MENSAL ───────────────────────────
   Future<void> _gerarPdfMensal() async {
@@ -422,37 +416,6 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     );
   }
 
-  pw.Widget _pdfResumoBox(
-    String label,
-    String valor,
-    PdfColor cor,
-  ) {
-    return pw.Container(
-      padding: const pw.EdgeInsets.symmetric(horizontal: 9, vertical: 7),
-      decoration: pw.BoxDecoration(
-        color: cor,
-        borderRadius: pw.BorderRadius.circular(6),
-      ),
-      child: pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.start,
-        children: [
-          pw.Text(
-            label,
-            style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey700),
-          ),
-          pw.SizedBox(height: 2),
-          pw.Text(
-            valor,
-            maxLines: 1,
-            style: pw.TextStyle(
-              fontSize: 10,
-              fontWeight: pw.FontWeight.bold,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   pw.Widget _pdfRodapePagina(pw.Context context) {
     return pw.Container(
@@ -630,8 +593,6 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
         _totalVendasCount = totalVendasCount;
         _vendasPorMes = vendasPorMes;
         _recebidoPorMes = recebidoPorMes;
-        _vendasPorFormaPagamento = vendasPorFormaPagamento;
-        _ultimasVendas = ultimasVendas;
         _topAlunos = topAlunos;
 
         if (_isLoading) return _buildSkeleton();

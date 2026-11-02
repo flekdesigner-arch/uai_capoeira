@@ -1,3 +1,5 @@
+import 'package:uai_capoeira/core/access_simulation/mirror_academia_reader.dart';
+import 'package:uai_capoeira/core/access_simulation/access_simulation_controller.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -90,32 +92,55 @@ class _HomePageState extends State<HomePage>
       vsync: this,
       duration: const Duration(seconds: 10),
     );
+    AccessSimulationController.instance.addListener(_simulationChanged);
     _registrarUltimoAcessoUsuario();
     unawaited(_bootstrapHome());
   }
 
   @override
   void dispose() {
+    AccessSimulationController.instance.removeListener(_simulationChanged);
     _logoHoldTimer?.cancel();
     _logoReleaseTimer?.cancel();
     _logoFxController.dispose();
     super.dispose();
   }
 
+  void _simulationChanged() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _academiasCacheHome = [];
+      _inicializarStreams();
+    });
+  }
+
   Future<void> _bootstrapHome() async {
     // A abertura da Home nunca pode depender da inicialização do diagnóstico:
     // ele pode aguardar o Firebase quando o dispositivo está 100% offline.
     _inicializarStreams();
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
     setState(() => _homeInicializada = true);
-    unawaited(_inicializarCacaBug().catchError((Object error) {
-      debugPrint('Caça Bugs: inicialização adiada: $error');
-    }));
+    unawaited(
+      _inicializarCacaBug().catchError((Object error) {
+        debugPrint('Caça Bugs: inicialização adiada: $error');
+      }),
+    );
   }
 
   Future<void> _inicializarCacaBug() async {
-    if (currentUser == null) return;
-    if (_cacaBugRegistrouHome) return;
+    if (AccessSimulationController.instance.active) {
+      return;
+    }
+    if (currentUser == null) {
+      return;
+    }
+    if (_cacaBugRegistrouHome) {
+      return;
+    }
 
     await CacaBugService.instance.inicializar(user: currentUser);
 
@@ -133,6 +158,11 @@ class _HomePageState extends State<HomePage>
   }
 
   void _inicializarStreams() {
+    if (AccessSimulationController.instance.active) {
+      _userDataStream = const Stream.empty();
+      _academiasFuture = _carregarAcademias();
+      return;
+    }
     if (currentUser != null) {
       final userDoc = FirebaseFirestore.instance
           .collection('usuarios')
@@ -147,8 +177,12 @@ class _HomePageState extends State<HomePage>
       _userDataStream = userDoc
           .snapshots(includeMetadataChanges: !isWindowsDesktop)
           .distinct((anterior, atual) {
-            if (!isWindowsDesktop) return false;
-            if (anterior.exists != atual.exists) return false;
+            if (!isWindowsDesktop) {
+              return false;
+            }
+            if (anterior.exists != atual.exists) {
+              return false;
+            }
 
             final a = anterior.data();
             final b = atual.data();
@@ -168,8 +202,15 @@ class _HomePageState extends State<HomePage>
   }
 
   Future<void> _registrarUltimoAcessoUsuario() async {
-    if (_registrouUltimoAcesso) return;
-    if (currentUser == null) return;
+    if (AccessSimulationController.instance.active) {
+      return;
+    }
+    if (_registrouUltimoAcesso) {
+      return;
+    }
+    if (currentUser == null) {
+      return;
+    }
 
     _registrouUltimoAcesso = true;
 
@@ -187,6 +228,16 @@ class _HomePageState extends State<HomePage>
   Future<List<Map<String, dynamic>>> _carregarAcademias({
     bool origemRefreshManual = false,
   }) async {
+    if (AccessSimulationController.instance.active) {
+      return MirrorAcademiaReader().carregarAcademias();
+    }
+    final revision = AccessSimulationController.instance.revision;
+    void ensureOriginalContext() {
+      if (revision != AccessSimulationController.instance.revision) {
+        throw StateError('Sessão alterada. Atualize as academias.');
+      }
+    }
+
     final uid = currentUser?.uid;
 
     if (uid == null || uid.isEmpty) {
@@ -195,19 +246,25 @@ class _HomePageState extends State<HomePage>
     }
 
     final temInternet = await _cacheService.temInternet();
+    ensureOriginalContext();
 
     List<Map<String, dynamic>> academias;
     try {
-      academias = await _cacheService.carregarAcademiasComAlunos(uid)
+      academias = await _cacheService
+          .carregarAcademiasComAlunos(uid)
           .timeout(const Duration(seconds: 12));
     } catch (error) {
-      debugPrint('Home: lista online indisponível; emergência local permanece acessível: $error');
+      debugPrint(
+        'Home: lista online indisponível; emergência local permanece acessível: $error',
+      );
       academias = <Map<String, dynamic>>[];
     }
 
+    ensureOriginalContext();
     // A Home original também utiliza o pacote de emergência, sem tela paralela.
     if (academias.isEmpty) {
       final local = await EmergencyOfflineService.instance.read();
+      ensureOriginalContext();
       final ac = (local?['academias'] as List?) ?? const [];
       final ts = (local?['turmas'] as List?) ?? const [];
       final as = (local?['alunos'] as List?) ?? const [];
@@ -219,19 +276,37 @@ class _HomePageState extends State<HomePage>
             'nome': row['nome'] ?? 'Academia',
             'cidade': row['cidade'] ?? '',
             'logo_url': row['logo_url'] ?? '',
-            'turmas_count': ts.where((t) => t is Map && t['academiaId'] == id).length,
-            'alunos_count': as.where((a) => a is Map && ts.any((t) => t is Map && t['id'] == a['turmaId'] && t['academiaId'] == id)).length,
+            'turmas_count': ts
+                .where((t) => t is Map && t['academiaId'] == id)
+                .length,
+            'alunos_count': as
+                .where(
+                  (a) =>
+                      a is Map &&
+                      ts.any(
+                        (t) =>
+                            t is Map &&
+                            t['id'] == a['turmaId'] &&
+                            t['academiaId'] == id,
+                      ),
+                )
+                .length,
           };
         }).toList();
       }
     }
-    if (!mounted) return academias;
+    ensureOriginalContext();
+    if (!mounted) {
+      return academias;
+    }
     _academiasCacheHome = List<Map<String, dynamic>>.from(academias);
     // Atualização antecipada: mantém o último snapshot íntegro ao falhar.
     if (academias.isNotEmpty && temInternet) {
-      unawaited(EmergencyOfflineService.instance.refresh().catchError((Object error) {
-        debugPrint('Cache de emergência: atualização adiada: $error');
-      }));
+      unawaited(
+        EmergencyOfflineService.instance.refresh().catchError((Object error) {
+          debugPrint('Cache de emergência: atualização adiada: $error');
+        }),
+      );
     }
     debugPrint('HomePage: academias carregadas: ${academias.length}');
 
@@ -287,50 +362,53 @@ class _HomePageState extends State<HomePage>
 
     return Scaffold(
       backgroundColor: t.background,
-      body: _buildHomeComModoRoda(Stack(
-        children: [
-          RefreshIndicator(
-            onRefresh: () async {
-              await _recarregarAcademias();
+      body: _buildHomeComModoRoda(
+        Stack(
+          children: [
+            RefreshIndicator(
+              onRefresh: () async {
+                await _recarregarAcademias();
 
-              if (currentUser != null) {
-                try {
-                  await FirebaseFirestore.instance
-                      .collection('usuarios')
-                      .doc(currentUser!.uid)
-                      .get(GetOptions(source: Source.server));
-                } catch (e) {
-                  debugPrint('Erro ao forçar atualização: $e');
+                if (currentUser != null &&
+                    !AccessSimulationController.instance.active) {
+                  try {
+                    await FirebaseFirestore.instance
+                        .collection('usuarios')
+                        .doc(currentUser!.uid)
+                        .get(GetOptions(source: Source.server));
+                  } catch (e) {
+                    debugPrint('Erro ao forçar atualização: $e');
+                  }
                 }
-              }
-            },
-            child: SingleChildScrollView(
-              physics: AlwaysScrollableScrollPhysics(),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: 500),
-                  child: Builder(
-                    builder: (context) {
-                      final compactHome = _isCompactHome(context);
+              },
+              child: SingleChildScrollView(
+                physics: AlwaysScrollableScrollPhysics(),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: 500),
+                    child: Builder(
+                      builder: (context) {
+                        final compactHome = _isCompactHome(context);
 
-                      return Column(
-                        children: [
-                          SizedBox(height: compactHome ? 10 : 30),
-                          _buildPerfilStream(theme),
-                          SizedBox(height: compactHome ? 10 : 30),
-                          _buildLogo(),
-                          SizedBox(height: compactHome ? 10 : 30),
-                          _buildAcademiasFuture(),
-                        ],
-                      );
-                    },
+                        return Column(
+                          children: [
+                            SizedBox(height: compactHome ? 10 : 30),
+                            _buildPerfilStream(theme),
+                            SizedBox(height: compactHome ? 10 : 30),
+                            _buildLogo(),
+                            SizedBox(height: compactHome ? 10 : 30),
+                            _buildAcademiasFuture(),
+                          ],
+                        );
+                      },
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-        ],
-      )),
+          ],
+        ),
+      ),
     );
   }
 
@@ -353,6 +431,10 @@ class _HomePageState extends State<HomePage>
   }
 
   Widget _buildPerfilStream(ThemeData theme) {
+    final simulated = AccessSimulationController.instance.profile;
+    if (simulated != null) {
+      return _buildPerfilComDados(simulated.data);
+    }
     if (currentUser == null) {
       return _buildPerfilOffline();
     }
@@ -572,7 +654,12 @@ class _HomePageState extends State<HomePage>
   }
 
   void _iniciarLogoEasterEgg() {
-    if (_logoPointerDown) return;
+    if (AccessSimulationController.instance.active) {
+      return;
+    }
+    if (_logoPointerDown) {
+      return;
+    }
 
     _logoPointerDown = true;
     _logoReleasing = false;
@@ -596,66 +683,66 @@ class _HomePageState extends State<HomePage>
 
     _logoHaptic(HapticFeedback.lightImpact);
 
-    _logoHoldTimer = Timer.periodic(
-      const Duration(milliseconds: 170),
-      (timer) {
-        if (!mounted || !_logoPointerDown || _logoHoldStartedAt == null) {
-          timer.cancel();
-          return;
+    _logoHoldTimer = Timer.periodic(const Duration(milliseconds: 170), (timer) {
+      if (!mounted || !_logoPointerDown || _logoHoldStartedAt == null) {
+        timer.cancel();
+        return;
+      }
+
+      final elapsed = DateTime.now()
+          .difference(_logoHoldStartedAt!)
+          .inMilliseconds;
+
+      _logoHoldElapsedMs = elapsed;
+
+      if (elapsed >= 15000 && !_logoGameTriggered) {
+        _logoGameTriggered = true;
+        timer.cancel();
+        unawaited(_abrirUaiArena());
+        return;
+      }
+
+      // 0-3s: surto visual.
+      // 3-6s: fumaça entra e os alunos já são pré-carregados.
+      // 6s+: libera a roda gigante.
+      final nextStage = elapsed >= 6000
+          ? 3
+          : elapsed >= 3000
+          ? 2
+          : 1;
+
+      if (nextStage != _logoFxStage) {
+        if (nextStage == 2) {
+          _logoHaptic(HapticFeedback.mediumImpact);
+          unawaited(_carregarAlunosParaRodaUai());
+        } else if (nextStage == 3) {
+          _logoHaptic(HapticFeedback.heavyImpact);
+          unawaited(_carregarAlunosParaRodaUai());
+
+          // A partir daqui a roda entra em modo contínuo:
+          // congela a paleta/tema atual e não "reinicia" visualmente
+          // enquanto o dedo continuar pressionado.
+          _logoThemeIndexCongeladoRoda = _logoThemeIndex;
         }
+      }
 
-        final elapsed =
-            DateTime.now().difference(_logoHoldStartedAt!).inMilliseconds;
+      setState(() {
+        _logoFxStage = nextStage;
 
-        _logoHoldElapsedMs = elapsed;
-
-        if (elapsed >= 15000 && !_logoGameTriggered) {
-          _logoGameTriggered = true;
-          timer.cancel();
-          unawaited(_abrirUaiArena());
-          return;
+        if (nextStage < 3) {
+          _logoThemeIndex++;
+          _logoBlink = _logoBlink > 0.75 ? 0.48 : 1.0;
+        } else {
+          _logoBlink = 1.0;
         }
-
-        // 0-3s: surto visual.
-        // 3-6s: fumaça entra e os alunos já são pré-carregados.
-        // 6s+: libera a roda gigante.
-        final nextStage = elapsed >= 6000
-            ? 3
-            : elapsed >= 3000
-                ? 2
-                : 1;
-
-        if (nextStage != _logoFxStage) {
-          if (nextStage == 2) {
-            _logoHaptic(HapticFeedback.mediumImpact);
-            unawaited(_carregarAlunosParaRodaUai());
-          } else if (nextStage == 3) {
-            _logoHaptic(HapticFeedback.heavyImpact);
-            unawaited(_carregarAlunosParaRodaUai());
-
-            // A partir daqui a roda entra em modo contínuo:
-            // congela a paleta/tema atual e não "reinicia" visualmente
-            // enquanto o dedo continuar pressionado.
-            _logoThemeIndexCongeladoRoda = _logoThemeIndex;
-          }
-        }
-
-        setState(() {
-          _logoFxStage = nextStage;
-
-          if (nextStage < 3) {
-            _logoThemeIndex++;
-            _logoBlink = _logoBlink > 0.75 ? 0.48 : 1.0;
-          } else {
-            _logoBlink = 1.0;
-          }
-        });
-      },
-    );
+      });
+    });
   }
 
   void _encerrarLogoEasterEgg() {
-    if (!_logoPointerDown && _logoFxStage == 0) return;
+    if (!_logoPointerDown && _logoFxStage == 0) {
+      return;
+    }
 
     _logoPointerDown = false;
     _logoHoldTimer?.cancel();
@@ -678,52 +765,55 @@ class _HomePageState extends State<HomePage>
     const steps = 10;
     var step = 0;
 
-    _logoReleaseTimer = Timer.periodic(
-      const Duration(milliseconds: 90),
-      (timer) {
+    _logoReleaseTimer = Timer.periodic(const Duration(milliseconds: 90), (
+      timer,
+    ) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
+      step++;
+      final t = step / steps;
+
+      setState(() {
+        _logoFxOpacity = (1.0 - t).clamp(0.0, 1.0);
+
+        if (t >= 0.34 && _logoFxStage > 2) {
+          _logoFxStage = 2;
+        }
+        if (t >= 0.68 && _logoFxStage > 1) {
+          _logoFxStage = 1;
+        }
+      });
+
+      if (step >= steps) {
+        timer.cancel();
+
+        if (_logoFxController.isAnimating) {
+          _logoFxController.stop();
+          _logoFxController.reset();
+        }
+
         if (!mounted) {
-          timer.cancel();
           return;
         }
-
-        step++;
-        final t = step / steps;
-
         setState(() {
-          _logoFxOpacity = (1.0 - t).clamp(0.0, 1.0);
-
-          if (t >= 0.34 && _logoFxStage > 2) {
-            _logoFxStage = 2;
-          }
-          if (t >= 0.68 && _logoFxStage > 1) {
-            _logoFxStage = 1;
-          }
+          _logoFxStage = 0;
+          _logoThemeIndex = 0;
+          _logoBlink = 1.0;
+          _logoFxOpacity = 1.0;
+          _logoReleasing = false;
+          _logoThemeIndexCongeladoRoda = null;
         });
-
-        if (step >= steps) {
-          timer.cancel();
-
-          if (_logoFxController.isAnimating) {
-            _logoFxController.stop();
-            _logoFxController.reset();
-          }
-
-          if (!mounted) return;
-          setState(() {
-            _logoFxStage = 0;
-            _logoThemeIndex = 0;
-            _logoBlink = 1.0;
-            _logoFxOpacity = 1.0;
-            _logoReleasing = false;
-            _logoThemeIndexCongeladoRoda = null;
-          });
-        }
-      },
-    );
+      }
+    });
   }
 
   Future<void> _abrirUaiArena() async {
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
 
     final academiasValidas = _academiasCacheHome
         .where((a) => (a['id'] ?? '').toString().trim().isNotEmpty)
@@ -781,19 +871,25 @@ class _HomePageState extends State<HomePage>
       ),
     );
 
-    if (!mounted) return;
+    if (!mounted) {
+      return;
+    }
     setState(() {
       _logoGameTriggered = false;
     });
   }
 
   void _logoHaptic(Future<void> Function() feedback) {
-    if (kIsWeb || defaultTargetPlatform == TargetPlatform.windows) return;
+    if (kIsWeb || defaultTargetPlatform == TargetPlatform.windows) {
+      return;
+    }
     unawaited(feedback());
   }
 
   Future<void> _carregarAlunosParaRodaUai() async {
-    if (_carregandoAlunosRoda || _alunosRodaCarregados) return;
+    if (_carregandoAlunosRoda || _alunosRodaCarregados) {
+      return;
+    }
 
     final academiaIds = _academiasCacheHome
         .map((a) => (a['id'] ?? '').toString().trim())
@@ -801,7 +897,9 @@ class _HomePageState extends State<HomePage>
         .toSet()
         .toList();
 
-    if (academiaIds.isEmpty) return;
+    if (academiaIds.isEmpty) {
+      return;
+    }
 
     _carregandoAlunosRoda = true;
 
@@ -821,20 +919,23 @@ class _HomePageState extends State<HomePage>
       for (final snapshot in resultados) {
         for (final doc in snapshot.docs) {
           final data = doc.data();
-          final status =
-              (data['status_atividade'] ?? '').toString().trim().toUpperCase();
+          final status = (data['status_atividade'] ?? '')
+              .toString()
+              .trim()
+              .toUpperCase();
 
           if (status != 'ATIVO(A)' && status != 'ATIVO') continue;
           if (!vistos.add(doc.id)) continue;
 
           final nome = (data['nome'] ?? 'Aluno').toString().trim();
-          final foto = (
-            data['foto_perfil_aluno'] ??
-            data['foto_url'] ??
-            data['fotoUrl'] ??
-            data['foto'] ??
-            ''
-          ).toString().trim();
+          final foto =
+              (data['foto_perfil_aluno'] ??
+                      data['foto_url'] ??
+                      data['fotoUrl'] ??
+                      data['foto'] ??
+                      '')
+                  .toString()
+                  .trim();
 
           alunos.add({
             'id': doc.id,
@@ -845,13 +946,14 @@ class _HomePageState extends State<HomePage>
       }
 
       alunos.sort(
-        (a, b) => (a['nome'] ?? '')
-            .toString()
-            .toLowerCase()
-            .compareTo((b['nome'] ?? '').toString().toLowerCase()),
+        (a, b) => (a['nome'] ?? '').toString().toLowerCase().compareTo(
+          (b['nome'] ?? '').toString().toLowerCase(),
+        ),
       );
 
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
       setState(() {
         _alunosAtivosRoda = alunos;
         _alunosRodaCarregados = true;
@@ -870,7 +972,9 @@ class _HomePageState extends State<HomePage>
         .where((p) => p.isNotEmpty)
         .toList();
 
-    if (partes.isEmpty) return '?';
+    if (partes.isEmpty) {
+      return '?';
+    }
     if (partes.length == 1) {
       final texto = partes.first;
       return texto.substring(0, math.min(2, texto.length)).toUpperCase();
@@ -902,9 +1006,7 @@ class _HomePageState extends State<HomePage>
               child: Container(
                 color: Theme.of(context).scaffoldBackgroundColor,
                 alignment: Alignment.center,
-                child: Center(
-                  child: _buildLogo(),
-                ),
+                child: Center(child: _buildLogo()),
               ),
             ),
           ),
@@ -920,8 +1022,8 @@ class _HomePageState extends State<HomePage>
         final compactHome = _isCompactHome(context);
 
         final presets = UaiThemePreset.values;
-        final visualIndex = _logoFxStage >= 3 &&
-                _logoThemeIndexCongeladoRoda != null
+        final visualIndex =
+            _logoFxStage >= 3 && _logoThemeIndexCongeladoRoda != null
             ? _logoThemeIndexCongeladoRoda!
             : _logoThemeIndex;
 
@@ -931,20 +1033,17 @@ class _HomePageState extends State<HomePage>
 
         final logoHeight = compactHome ? 82.0 : 150.0;
         final wheelSize = compactHome ? 330.0 : 430.0;
-        final fxColor =
-            _logoFxColors[visualIndex % _logoFxColors.length];
+        final fxColor = _logoFxColors[visualIndex % _logoFxColors.length];
 
         final logo = AnimatedOpacity(
-          opacity: _logoReleasing
-              ? 1.0
-              : (_logoFxStage > 0 ? _logoBlink : 1.0),
+          opacity: _logoReleasing ? 1.0 : (_logoFxStage > 0 ? _logoBlink : 1.0),
           duration: const Duration(milliseconds: 110),
           child: AnimatedScale(
             scale: _logoFxStage == 0
                 ? 1.0
                 : (_logoFxStage == 1
-                    ? 1.04
-                    : (_logoFxStage == 2 ? 1.08 : 1.12)),
+                      ? 1.04
+                      : (_logoFxStage == 2 ? 1.08 : 1.12)),
             duration: const Duration(milliseconds: 170),
             curve: Curves.easeOutBack,
             child: Container(
@@ -954,8 +1053,9 @@ class _HomePageState extends State<HomePage>
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: fxColor.withAlpha((255.0 * (
-                            _logoFxStage >= 2 ? 0.55 : 0.34)).round()),
+                          color: fxColor.withAlpha(
+                            (255.0 * (_logoFxStage >= 2 ? 0.55 : 0.34)).round(),
+                          ),
                           blurRadius: _logoFxStage >= 2 ? 34 : 20,
                           spreadRadius: _logoFxStage >= 2 ? 8 : 2,
                         ),
@@ -967,10 +1067,7 @@ class _HomePageState extends State<HomePage>
                         fxColor.withAlpha(242),
                         BlendMode.modulate,
                       )
-                    : const ColorFilter.mode(
-                        Colors.transparent,
-                        BlendMode.dst,
-                      ),
+                    : const ColorFilter.mode(Colors.transparent, BlendMode.dst),
                 child: UaiDynamicLogo(
                   height: logoHeight,
                   loadRemoteConfig: true,
@@ -981,8 +1078,9 @@ class _HomePageState extends State<HomePage>
           ),
         );
 
-        final stageBoxWidth =
-            _logoFxStage >= 3 ? wheelSize : (compactHome ? 300.0 : 360.0);
+        final stageBoxWidth = _logoFxStage >= 3
+            ? wheelSize
+            : (compactHome ? 300.0 : 360.0);
         final stageBoxHeight = _logoFxStage >= 3
             ? wheelSize
             : (_logoFxStage >= 2 ? logoHeight + 90 : logoHeight);
@@ -1004,100 +1102,97 @@ class _HomePageState extends State<HomePage>
                 clipBehavior: Clip.none,
                 alignment: Alignment.center,
                 children: [
-                if (_logoFxStage >= 2)
-                  Positioned.fill(
-                    child: IgnorePointer(
+                  if (_logoFxStage >= 2)
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: AnimatedBuilder(
+                          animation: _logoFxController,
+                          builder: (context, _) => CustomPaint(
+                            painter: _UaiEnergyBurstPainter(
+                              progress: _logoFxController.value,
+                              color: fxColor,
+                              intensity: _logoFxStage >= 3 ? 1.0 : 0.86,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (_logoFxStage >= 1)
+                    IgnorePointer(
                       child: AnimatedBuilder(
                         animation: _logoFxController,
-                        builder: (context, _) => CustomPaint(
-                          painter: _UaiEnergyBurstPainter(
-                            progress: _logoFxController.value,
-                            color: fxColor,
-                            intensity: _logoFxStage >= 3 ? 1.0 : 0.86,
-                          ),
-                        ),
+                        builder: (context, _) {
+                          final spin = _logoFxController.value * math.pi * 2.0;
+                          return Transform.rotate(
+                            angle: spin * 0.16,
+                            child: Container(
+                              width: logoHeight + 34,
+                              height: logoHeight + 34,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: fxColor.withAlpha(97),
+                                  width: 2,
+                                ),
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     ),
-                  ),
-                if (_logoFxStage >= 1)
-                  IgnorePointer(
-                    child: AnimatedBuilder(
-                      animation: _logoFxController,
-                      builder: (context, _) {
-                        final spin =
-                            _logoFxController.value * math.pi * 2.0;
-                        return Transform.rotate(
-                          angle: spin * 0.16,
+                  if (_logoFxStage >= 3)
+                    Positioned(
+                      width: wheelSize,
+                      height: wheelSize,
+                      child: IgnorePointer(
+                        child: _buildRodaGiganteAlunos(wheelSize, fxColor),
+                      ),
+                    ),
+                  logo,
+                  if (_logoFxStage > 0)
+                    Positioned(
+                      bottom: _logoFxStage >= 3 ? 18 : -8,
+                      child: IgnorePointer(
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 200),
                           child: Container(
-                            width: logoHeight + 34,
-                            height: logoHeight + 34,
+                            key: ValueKey(_logoFxStage),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
                             decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: fxColor.withAlpha(97),
-                                width: 2,
-                              ),
+                              color: fxColor.withAlpha(36),
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(color: fxColor.withAlpha(102)),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: fxColor.withAlpha(36),
+                                  blurRadius: 12,
+                                ),
+                              ],
                             ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                if (_logoFxStage >= 3)
-                  Positioned(
-                    width: wheelSize,
-                    height: wheelSize,
-                    child: IgnorePointer(
-                      child: _buildRodaGiganteAlunos(wheelSize, fxColor),
-                    ),
-                  ),
-                logo,
-                if (_logoFxStage > 0)
-                  Positioned(
-                    bottom: _logoFxStage >= 3 ? 18 : -8,
-                    child: IgnorePointer(
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 200),
-                        child: Container(
-                          key: ValueKey(_logoFxStage),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: fxColor.withAlpha(36),
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(
-                              color: fxColor.withAlpha(102),
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: fxColor.withAlpha(36),
-                                blurRadius: 12,
+                            child: Text(
+                              _logoFxStage == 1
+                                  ? 'UAI... CONTINUE SEGURANDO'
+                                  : _logoFxStage == 2
+                                  ? 'AXÉ CARREGANDO...'
+                                  : _alunosAtivosRoda.isEmpty
+                                  ? 'CHAMANDO A RODA...'
+                                  : _logoHoldElapsedMs >= 9000
+                                  ? 'RODA UAI • ${_alunosAtivosRoda.length} ALUNOS • ARENA EM ${math.max(1, ((15000 - _logoHoldElapsedMs) / 1000).ceil())}s'
+                                  : 'RODA UAI • ${_alunosAtivosRoda.length} ALUNOS',
+                              style: TextStyle(
+                                color: context.uai.textPrimary,
+                                fontSize: compactHome ? 9.5 : 10.5,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 0.5,
                               ),
-                            ],
-                          ),
-                          child: Text(
-                            _logoFxStage == 1
-                                ? 'UAI... CONTINUE SEGURANDO'
-                                : _logoFxStage == 2
-                                    ? 'AXÉ CARREGANDO...'
-                                    : _alunosAtivosRoda.isEmpty
-                                        ? 'CHAMANDO A RODA...'
-                                        : _logoHoldElapsedMs >= 9000
-                                            ? 'RODA UAI • ${_alunosAtivosRoda.length} ALUNOS • ARENA EM ${math.max(1, ((15000 - _logoHoldElapsedMs) / 1000).ceil())}s'
-                                            : 'RODA UAI • ${_alunosAtivosRoda.length} ALUNOS',
-                            style: TextStyle(
-                              color: context.uai.textPrimary,
-                              fontSize: compactHome ? 9.5 : 10.5,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0.5,
                             ),
                           ),
                         ),
                       ),
                     ),
-                  ),
                 ],
               ),
             ),
@@ -1113,15 +1208,14 @@ class _HomePageState extends State<HomePage>
         child: SizedBox(
           width: 24,
           height: 24,
-          child: CircularProgressIndicator(
-            strokeWidth: 2.4,
-            color: fxColor,
-          ),
+          child: CircularProgressIndicator(strokeWidth: 2.4, color: fxColor),
         ),
       );
     }
 
-    if (_alunosAtivosRoda.isEmpty) return const SizedBox.shrink();
+    if (_alunosAtivosRoda.isEmpty) {
+      return const SizedBox.shrink();
+    }
 
     return AnimatedBuilder(
       animation: _logoFxController,
@@ -1171,12 +1265,9 @@ class _HomePageState extends State<HomePage>
 
           for (var i = 0; i < ring.length; i++) {
             final aluno = ring[i];
-            final angle =
-                baseRotation + ((math.pi * 2 * i) / ring.length);
-            final left =
-                center + math.cos(angle) * radius - (avatarSize / 2);
-            final top =
-                center + math.sin(angle) * radius - (avatarSize / 2);
+            final angle = baseRotation + ((math.pi * 2 * i) / ring.length);
+            final left = center + math.cos(angle) * radius - (avatarSize / 2);
+            final top = center + math.sin(angle) * radius - (avatarSize / 2);
 
             children.add(
               Positioned(
@@ -1187,8 +1278,8 @@ class _HomePageState extends State<HomePage>
                 child: _buildAvatarRodaUai(
                   aluno: aluno,
                   size: avatarSize,
-                  accent: _logoFxColors[
-                      (i + ringIndex + _logoThemeIndex) %
+                  accent:
+                      _logoFxColors[(i + ringIndex + _logoThemeIndex) %
                           _logoFxColors.length],
                 ),
               ),
@@ -1198,9 +1289,7 @@ class _HomePageState extends State<HomePage>
 
         // linhas dos anéis
         for (var i = 0; i < rings.length; i++) {
-          final t = rings.length <= 1
-              ? 1.0
-              : i / math.max(1, rings.length - 1);
+          final t = rings.length <= 1 ? 1.0 : i / math.max(1, rings.length - 1);
           final radius = minRadius + ((maxRadius - minRadius) * t);
           children.insert(
             0,
@@ -1212,20 +1301,14 @@ class _HomePageState extends State<HomePage>
               child: Container(
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(
-                    color: fxColor.withAlpha(31),
-                    width: 1,
-                  ),
+                  border: Border.all(color: fxColor.withAlpha(31), width: 1),
                 ),
               ),
             ),
           );
         }
 
-        return Stack(
-          clipBehavior: Clip.none,
-          children: children,
-        );
+        return Stack(clipBehavior: Clip.none, children: children);
       },
     );
   }
@@ -1260,8 +1343,7 @@ class _HomePageState extends State<HomePage>
               fit: BoxFit.cover,
               memCacheWidth: 128,
               placeholder: (context, _) => _avatarRodaFallback(nome, accent),
-              errorWidget: (context, _, _) =>
-                  _avatarRodaFallback(nome, accent),
+              errorWidget: (context, _, _) => _avatarRodaFallback(nome, accent),
             )
           : _avatarRodaFallback(nome, accent),
     );
@@ -1513,7 +1595,10 @@ class _HomePageState extends State<HomePage>
       elevation: 0,
       color: t.card,
       surfaceTintColor: Colors.transparent,
-      margin: EdgeInsets.symmetric(horizontal: compact ? 14 : 20, vertical: compact ? 6 : 8),
+      margin: EdgeInsets.symmetric(
+        horizontal: compact ? 14 : 20,
+        vertical: compact ? 6 : 8,
+      ),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(compact ? 18 : t.cardRadius - 6),
         side: BorderSide(color: t.border),
@@ -1521,27 +1606,29 @@ class _HomePageState extends State<HomePage>
       child: InkWell(
         borderRadius: BorderRadius.circular(compact ? 18 : t.cardRadius - 6),
         onTap: () async {
-          unawaited(
-            CacaBugService.instance
-                .registrarEvento(
-                  tipo: 'acao_usuario',
-                  acao: CacaBugActions.abriuAcademia,
-                  descricao:
-                      'Usuário abriu a academia ${academia['nome'] ?? 'Academia'}',
-                  tela: 'HomePage',
-                  arquivo: 'lib/app/home_page.dart',
-                  rota: '/home',
-                  status: 'success',
-                  dados: {
-                    'academiaId': academia['id'],
-                    'academiaNome': academia['nome'],
-                    'academiaCidade': academia['cidade'],
-                    'alunosCount': academia['alunos_count'],
-                    'turmasCount': academia['turmas_count'],
-                  },
-                )
-                .then((_) => CacaBugService.instance.flush(force: true)),
-          );
+          if (!AccessSimulationController.instance.active) {
+            unawaited(
+              CacaBugService.instance
+                  .registrarEvento(
+                    tipo: 'acao_usuario',
+                    acao: CacaBugActions.abriuAcademia,
+                    descricao:
+                        'Usuário abriu a academia ${academia['nome'] ?? 'Academia'}',
+                    tela: 'HomePage',
+                    arquivo: 'lib/app/home_page.dart',
+                    rota: '/home',
+                    status: 'success',
+                    dados: {
+                      'academiaId': academia['id'],
+                      'academiaNome': academia['nome'],
+                      'academiaCidade': academia['cidade'],
+                      'alunosCount': academia['alunos_count'],
+                      'turmasCount': academia['turmas_count'],
+                    },
+                  )
+                  .then((_) => CacaBugService.instance.flush(force: true)),
+            );
+          }
 
           await Navigator.push(
             context,
@@ -1554,19 +1641,23 @@ class _HomePageState extends State<HomePage>
             ),
           );
 
-          if (!mounted) return;
+          if (!mounted) {
+            return;
+          }
 
-          unawaited(
-            CacaBugService.instance.registrarEvento(
-              tipo: 'navegacao',
-              acao: CacaBugActions.voltouHome,
-              descricao: 'Usuário voltou para a Home',
-              tela: 'HomePage',
-              arquivo: 'lib/app/home_page.dart',
-              rota: '/home',
-              status: 'success',
-            ),
-          );
+          if (!AccessSimulationController.instance.active) {
+            unawaited(
+              CacaBugService.instance.registrarEvento(
+                tipo: 'navegacao',
+                acao: CacaBugActions.voltouHome,
+                descricao: 'Usuário voltou para a Home',
+                tela: 'HomePage',
+                arquivo: 'lib/app/home_page.dart',
+                rota: '/home',
+                status: 'success',
+              ),
+            );
+          }
         },
         child: Padding(
           padding: EdgeInsets.all(compact ? 12 : 16),
@@ -1581,7 +1672,9 @@ class _HomePageState extends State<HomePage>
                   color: t.primary.withAlpha(26),
                   border: Border.all(color: t.primary.withAlpha(64)),
                 ),
-                child: academia['logo_url'] != null && academia['logo_url'].toString().isNotEmpty
+                child:
+                    academia['logo_url'] != null &&
+                        academia['logo_url'].toString().isNotEmpty
                     ? ClipRRect(
                         borderRadius: BorderRadius.circular(12),
                         child: CachedNetworkImage(
@@ -1597,10 +1690,15 @@ class _HomePageState extends State<HomePage>
                               ),
                             ),
                           ),
-                          errorWidget: (context, url, error) => Icon(Icons.location_on_rounded, color: t.primary),
+                          errorWidget: (context, url, error) =>
+                              Icon(Icons.location_on_rounded, color: t.primary),
                         ),
                       )
-                    : Icon(Icons.location_on_rounded, color: t.primary, size: compact ? 22 : 24),
+                    : Icon(
+                        Icons.location_on_rounded,
+                        color: t.primary,
+                        size: compact ? 22 : 24,
+                      ),
               ),
               SizedBox(width: compact ? 12 : 16),
               Expanded(
@@ -1662,7 +1760,6 @@ class _HomePageState extends State<HomePage>
     );
   }
 
-
   Widget _buildBadge({
     required IconData icon,
     required String text,
@@ -1722,7 +1819,6 @@ class _HomePageState extends State<HomePage>
   }
 }
 
-
 class _UaiEnergyBurstPainter extends CustomPainter {
   const _UaiEnergyBurstPainter({
     required this.progress,
@@ -1763,10 +1859,10 @@ class _UaiEnergyBurstPainter extends CustomPainter {
       final inner = minSide * (0.23 + (i % 3) * 0.008);
       final outer = inner + minSide * (0.055 + 0.028 * pulse);
 
-      final start = center +
-          Offset(math.cos(angle) * inner, math.sin(angle) * inner);
-      final end = center +
-          Offset(math.cos(angle) * outer, math.sin(angle) * outer);
+      final start =
+          center + Offset(math.cos(angle) * inner, math.sin(angle) * inner);
+      final end =
+          center + Offset(math.cos(angle) * outer, math.sin(angle) * outer);
 
       final sparkColor = Color.lerp(
         color,
@@ -1777,8 +1873,9 @@ class _UaiEnergyBurstPainter extends CustomPainter {
       final paint = Paint()
         ..strokeCap = StrokeCap.round
         ..strokeWidth = i % 4 == 0 ? 2.4 : 1.5
-        ..color = sparkColor.withAlpha((255.0 * (
-          (0.28 + 0.34 * pulse) * intensity)).round());
+        ..color = sparkColor.withAlpha(
+          (255.0 * ((0.28 + 0.34 * pulse) * intensity)).round(),
+        );
 
       canvas.drawLine(start, end, paint);
     }
@@ -1787,13 +1884,11 @@ class _UaiEnergyBurstPainter extends CustomPainter {
     final halo = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3.0
-      ..color = color.withAlpha((255.0 * ((0.16 + 0.12 * pulse) * intensity)).round());
+      ..color = color.withAlpha(
+        (255.0 * ((0.16 + 0.12 * pulse) * intensity)).round(),
+      );
 
-    canvas.drawCircle(
-      center,
-      minSide * (0.20 + 0.018 * pulse),
-      halo,
-    );
+    canvas.drawCircle(center, minSide * (0.20 + 0.018 * pulse), halo);
   }
 
   @override

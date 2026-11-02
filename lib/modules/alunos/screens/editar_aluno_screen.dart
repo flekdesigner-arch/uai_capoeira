@@ -16,7 +16,6 @@ import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:uai_capoeira/modules/alunos/photo_studio/photo_editor_state.dart';
 import 'package:uai_capoeira/modules/alunos/photo_studio/photo_studio_screen.dart';
 import 'package:uai_capoeira/modules/alunos/photo_capture/guided_camera_screen.dart';
@@ -131,6 +130,9 @@ class EditarAlunoScreen extends StatefulWidget {
   final String? turmaIdInicial;
   final String? turmaNomeInicial;
   final Map<String, dynamic>? dadosInscricao;
+  /// Revisão guiada anterior à reativação. Não altera status nem turma.
+  final bool modoReativacao;
+  final String? turmaReativacaoNome;
 
   const EditarAlunoScreen({
     super.key,
@@ -140,6 +142,8 @@ class EditarAlunoScreen extends StatefulWidget {
     this.turmaIdInicial,
     this.turmaNomeInicial,
     this.dadosInscricao,
+    this.modoReativacao = false,
+    this.turmaReativacaoNome,
   });
 
   @override
@@ -303,6 +307,384 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
 
   // Apenas uma secao do formulario pode permanecer aberta por vez.
   String? _secaoAbertaId;
+  static const _secoesReativacao = <String>[
+    'foto', 'pessoais', 'contato', 'endereco', 'saude',
+  ];
+  final Set<String> _secoesConferidas = <String>{};
+  final ScrollController _reativacaoScroll = ScrollController();
+  bool? _atualizarFotoNaReativacao;
+  bool _exibirResumoReativacao = false;
+
+
+  void _invalidarRevisao(String secao) {
+    if (widget.modoReativacao && _secoesConferidas.contains(secao) && mounted) {
+      setState(() => _secoesConferidas.remove(secao));
+    }
+  }
+
+  static const _perguntasReativacao = <String, String>{
+    'foto': 'A foto do cadastro precisa ser atualizada?',
+    'pessoais': 'Confirme nome, apelido, data de nascimento e sexo com o aluno.',
+    'contato': 'Os telefones, o responsável e os contatos de emergência continuam corretos?',
+    'endereco': 'O aluno mudou de residência? Confira rua, número, bairro e cidade.',
+    'saude': 'Houve mudança nos cuidados ou restrições? Confirme também a ciência da ficha.',
+  };
+
+  int get _indiceEtapaReativacao {
+    final indice = _secoesReativacao.indexOf(_secaoAbertaId ?? '');
+    return indice < 0 ? 0 : indice;
+  }
+
+  String? _erroEtapaReativacao(String etapa) {
+    bool vazio(String campo) => _controllers[campo]!.text.trim().isEmpty;
+    switch (etapa) {
+      case 'foto':
+        if (_atualizarFotoNaReativacao == null) {
+          return 'Responda se a foto do aluno precisa ser atualizada.';
+        }
+        if (_atualizarFotoNaReativacao == true && _pickedImage == null) {
+          return 'Selecione ou prepare uma nova foto antes de continuar.';
+        }
+        if (_atualizarFotoNaReativacao == false &&
+            (_networkImageUrl == null || _networkImageUrl!.trim().isEmpty)) {
+          return 'Este aluno ainda não tem foto. Adicione uma para continuar.';
+        }
+        break;
+      case 'pessoais':
+        for (final campo in ['nome', 'apelido', 'data_nascimento']) {
+          if (vazio(campo)) return 'Preencha ${campo == 'nome' ? 'o nome' : campo == 'apelido' ? 'o apelido' : 'a data de nascimento'}.';
+        }
+        if (_sexo == null || _sexo!.trim().isEmpty) return 'Selecione o sexo do aluno.';
+        if (_parseDate(_controllers['data_nascimento']!.text.trim()) == null) {
+          return 'Informe uma data de nascimento válida.';
+        }
+        final cpf = _controllers['cpf']!.text.replaceAll(RegExp(r'[^0-9]'), '');
+        if (cpf.isNotEmpty && cpf.length != 11) return 'O CPF pode ficar vazio, mas, se informado, precisa ter 11 dígitos.';
+        break;
+      case 'contato':
+        for (final campo in ['contato_aluno', 'nome_responsavel', 'contato_responsavel', 'grau_emergencia']) {
+          if (vazio(campo)) return 'Preencha ${campo.replaceAll('_', ' ')}.';
+        }
+        for (final campo in ['contato_aluno', 'contato_responsavel']) {
+          final numero = _controllers[campo]!.text.replaceAll(RegExp(r'[^0-9]'), '');
+          if (numero.length < 10 || numero.length > 13) return 'Confira o telefone em ${campo.replaceAll('_', ' ')}.';
+        }
+        for (final contato in _contatosEmergenciaAdicionais) {
+          if (['nome', 'telefone', 'grau'].any((campo) => (contato[campo]?.toString().trim() ?? '').isEmpty)) {
+            return 'Complete nome, telefone e parentesco dos contatos adicionais.';
+          }
+        }
+        break;
+      case 'endereco':
+        for (final campo in ['rua', 'numero', 'bairro', 'cidade']) {
+          if (vazio(campo)) return 'Preencha ${campo == 'numero' ? 'o número' : campo == 'bairro' ? 'o bairro' : campo == 'cidade' ? 'a cidade' : 'a rua'} do endereço.';
+        }
+        if (_enderecoLegadoAmbiguo && !_enderecoRevisaoConfirmada) {
+          return 'Confira o endereço antigo antes de avançar.';
+        }
+        break;
+      case 'saude':
+        if (!_fichaRestritaCarregada) return 'A ficha protegida ainda não foi carregada.';
+        final erros = validarFichaUai(_fichaComplementar, secao: 'saude');
+        if (erros.isNotEmpty) return erros.first;
+        break;
+      case 'capoeira_ficha':
+        if (!_fichaRestritaCarregada) return 'A ficha protegida ainda não foi carregada.';
+        final erros = validarFichaUai(_fichaComplementar, secao: 'capoeira');
+        if (erros.isNotEmpty) return erros.first;
+        break;
+      case 'capoeira_dados':
+        // Graduação "Sem graduação" é uma opção legítima do cadastro.
+        // Dados de graduação já existentes podem ser protegidos por permissão.
+        for (final campo in [if (_graduacaoId != null) 'data_graduacao_atual', 'tempo_capoeira']) {
+          if (vazio(campo)) return 'Confira e preencha ${campo == 'tempo_capoeira' ? 'o início na capoeira' : 'a data da graduação'}.';
+          if (_parseDate(_controllers[campo]!.text.trim()) == null) return 'Confira a data em ${campo.replaceAll('_', ' ')}.';
+        }
+        break;
+    }
+    return null;
+  }
+
+  void _navegarRevisao(int indice) {
+    if (!mounted) return;
+    setState(() {
+      _exibirResumoReativacao = false;
+      _secaoAbertaId = _secoesReativacao[indice.clamp(0, _secoesReativacao.length - 1)];
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _reativacaoScroll.hasClients) {
+        _reativacaoScroll.animateTo(0,
+          duration: const Duration(milliseconds: 250), curve: Curves.easeOutCubic);
+      }
+    });
+  }
+
+  void _conferirEAvancar(String id) {
+    // A confirmação de ciência da ficha é implícita no avanço da etapa
+    // de saúde, sem checkbox adicional durante a reativação.
+    if (id == 'saude' && widget.modoReativacao) {
+      final saude = Map<String, dynamic>.from(
+        _fichaComplementar['saude'] is Map
+            ? _fichaComplementar['saude'] as Map
+            : const <String, dynamic>{},
+      );
+      if (saude['resposta'] != null && saude['ciente'] != true) {
+        setState(() {
+          _fichaComplementar = {
+            ..._fichaComplementar,
+            'saude': {...saude, 'ciente': true},
+          };
+        });
+      }
+    }
+    // Na reativação, o próprio avanço confirma o endereço legado já conferido.
+    // A edição normal continua exigindo a confirmação manual original.
+    if (id == 'endereco' && widget.modoReativacao && _enderecoLegadoAmbiguo) {
+      final completos = ['rua', 'numero', 'bairro', 'cidade'].every(
+        (campo) => _controllers[campo]!.text.trim().isNotEmpty,
+      );
+      if (completos) {
+        setState(() => _enderecoRevisadoAssinatura = _assinaturaEnderecoAtual);
+      }
+    }
+    final erro = _erroEtapaReativacao(id);
+    if (erro != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(erro)));
+      return;
+    }
+    setState(() => _secoesConferidas.add(id));
+    final proximo = _secoesReativacao.indexOf(id) + 1;
+    if (proximo < _secoesReativacao.length) {
+      _navegarRevisao(proximo);
+    } else {
+      setState(() => _exibirResumoReativacao = true);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _reativacaoScroll.hasClients) {
+          _reativacaoScroll.animateTo(0,
+            duration: const Duration(milliseconds: 250), curve: Curves.easeOutCubic);
+        }
+      });
+    }
+  }
+
+  Widget _buildEtapaFotoReativacao() {
+    if (!widget.modoReativacao || _secaoAbertaId != 'foto') {
+      return const SizedBox.shrink();
+    }
+    final t = context.uai;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: t.card, borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: t.border)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text('A foto do cadastro precisa ser atualizada?',
+          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: t.textPrimary)),
+        const SizedBox(height: 6),
+        Text('Confira se a foto ainda representa o aluno e se o rosto está bem visível.',
+          style: TextStyle(color: t.textSecondary)),
+        const SizedBox(height: 14),
+        _buildFotoAlunoHeader(),
+        const SizedBox(height: 12),
+        RadioGroup<bool>(
+          groupValue: _atualizarFotoNaReativacao,
+          onChanged: (value) {
+            if (_salvandoAluno) return;
+            setState(() {
+              _atualizarFotoNaReativacao = value;
+              _secoesConferidas.remove('foto');
+            });
+          },
+          child: const Column(
+            children: [
+              RadioListTile<bool>(
+                title: Text('Não, a foto atual está boa'),
+                value: false,
+              ),
+              RadioListTile<bool>(
+                title: Text('Sim, precisamos atualizar a foto'),
+                value: true,
+              ),
+            ],
+          ),
+        ),
+        if (_atualizarFotoNaReativacao == true) ...[
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _salvandoAluno ? null : _showImageSourceActionSheet,
+            icon: const Icon(Icons.add_a_photo_outlined),
+            label: Text(_pickedImage == null ? 'Selecionar nova foto' : 'Trocar foto selecionada'),
+          ),
+          if (_pickedImage != null)
+            Padding(padding: const EdgeInsets.only(top: 8),
+              child: Text('Nova foto preparada. Será salva apenas ao concluir a revisão.',
+                style: TextStyle(color: t.success))),
+        ],
+        const SizedBox(height: 14),
+        FilledButton.icon(
+          onPressed: _salvandoAluno ? null : () => _conferirEAvancar('foto'),
+          icon: const Icon(Icons.arrow_forward_rounded),
+          label: const Text('Conferir e continuar'),
+        ),
+      ]),
+    );
+  }
+
+  Widget _buildCabecalhoReativacao() {
+    final t = context.uai;
+    final nome = _controllers['nome']!.text.trim();
+    final imageProvider = _pickedImageBytesPreview != null
+        ? MemoryImage(_pickedImageBytesPreview!) as ImageProvider
+        : (_networkImageUrl?.trim().isNotEmpty == true
+            ? CachedNetworkImageProvider(_networkImageUrl!) as ImageProvider
+            : null);
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(color: t.card, borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: t.border)),
+        child: Row(children: [
+          CircleAvatar(radius: 27, backgroundColor: t.cardAlt,
+            backgroundImage: imageProvider,
+            child: imageProvider == null ? const Icon(Icons.person_outline_rounded) : null),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(nome.isEmpty ? 'Aluno' : nome,
+              maxLines: 2, overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontWeight: FontWeight.w900, color: t.textPrimary)),
+            Text('Turma: ${widget.turmaReativacaoNome ?? _turmaNome ?? "Selecionada"}',
+              style: TextStyle(fontSize: 12, color: t.textSecondary)),
+            Text('Inativo • revisão em andamento',
+              style: TextStyle(fontSize: 11, color: t.primary, fontWeight: FontWeight.w700)),
+          ])),
+        ]),
+      ),
+      const SizedBox(height: 12),
+      Row(children: [
+        Expanded(child: Text(_exibirResumoReativacao ? 'Conferência concluída' : 'Etapa ${_indiceEtapaReativacao + 1} de ${_secoesReativacao.length}',
+          style: TextStyle(fontWeight: FontWeight.w800, color: t.textPrimary))),
+        Text('${_secoesConferidas.length} conferidas',
+          style: TextStyle(fontSize: 12, color: t.textSecondary)),
+      ]),
+      const SizedBox(height: 8),
+      Row(children: [for (final item in _secoesReativacao) ...[
+        Expanded(child: Container(height: 5,
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(8),
+            color: _secoesConferidas.contains(item) || item == _secaoAbertaId
+                ? t.primary : t.border))),
+        if (item != _secoesReativacao.last) const SizedBox(width: 4),
+      ]]),
+      const SizedBox(height: 16),
+    ]);
+  }
+
+  Widget _buildRevisaoSecao(String id, String titulo, List<Widget> campos) {
+    if (!widget.modoReativacao) return _buildSecaoCompacta(id, titulo, campos);
+    // Experiência em outro grupo e graduação não fazem parte da reativação.
+    if (!_secoesReativacao.contains(id)) return const SizedBox.shrink();
+    final indice = _secoesReativacao.indexOf(id);
+    final conferida = _secoesConferidas.contains(id);
+    final atual = _indiceEtapaReativacao == indice;
+    if (!atual || _exibirResumoReativacao) return const SizedBox.shrink();
+    return _buildSecaoCompacta(id, titulo, [
+      Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Text(_perguntasReativacao[id] ?? 'Confira as informações.',
+          style: TextStyle(fontWeight: FontWeight.w700, color: context.uai.textSecondary)),
+      ),
+      ...campos,
+      if (conferida) Row(children: [
+        Icon(Icons.check_circle_rounded, color: context.uai.success),
+        const SizedBox(width: 8),
+        const Expanded(child: Text('Etapa conferida. Se alterar algum dado, confira novamente.')),
+      ]),
+      const SizedBox(height: 10),
+      Row(children: [
+        if (indice > 0) ...[
+          Expanded(child: OutlinedButton.icon(
+            onPressed: _salvandoAluno ? null : () => _navegarRevisao(indice - 1),
+            icon: const Icon(Icons.arrow_back_rounded),
+            label: const Text('Anterior'),
+          )),
+          const SizedBox(width: 10),
+        ],
+        Expanded(flex: 2, child: FilledButton.icon(
+          onPressed: _salvandoAluno ? null : () => _conferirEAvancar(id),
+          icon: const Icon(Icons.arrow_forward_rounded),
+          label: const Text('Conferir e continuar'),
+        )),
+      ]),
+    ]);
+  }
+
+
+  Widget _buildResumoFinalReativacao() {
+    if (!widget.modoReativacao || !_exibirResumoReativacao) {
+      return const SizedBox.shrink();
+    }
+    final t = context.uai;
+    const itens = <(String, String, IconData)>[
+      ('foto', 'Foto conferida', Icons.photo_camera_outlined),
+      ('pessoais', 'Dados pessoais', Icons.person_outline_rounded),
+      ('contato', 'Contatos', Icons.phone_outlined),
+      ('endereco', 'Endereço', Icons.place_outlined),
+      ('saude', 'Ficha de saúde', Icons.favorite_border_rounded),
+    ];
+    final todasConferidas = _secoesReativacao.every(_secoesConferidas.contains);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: t.card,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: t.border),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Icon(Icons.verified_outlined, color: t.success),
+          const SizedBox(width: 8),
+          Expanded(child: Text('Resumo da conferência',
+            style: TextStyle(fontWeight: FontWeight.w800,
+              fontSize: 16, color: t.textPrimary))),
+        ]),
+        const SizedBox(height: 6),
+        Text('Confira as etapas revisadas antes de reativar o aluno.',
+          style: TextStyle(fontSize: 12, color: t.textSecondary)),
+        const SizedBox(height: 12),
+        for (final item in itens)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 5),
+            child: Row(children: [
+              Icon(item.$3, size: 17, color: t.textSecondary),
+              const SizedBox(width: 9),
+              Expanded(child: Text(item.$2,
+                style: TextStyle(color: t.textPrimary, fontSize: 13))),
+              Icon(_secoesConferidas.contains(item.$1)
+                  ? Icons.check_circle_rounded : Icons.error_outline_rounded,
+                size: 18, color: _secoesConferidas.contains(item.$1)
+                    ? t.success : t.error),
+            ]),
+          ),
+        const SizedBox(height: 10),
+        Text('Turma de destino: ${widget.turmaReativacaoNome ?? _turmaNome ?? "Selecionada"}',
+          style: TextStyle(fontSize: 12, color: t.textSecondary)),
+        const SizedBox(height: 16),
+        Row(children: [
+          OutlinedButton.icon(
+            onPressed: _salvandoAluno ? null : () => _navegarRevisao(_secoesReativacao.length - 1),
+            icon: const Icon(Icons.arrow_back_rounded),
+            label: const Text('Voltar'),
+          ),
+          const SizedBox(width: 10),
+          Expanded(child: FilledButton.icon(
+            onPressed: _salvandoAluno || !todasConferidas ? null : _saveForm,
+            icon: const Icon(Icons.how_to_reg_rounded),
+            label: const Text('Reativar aluno'),
+          )),
+        ]),
+      ]),
+    );
+  }
 
   final _formKey = GlobalKey<FormState>();
   bool get _isEditing => widget.alunoId != null;
@@ -453,6 +835,20 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.modoReativacao) {
+      assert(widget.alunoId != null, 'A reativação precisa de um aluno existente.');
+      _secaoAbertaId = _secoesReativacao.first;
+      for (final campo in _controllers.entries) {
+        final secao = switch (campo.key) {
+          'nome' || 'cpf' || 'apelido' || 'data_nascimento' => 'pessoais',
+          'contato_aluno' || 'nome_responsavel' || 'contato_responsavel' ||
+            'nome_contato_emergencia' || 'contato_emergencia' || 'grau_emergencia' => 'contato',
+          'rua' || 'numero' || 'bairro' || 'cidade' || 'endereco' => 'endereco',
+          _ => 'capoeira_dados',
+        };
+        campo.value.addListener(() => _invalidarRevisao(secao));
+      }
+    }
      _isMounted = true;
      for (final campo in const ['rua', 'numero', 'bairro']) {
        _controllers[campo]!.addListener(_atualizarConfirmacaoEndereco);
@@ -475,6 +871,7 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
     _controllers.forEach((_, controller) {
       controller.dispose();
     });
+    _reativacaoScroll.dispose();
     _saveProgress.dispose();
     super.dispose();
   }
@@ -528,8 +925,6 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
       final peso = await _permissaoService.obterPesoPermissao(_currentUserId!);
       final isAdmin = peso >= 90;
 
-      developer.log('📋 Permissões carregadas: $permissoes');
-      developer.log('👑 É admin: $isAdmin');
 
       _safeSetState(() {
         _permissoes = permissoes;
@@ -1209,8 +1604,32 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
          }
        }
       _fichaComplementar['familia'] = familia;
-      _consolidarContatosLegados(origem: data);
-      String? academiaId = data['academia_id'] as String?;
+       _consolidarContatosLegados(origem: data);
+       // A reativação começa com 'Não' somente em fichas de saúde sem
+       // resposta anterior. Respostas existentes (incluindo 'Sim') ficam intactas.
+       if (widget.modoReativacao && _fichaRestritaCarregada) {
+         final saude = Map<String, dynamic>.from(
+           _fichaComplementar['saude'] is Map
+               ? _fichaComplementar['saude'] as Map
+               : const <String, dynamic>{},
+         );
+         if ((saude['resposta']?.toString().trim() ?? '').isEmpty) {
+           _fichaComplementar['saude'] = {...saude, 'resposta': 'Não'};
+         }
+       }
+       // Na revisão de reativação, ficha de capoeira vazia equivale a "Não":
+       // esse campo trata de experiência em OUTRO grupo, não da UAI.
+       if (widget.modoReativacao && _fichaRestritaCarregada) {
+         final capoeira = Map<String, dynamic>.from(
+           _fichaComplementar['capoeira'] is Map
+               ? _fichaComplementar['capoeira'] as Map : const <String, dynamic>{},
+         );
+         if ((capoeira['ja_treinou']?.toString().trim() ?? '').isEmpty) {
+           capoeira['ja_treinou'] = 'Não';
+           _fichaComplementar['capoeira'] = capoeira;
+         }
+       }
+       String? academiaId = data['academia_id'] as String?;
       String? turmaId = data['turma_id'] as String?;
       String? academiaNome = data['academia'] as String?;
       String? turmaNome = data['turma'] as String?;
@@ -1803,6 +2222,7 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
         }
         _safeSetState(() {
           _pickedImage = image;
+         if (widget.modoReativacao) _secoesConferidas.remove('foto');
           _pickedImageBytesPreview = previewBytes;
           _studioOriginalBytesPendente = previewBytes;
           _fotoOrigemPendente = useGuidedCamera ? 'camera_guiada' : 'galeria';
@@ -2238,6 +2658,38 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
 
   Future<void> _saveForm() async {
     if (_salvandoAluno) return;
+    if (widget.modoReativacao && !_exibirResumoReativacao) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Conclua as etapas para visualizar o resumo da reativação.'),
+      ));
+      return;
+    }
+    if (widget.modoReativacao) {
+      for (final etapa in _secoesReativacao) {
+        final erro = _erroEtapaReativacao(etapa);
+        if (erro != null) {
+          _navegarRevisao(_secoesReativacao.indexOf(etapa));
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(erro)));
+          return;
+        }
+      }
+    }
+    if (widget.modoReativacao) {
+      final pendentes = _secoesReativacao.where((id) => !_secoesConferidas.contains(id)).toList();
+      if (pendentes.isNotEmpty) {
+        _navegarRevisao(_secoesReativacao.indexOf(pendentes.first));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Confira todas as seções antes de continuar (${_secoesConferidas.length}/${_secoesReativacao.length}).'),
+        ));
+        return;
+      }
+      if (!_fichaRestritaCarregada) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('A ficha complementar não carregou. Reabra a tela para continuar com segurança.'),
+        ));
+        return;
+      }
+    }
     if (!_isMounted || !_formKey.currentState!.validate()) return;
 
     // O fluxo de edição cadastral não transfere, ativa ou desativa alunos.
@@ -3033,7 +3485,9 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
         _fecharSplashSalvandoAluno();
         if (!_isEditing) await _oferecerConvitesPosCadastro();
         if (!mounted) return;
-        final mensagem = !_isEditing
+        final mensagem = widget.modoReativacao
+             ? 'Dados conferidos e salvos. Prosseguindo com a reativação.'
+             : !_isEditing
             ? 'Aluno criado!'
             : mudouTurmaOuAcademiaAoSalvar
             ? 'Aluno atualizado e mudança de turma registrada no histórico.'
@@ -3257,7 +3711,7 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
     return Scaffold(
       backgroundColor: context.uai.background,
       appBar: AppBar(
-        title: Text(_isEditing ? 'Editar Aluno' : 'Novo Aluno'),
+        title: Text(widget.modoReativacao ? 'Revisar para reativar' : (_isEditing ? 'Editar Aluno' : 'Novo Aluno')),
         backgroundColor:
             Theme.of(context).appBarTheme.backgroundColor ??
             context.uai.primary,
@@ -3269,14 +3723,14 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
             ),
         actions: [
           // ✅ BOTÃO SALVAR - SEMPRE VISÍVEL
-          IconButton(
+          if (!widget.modoReativacao) IconButton(
             icon: Icon(Icons.save),
             onPressed: _salvandoAluno ? null : _saveForm,
-            tooltip: "Salvar Alterações",
+            tooltip: widget.modoReativacao ? "Salvar revisão e continuar" : "Salvar Alterações",
           ),
 
           // ✅ BOTÃO EXCLUIR - SÓ APARECE SE FOR EDIÇÃO E TIVER PERMISSÃO
-          if (_isEditing &&
+          if (_isEditing && !widget.modoReativacao &&
               _verificouPermissoes &&
               (_isAdmin || _permissoes['pode_excluir_aluno'] == true))
             IconButton(
@@ -3285,63 +3739,12 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
               tooltip: "Excluir Aluno",
             ),
 
-          // 🔥 BOTÃO DE DEBUG (OPCIONAL - SÓ PARA ADMIN)
-          if (_isAdmin)
-            IconButton(
-              icon: Icon(Icons.bug_report, size: 20),
-              onPressed: () {
-                showDialog(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    title: Text('🐞 DEBUG PERMISSÕES'),
-                    content: SingleChildScrollView(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'User ID: $_currentUserId',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          Divider(),
-                          Text('Admin: ${_isAdmin ? "✅" : "❌"}'),
-                          Divider(),
-                          Text(
-                            'Permissões:',
-                            style: TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          ..._permissoes.entries.map(
-                            (e) => Padding(
-                              padding: EdgeInsets.only(left: 8, top: 4),
-                              child: Text('${e.key}: ${e.value ? "✅" : "❌"}'),
-                            ),
-                          ),
-                          if (_permissoes.isEmpty)
-                            Padding(
-                              padding: EdgeInsets.all(8.0),
-                              child: Text(
-                                'Nenhuma permissão encontrada!',
-                                style: TextStyle(color: context.uai.error),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: Text('Fechar'),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
         ],
       ),
       body: Form(
         key: _formKey,
         child: SingleChildScrollView(
+          controller: widget.modoReativacao ? _reativacaoScroll : null,
           padding: EdgeInsets.all(16.0),
           child: Center(
             child: ConstrainedBox(
@@ -3349,13 +3752,20 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
               child: Column(
                 children:
                     [
-                          // Foto do aluno
-                          _buildFotoAlunoHeader(),
-                          const SizedBox(height: 10),
-                          if (_isEditing) _buildResumoCadastro(),
+                          if (widget.modoReativacao) ...[
+                            _buildCabecalhoReativacao(),
+                            _buildEtapaFotoReativacao(),
+                            _buildResumoFinalReativacao(),
+                            if (_secaoAbertaId == 'foto' || _exibirResumoReativacao)
+                              const SizedBox(height: 10),
+                          ] else ...[
+                            _buildFotoAlunoHeader(),
+                            const SizedBox(height: 10),
+                            if (_isEditing) _buildResumoCadastro(),
+                          ],
 
                           // Dados Pessoais
-                          _buildSecaoCompacta('pessoais', 'Dados Pessoais', [
+                          _buildRevisaoSecao('pessoais', 'Dados Pessoais', [
 
                           _buildTextField(
                             _controllers['nome']!,
@@ -3379,7 +3789,7 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
                                   ),
                                 )
                                 .toList(),
-                            onChanged: (v) => setState(() => _sexo = v),
+                            onChanged: (v) => setState(() { _sexo = v; _secoesConferidas.remove('pessoais'); }),
                             decoration: InputDecoration(
                               labelText: 'Sexo',
                               border: OutlineInputBorder(),
@@ -3396,7 +3806,7 @@ class _EditarAlunoScreenState extends State<EditarAlunoScreen> {
 
                           // Contato
                                                     ]),
-_buildSecaoCompacta('contato', 'Contato', [
+_buildRevisaoSecao('contato', 'Contato', [
 
                           _buildTextField(
                             _controllers['contato_aluno']!,
@@ -3415,7 +3825,7 @@ _buildSecaoCompacta('contato', 'Contato', [
                           _buildParentescoEmergencia(),
                           _buildContatosEmergenciaAdicionais(),
                                                     ]),
-_buildSecaoCompacta('endereco', 'Endereço', [
+_buildRevisaoSecao('endereco', 'Endereço', [
 
                           if (_possuiEnderecoEstruturado && !_enderecoLegadoAmbiguo)
                             const Padding(
@@ -3444,7 +3854,7 @@ _buildSecaoCompacta('endereco', 'Endereço', [
                             enderecoTexto: true, maxLength: 5),
                           _buildTextField(_controllers['bairro']!, 'Bairro', enderecoTexto: true),
                           _buildTextField(_controllers['cidade']!, 'Cidade'),
-                           if (_enderecoLegadoAmbiguo)
+                           if (_enderecoLegadoAmbiguo && !widget.modoReativacao)
                              CheckboxListTile(
                                contentPadding: EdgeInsets.zero,
                                title: const Text('Conferi rua, número e bairro'),
@@ -3473,24 +3883,25 @@ _buildSecaoCompacta('endereco', 'Endereço', [
 
                            // Campos compartilhados com a inscrição pública.
                                                     ]),
-_buildSecaoCompacta('saude', 'Ficha complementar • Saúde', [
+_buildRevisaoSecao('saude', 'Ficha complementar • Saúde', [
 
                            FichaComplementarFields(
                              ficha: _fichaComplementar,
                              secao: 'saude',
-                             onChanged: (nova) => setState(() => _fichaComplementar = nova),
+                             modoReativacao: widget.modoReativacao,
+                             onChanged: (nova) => setState(() { _fichaComplementar = nova; _secoesConferidas.remove('saude'); }),
                            ),
                                                     ]),
-_buildSecaoCompacta('capoeira_ficha', 'Ficha complementar • Capoeira', [
+_buildRevisaoSecao('capoeira_ficha', 'Ficha complementar • Capoeira', [
 
                            Opacity(
-                             opacity: _podeEditarDadosCapoeira ? 1 : 0.48,
+                             opacity: (_podeEditarDadosCapoeira || widget.modoReativacao) ? 1 : 0.48,
                              child: IgnorePointer(
-                               ignoring: !_podeEditarDadosCapoeira,
+                               ignoring: !_podeEditarDadosCapoeira && !widget.modoReativacao,
                                child: FichaComplementarFields(
                                  ficha: _fichaComplementar,
                                  secao: 'capoeira',
-                                 onChanged: (nova) => setState(() => _fichaComplementar = nova),
+                                 onChanged: (nova) => setState(() { _fichaComplementar = nova; _secoesConferidas.remove('capoeira_ficha'); }),
                                ),
                              ),
                            ),
@@ -3703,7 +4114,7 @@ _buildSecaoCompacta('capoeira_ficha', 'Ficha complementar • Capoeira', [
                           ],
 
                           // Dados da Capoeira
-                          _buildSecaoCompacta('capoeira_dados', 'Dados da Capoeira', [
+                          _buildRevisaoSecao('capoeira_dados', 'Dados da Capoeira', [
 
                           if (!_podeEditarDadosCapoeira)
                             Text('Somente administradores com peso 100 podem alterar estes dados.',
@@ -3717,7 +4128,7 @@ _buildSecaoCompacta('capoeira_ficha', 'Ficha complementar • Capoeira', [
                           DropdownButtonFormField<String>(
                             initialValue: _graduacaoId,
                             items: _graduacaoItems,
-                            onChanged: (v) => setState(() => _graduacaoId = v),
+                            onChanged: (v) => setState(() { _graduacaoId = v; _secoesConferidas.remove('capoeira_dados'); }),
                             decoration: InputDecoration(
                               labelText: 'Graduação Atual',
                               border: OutlineInputBorder(),
@@ -3754,6 +4165,9 @@ _buildSecaoCompacta('capoeira_ficha', 'Ficha complementar • Capoeira', [
 
                           ]),
                         ]
+                        // Widgets das etapas ocultas não podem reservar
+                        // margem vertical na versão mobile do assistente.
+                        .where((e) => !widget.modoReativacao || e is! SizedBox)
                         .map(
                           (e) => Padding(
                             padding: const EdgeInsets.only(bottom: 16),
@@ -4083,7 +4497,7 @@ _buildSecaoCompacta('capoeira_ficha', 'Ficha complementar • Capoeira', [
         mainAxisSize: MainAxisSize.min,
         children: [
           InkWell(
-            onTap: () => setState(() => _secaoAbertaId = aberta ? null : id),
+            onTap: widget.modoReativacao ? null : () => setState(() => _secaoAbertaId = aberta ? null : id),
             child: IntrinsicHeight(
               child: Row(
                 children: [

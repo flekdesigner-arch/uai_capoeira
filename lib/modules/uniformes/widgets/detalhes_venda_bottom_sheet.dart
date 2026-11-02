@@ -12,7 +12,9 @@ class DetalhesVendaBottomSheet extends StatefulWidget {
   final Function(String, Map<String, dynamic>)? onEditar;
   final Function(String, Map<String, dynamic>)? onCancelar;
   final Function(String, Map<String, dynamic>)? onExcluirDefinitivamente;
+  final Function(String, Map<String, dynamic>)? onEntregar;
   final bool podeEditar;
+  final bool podeReceberPagamento;
   final bool podeExcluir;
 
   const DetalhesVendaBottomSheet({
@@ -24,7 +26,9 @@ class DetalhesVendaBottomSheet extends StatefulWidget {
     this.onEditar,
     this.onCancelar,
     this.onExcluirDefinitivamente,
+    this.onEntregar,
     this.podeEditar = false,
+    this.podeReceberPagamento = false,
     this.podeExcluir = false,
   });
 
@@ -52,8 +56,6 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
         ? const Color(0xFF111827)
         : const Color(0xFFFFFFFF);
   }
-
-
 
   // ---------------------------------------------------------------------------
   // Carregamento do vendedor (mantido igual)
@@ -160,7 +162,10 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
               const SizedBox(height: 16),
 
               // Cabeçalho com botões de ação
-              Row(
+              Wrap(
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 8,
+                runSpacing: 8,
                 children: [
                   Container(
                     padding: const EdgeInsets.all(8),
@@ -179,7 +184,6 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
                       color: context.uai.textPrimary,
                     ),
                   ),
-                  const Spacer(),
 
                   // Botão EDITAR
                   if (widget.podeEditar && widget.onEditar != null)
@@ -192,10 +196,14 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
                       tooltip: 'Editar venda',
                     ),
 
-                  if (widget.podeExcluir && widget.onCancelar != null &&
+                  if (widget.podeExcluir &&
+                      widget.onCancelar != null &&
                       (widget.data['status'] ?? 'ativa') != 'cancelada')
                     IconButton(
-                      icon: Icon(Icons.block_rounded, color: context.uai.warning),
+                      icon: Icon(
+                        Icons.block_rounded,
+                        color: context.uai.warning,
+                      ),
                       onPressed: () {
                         Navigator.pop(context);
                         widget.onCancelar!.call(widget.docId, widget.data);
@@ -203,12 +211,19 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
                       tooltip: 'Cancelar venda',
                     ),
 
-                  if (widget.podeExcluir && widget.onExcluirDefinitivamente != null)
+                  if (widget.podeExcluir &&
+                      widget.onExcluirDefinitivamente != null)
                     IconButton(
-                      icon: Icon(Icons.delete_forever_rounded, color: context.uai.error),
+                      icon: Icon(
+                        Icons.delete_forever_rounded,
+                        color: context.uai.error,
+                      ),
                       onPressed: () {
                         Navigator.pop(context);
-                        widget.onExcluirDefinitivamente!.call(widget.docId, widget.data);
+                        widget.onExcluirDefinitivamente!.call(
+                          widget.docId,
+                          widget.data,
+                        );
                       },
                       tooltip: 'Excluir definitivamente',
                     ),
@@ -275,13 +290,19 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
                         _buildInfoRow(
                           context,
                           'Entrega',
-                          (widget.data['status_entrega'] ?? 'aguardando').toString() == 'entregue'
+                          (widget.data['status_entrega'] ?? 'aguardando')
+                                      .toString() ==
+                                  'entregue'
                               ? 'Entregue'
-                              : (widget.data['status_entrega'] ?? 'aguardando').toString() == 'parcial'
-                                  ? 'Entrega parcial'
-                                  : (widget.data['status_entrega'] ?? 'aguardando').toString() == 'cancelado'
-                                      ? 'Cancelada'
-                                      : 'Aguardando entrega',
+                              : (widget.data['status_entrega'] ?? 'aguardando')
+                                        .toString() ==
+                                    'parcial'
+                              ? 'Entrega parcial'
+                              : (widget.data['status_entrega'] ?? 'aguardando')
+                                        .toString() ==
+                                    'cancelado'
+                              ? 'Cancelada'
+                              : 'Aguardando entrega',
                         ),
                       ],
                     ),
@@ -482,8 +503,19 @@ class _DetalhesVendaBottomSheetState extends State<DetalhesVendaBottomSheet> {
 
                     const SizedBox(height: 24),
 
+                    if (widget.onEntregar != null &&
+                        widget.data['status_entrega'] != 'entregue' &&
+                        widget.data['status'] != 'cancelada')
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          widget.onEntregar!(widget.docId, widget.data);
+                        },
+                        icon: const Icon(Icons.local_shipping_outlined),
+                        label: const Text('Registrar entrega'),
+                      ),
                     // Botão de pagamento (se necessário)
-                    if (status != 'pago')
+                    if (status != 'pago' && widget.podeReceberPagamento)
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         child: ElevatedButton.icon(

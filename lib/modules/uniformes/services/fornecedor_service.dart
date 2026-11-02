@@ -1,19 +1,16 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'uniformes_admin_service.dart';
 
 class FornecedorService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final User? currentUser = FirebaseAuth.instance.currentUser;
+  final UniformesAdminService _backend = UniformesAdminService();
 
   // Criar fornecedor
   Future<String> criarFornecedor(Map<String, dynamic> dados) async {
-    dados.addAll({
-      'criado_em': FieldValue.serverTimestamp(),
-      'criado_por': currentUser?.uid,
-      'status': 'ativo',
+    final result = await _backend.operar('salvar_fornecedor', {
+      'fornecedor': dados,
     });
-    final docRef = await _firestore.collection('fornecedores').add(dados);
-    return docRef.id;
+    return result['id'].toString();
   }
 
   // Atualizar fornecedor
@@ -21,17 +18,21 @@ class FornecedorService {
     String fornecedorId,
     Map<String, dynamic> dados,
   ) async {
-    dados['atualizado_em'] = FieldValue.serverTimestamp();
-    dados['atualizado_por'] = currentUser?.uid;
-    await _firestore.collection('fornecedores').doc(fornecedorId).update(dados);
+    await _backend.operar('salvar_fornecedor', {
+      'fornecedorId': fornecedorId,
+      'fornecedor': dados,
+    });
   }
 
   // Excluir fornecedor (soft delete)
-  Future<void> excluirFornecedor(String fornecedorId) async {
-    await _firestore.collection('fornecedores').doc(fornecedorId).update({
-      'status': 'inativo',
-      'excluido_em': FieldValue.serverTimestamp(),
-      'excluido_por': currentUser?.uid,
+  Future<void> excluirFornecedor(
+    String fornecedorId, {
+    required String motivo,
+  }) async {
+    await _backend.operar('excluir_fornecedor', {
+      'fornecedorId': fornecedorId,
+      'motivo': motivo,
+      'confirmacao': true,
     });
   }
 

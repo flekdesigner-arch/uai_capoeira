@@ -1,6 +1,7 @@
 package com.uai_capoeira.uai_capoeira
 
 import android.content.Intent
+import android.app.DownloadManager
 import android.media.MediaScannerConnection
 import android.net.Uri
 import android.view.WindowManager
@@ -18,6 +19,25 @@ class MainActivity : FlutterActivity() {
     private var inscricoesAbertas = 0
     private var capturaEraProtegida = false
 
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        UpdateWifiManager.cleanStale(applicationContext)
+        UpdateWifiManager.resumeMonitoring(applicationContext)
+        if (intent?.action == UpdateWifiManager.ACTION_INSTALL) {
+            UpdateWifiReleaseChecker.installAfterFreshCheck(this) { }
+            intent?.action = null
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.action == UpdateWifiManager.ACTION_INSTALL) {
+            UpdateWifiReleaseChecker.installAfterFreshCheck(this) { }
+            intent.action = null
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         if (inscricoesAbertas > 0) window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
@@ -27,6 +47,61 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, UpdateWifiManager.CHANNEL)
+            .setMethodCallHandler { call, result ->
+                try {
+                    val uid = call.argument<String>("uid") ?: ""
+                    val version = call.argument<String>("version") ?: ""
+                    when (call.method) {
+                        "openRecoveryDownloads" -> {
+                            try {
+                                startActivity(Intent(DownloadManager.ACTION_VIEW_DOWNLOADS))
+                                result.success(true)
+                            } catch (_: Exception) { result.success(false) }
+                        }
+                        "recoveryState" -> result.success(UpdateRecoveryExporter.state())
+                        "exportRecoveryApk" -> UpdateRecoveryExporter.export(this, version) { response ->
+                            result.success(response)
+                        }
+                        "checkNow" -> {
+                            val accepted = uid.isNotBlank() && UpdateWifiManager.enabled(applicationContext, uid)
+                            if (accepted) UpdateWifiReleaseChecker.scheduleImmediateCheck(applicationContext)
+                            result.success(accepted)
+                        }
+                        "getState" -> {
+                            UpdateWifiManager.resumeMonitoring(applicationContext)
+                            result.success(UpdateWifiManager.state(applicationContext, uid, version))
+                        }
+                        "setEnabled" -> result.success(UpdateWifiManager.setEnabled(applicationContext, uid,
+                            call.argument<Boolean>("enabled") == true))
+                        "cancelInstallReady" -> result.success(UpdateWifiReleaseChecker.cancelInstallReady(
+                            call.argument<String>("requestId") ?: ""))
+                        "installReady" -> UpdateWifiReleaseChecker.installAfterFreshCheck(this,
+                            requestId = call.argument<String>("requestId") ?: "") { status ->
+                            result.success(status)
+                        }
+                        "validateLatest" -> UpdateWifiReleaseChecker.validateLatest(this, uid, version,
+                            scheduleDownload = call.argument<Boolean>("scheduleDownload") == true) { status ->
+                            result.success(status)
+                        }
+                        "beginManualDownload" -> UpdateWifiReleaseChecker.beginManualDownload(this, uid, version) { response ->
+                            result.success(response)
+                        }
+                        "endManualDownload" -> UpdateWifiReleaseChecker.endManualDownload(this, uid, version,
+                            call.argument<String>("token") ?: "") { released ->
+                            result.success(released)
+                        }
+                        "verifyManualApk" -> UpdateWifiReleaseChecker.verifyManualApk(this, uid, version,
+                            call.argument<String>("path") ?: "") { status ->
+                            result.success(status)
+                        }
+                        else -> result.notImplemented()
+                    }
+                } catch (e: Exception) {
+                    result.error("UPDATE_WIFI", e.message ?: "Erro interno", null)
+                }
+            }
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "uai/inscricao_captura")
             .setMethodCallHandler { call, result ->
                 when (call.method) {

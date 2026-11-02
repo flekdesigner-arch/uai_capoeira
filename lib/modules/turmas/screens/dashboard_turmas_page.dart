@@ -23,6 +23,7 @@ import 'package:xml/xml.dart' as xml;
 import 'package:uai_capoeira/modules/turmas/services/dashboard_turma_cache_service.dart';
 import 'package:uai_capoeira/core/permissions/permissao_service.dart';
 import 'package:uai_capoeira/modules/turmas/models/aluno_snapshot_model.dart';
+import 'package:uai_capoeira/modules/disciplina/disciplina_service.dart';
 import 'package:uai_capoeira/core/image_cache/uai_student_photo.dart';
 
 class DashboardTurmasPage extends StatefulWidget {
@@ -71,7 +72,6 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   bool _podeVerDashboardTop5Frequencia = false;
   bool _podeVerDashboardListaFrequencia = false;
   bool _podeVerDashboardMetricasFrequencia = false;
-  bool _podeVerDashboardDiagnosticoCache = false;
   bool _podeVerDashboardLogsDebug = false;
 
   bool _isAdminDashboard = false;
@@ -80,17 +80,11 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
   bool _cacaBugRegistrouEntradaDashboard = false;
   bool _cacaBugRegistrouCacheV2 = false;
-  bool _cacaBugRegistrouErroCacheV2 = false;
   String? _cacaBugUltimaAbaRegistrada;
   String? _cacaBugUltimoFiltroFrequenciaKey;
 
   bool _usarDashboardCacheV2 = false;
   bool _cacheV2Disponivel = false;
-  final bool _processandoCacheServidor = false;
-  Map<String, dynamic>? _dashboardCacheMeta;
-  Map<String, dynamic>? _dashboardCacheDistribuicoes;
-  List<AlunoSnapshotModel> _dashboardCacheAlunos = [];
-
   String? _faixaEtariaExpandidaKey;
 
   Map<String, dynamic> _cacaBugDadosBase() {
@@ -171,25 +165,6 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
               'atualizadoEm': _ultimaAtualizacao?.toIso8601String(),
               'cacheRecalculadoEm': _ultimaSyncLogs?.toIso8601String(),
             },
-          )
-          .then((_) => CacaBugService.instance.flush(force: true)),
-    );
-  }
-
-  void _registrarCacaBugErroCache(Object erro) {
-    if (_cacaBugRegistrouErroCacheV2) return;
-    _cacaBugRegistrouErroCacheV2 = true;
-    unawaited(
-      CacaBugService.instance
-          .registrarErro(
-            acao: CacaBugActions.erroCarregarCacheV2Dashboard,
-            descricao:
-                'Erro ao carregar o Cache V2 da Dashboard da turma ${widget.turmaNome}',
-            tela: 'DashboardTurmasPage',
-            arquivo: 'lib/modules/turmas/screens/dashboard_turmas_page.dart',
-            rota: '/turmas/dashboard',
-            erro: erro,
-            dados: {..._cacaBugDadosBase(), 'cacheVersion': 'v2'},
           )
           .then((_) => CacaBugService.instance.flush(force: true)),
     );
@@ -333,26 +308,6 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
               'duracaoMs': duracaoMs,
               'alunosCount': _alunosDaTurma.length,
             },
-          )
-          .then((_) => CacaBugService.instance.flush(force: true)),
-    );
-  }
-
-  void _registrarCacaBugRecalculoErro({
-    required Object erro,
-    required String origem,
-  }) {
-    unawaited(
-      CacaBugService.instance
-          .registrarErro(
-            acao: CacaBugActions.erroRecalcularCacheV2,
-            descricao:
-                'Erro ao recalcular o Cache V2 da turma ${widget.turmaNome}',
-            tela: 'DashboardTurmasPage',
-            arquivo: 'lib/modules/turmas/screens/dashboard_turmas_page.dart',
-            rota: '/turmas/dashboard',
-            erro: erro,
-            dados: {..._cacaBugDadosBase(), 'origem': origem},
           )
           .then((_) => CacaBugService.instance.flush(force: true)),
     );
@@ -547,6 +502,37 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   List<Map<String, dynamic>> _alunosFrequentes = [];
   Map<String, Map<String, dynamic>> _avaliacoesAlunos = {};
   List<Map<String, dynamic>> _alunosDestaque = [];
+  Map<String, Map<String, dynamic>> _disciplinaEstados = {};
+  double _disciplinaTeto = 5;
+  int _disciplinaPoliticaVersao = 1;
+  bool _excluirSuspensosDoDestaque = true;
+  bool _disciplinaDisponivel = false;
+  bool _consultandoDisciplinaDashboard = false;
+
+  Future<void> _carregarSituacaoDisciplinar() async {
+    try {
+      final resultados = await Future.wait<dynamic>([
+        DisciplinaService.buscarResumos(
+          _alunosDaTurma.map((a) => a['id']?.toString() ?? ''),
+        ),
+        _firestore
+            .collection('configuracoes_disciplina')
+            .doc('politica_atual')
+            .get(),
+      ]);
+      final p =
+          (resultados[1] as DocumentSnapshot<Map<String, dynamic>>).data() ??
+          {};
+      _disciplinaEstados = resultados[0] as Map<String, Map<String, dynamic>>;
+      _disciplinaTeto = (p['teto_desconto'] as num?)?.toDouble() ?? 5;
+      _disciplinaPoliticaVersao = (p['versao'] as num?)?.toInt() ?? 1;
+      _excluirSuspensosDoDestaque = p['excluir_suspenso_ranking'] != false;
+      _disciplinaDisponivel = true;
+    } catch (_) {
+      _disciplinaDisponivel = false;
+    }
+  }
+
   Map<String, int> _distribuicaoGraduacao = {};
   Map<String, List<Map<String, dynamic>>> _alunosPorGraduacao = {};
   List<Map<String, dynamic>> _alunosOrdenadosPorIdade = [];
@@ -601,9 +587,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     '50+ anos': Icons.elderly,
   };
 
-  late AnimationController _pulseController;
   late AnimationController _rotateController;
-  late Animation<double> _pulseAnimation;
   late Animation<double> _rotateAnimation;
 
   DateTime? _dateTimeFromCache(dynamic value) {
@@ -612,19 +596,6 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     if (value is DateTime) return value;
     if (value is String) return DateTime.tryParse(value);
     return null;
-  }
-
-  int _intFromCache(dynamic value) => _parseInt(value);
-
-  double _doubleFromCache(dynamic value) => _parseDouble(value);
-
-  Map<String, int> _mapStringIntFromCache(dynamic value) {
-    if (value is Map) {
-      return Map<String, int>.from(
-        value.map((k, v) => MapEntry(k.toString(), _parseInt(v))),
-      );
-    }
-    return {};
   }
 
   List<String> _extrairAnosDisponiveisCacheV2(
@@ -737,13 +708,18 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
           meta == null ||
           _parseInt(meta['cache_versao']) < 200 ||
           meta['status_processamento'] != 'pronto' ||
-          meta['necessita_reconstrucao'] == true;
+          meta['necessita_reconstrucao'] == true ||
+          (_disciplinaDisponivel &&
+              meta['disciplina_politica_versao'] !=
+                  _disciplinaPoliticaVersao) ||
+          meta['disciplina_data'] !=
+              DisciplinaService.chaveData(DisciplinaService.hoje());
 
       if (metaInvalido) {
         debugPrint('Meta Cache V2 inválido. Reconstruindo no servidor...');
         await _dashboardCacheService.reconstruirCache(
           widget.turmaId,
-          force: false,
+          force: true,
         );
         meta = await _dashboardCacheService.carregarMeta(
           widget.turmaId,
@@ -751,7 +727,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         );
       }
 
-      final distribuicoes = await _dashboardCacheService.carregarDistribuicoes(
+      await _dashboardCacheService.carregarDistribuicoes(
         widget.turmaId,
         forceServer: forceServer,
       );
@@ -793,9 +769,6 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       if (!mounted) return false;
 
       setState(() {
-        _dashboardCacheMeta = meta;
-        _dashboardCacheDistribuicoes = distribuicoes;
-        _dashboardCacheAlunos = alunosCache;
         _alunosDaTurma = alunosConvertidos;
         anosDisponiveis = anosExtraidos;
 
@@ -827,6 +800,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         _isLoading = false;
       });
 
+      await _carregarSituacaoDisciplinar();
       _processarTodosDados();
       _registrarCacaBugCacheCarregado(
         forceServer: forceServer,
@@ -981,8 +955,6 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
             isAdmin || p['pode_ver_dashboard_lista_frequencia'] == true;
         _podeVerDashboardMetricasFrequencia =
             isAdmin || p['pode_ver_dashboard_metricas_frequencia'] == true;
-        _podeVerDashboardDiagnosticoCache =
-            isAdmin || p['pode_ver_dashboard_diagnostico_cache'] == true;
         _podeVerDashboardLogsDebug =
             isAdmin || p['pode_ver_dashboard_logs_debug'] == true;
 
@@ -1023,21 +995,13 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     _registrarCacaBugEntradaDashboard();
     WidgetsBinding.instance.addObserver(this);
 
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: Duration(milliseconds: 1500),
-    );
     _rotateController = AnimationController(
       vsync: this,
       duration: Duration(milliseconds: 1000),
     );
-    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.15).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
     _rotateAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _rotateController, curve: Curves.easeInOut),
     );
-    _pulseController.repeat(reverse: true);
 
     _carregarPermissoes().then((_) {
       if (_podeVisualizarDashboardTurma) {
@@ -1059,7 +1023,6 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     _frequenciaScrollController.dispose();
     _tabsScrollController.dispose();
     _timerCache?.cancel();
-    _pulseController.dispose();
     _rotateController.dispose();
     super.dispose();
   }
@@ -1070,8 +1033,23 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   void _iniciarTimerCache() {
-    _timerCache = Timer.periodic(Duration(minutes: 30), (_) {
-      if (mounted) _verificarEAtualizarCache();
+    _timerCache = Timer.periodic(const Duration(minutes: 1), (_) async {
+      if (!mounted ||
+          _isLoading ||
+          _isAtualizando ||
+          _consultandoDisciplinaDashboard) {
+        return;
+      }
+      _consultandoDisciplinaDashboard = true;
+      try {
+        await _carregarSituacaoDisciplinar();
+        if (mounted) {
+          setState(_processarTodosDados);
+        }
+        await _verificarEAtualizarCache();
+      } finally {
+        _consultandoDisciplinaDashboard = false;
+      }
     });
   }
 
@@ -1080,15 +1058,28 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
     // Se estiver usando V2, não dispara atualização por TTL antigo (60m).
     // A atualização V2 é manual via refresh nesta etapa.
-    if (_usarDashboardCacheV2 && _cacheV2Disponivel) return;
+    if (_usarDashboardCacheV2 && _cacheV2Disponivel) {
+      final meta = await _dashboardCacheService.carregarMeta(
+        widget.turmaId,
+        forceServer: true,
+      );
+      if (meta?['disciplina_data'] !=
+              DisciplinaService.chaveData(DisciplinaService.hoje()) ||
+          meta?['necessita_reconstrucao'] == true ||
+          meta?['disciplina_politica_versao'] != _disciplinaPoliticaVersao) {
+        await _carregarDashboardPeloCacheV2(forceServer: true);
+      }
+      return;
+    }
 
     if (_ultimaAtualizacao == null) {
       await _atualizarDadosReais();
       return;
     }
     final diferenca = DateTime.now().difference(_ultimaAtualizacao!);
-    if (diferenca.inMilliseconds > _cacheValidadeMs)
-      { await _atualizarDadosReais(); }
+    if (diferenca.inMilliseconds > _cacheValidadeMs) {
+      await _atualizarDadosReais();
+    }
   }
 
   void _onScroll() {
@@ -1112,8 +1103,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     if (value == null) return 0;
     if (value is int) return value.toDouble();
     if (value is double) return value;
-    if (value is String)
-      { return double.tryParse(value.replaceAll(',', '.')) ?? 0; }
+    if (value is String) {
+      return double.tryParse(value.replaceAll(',', '.')) ?? 0;
+    }
     return 0;
   }
 
@@ -1457,11 +1449,14 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       _ultimaSyncLogs = _toDateTime(data['ultima_sync_logs']);
       _alunosDaTurma = _parseAlunos(data['alunos']);
       anosDisponiveis = List<String>.from(data['anos_disponiveis'] ?? []);
-      if (anosDisponiveis.isEmpty)
-        { anosDisponiveis = [DateTime.now().year.toString()]; }
-      if (anoSelecionado == null && anosDisponiveis.isNotEmpty)
-        { anoSelecionado = anosDisponiveis.first; }
+      if (anosDisponiveis.isEmpty) {
+        anosDisponiveis = [DateTime.now().year.toString()];
+      }
+      if (anoSelecionado == null && anosDisponiveis.isNotEmpty) {
+        anoSelecionado = anosDisponiveis.first;
+      }
       await _carregarAvaliacoesAlunos();
+      await _carregarSituacaoDisciplinar();
       _processarTodosDados();
       setState(() {
         _isLoading = false;
@@ -1541,6 +1536,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
       await _preloadGraduacoes();
       await _carregarAvaliacoesAlunos();
+      await _carregarSituacaoDisciplinar();
       _processarTodosDados();
       _registrarCacaBugAtualizacaoSucesso(
         origem: recalcularTudo ? 'manual_recalculo_legado' : 'botao',
@@ -1764,17 +1760,6 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     for (final dia in ['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom']) {
       contador[dia] = porDiaSemana[dia] ?? _parseInt(contador[dia]);
     }
-  }
-
-  bool _logEstaNoMesAtual(DateTime dataLog, DateTime now) {
-    final inicio = _inicioMesAtual(now);
-    final fim = DateTime(now.year, now.month + 1, 1);
-    return !dataLog.isBefore(inicio) && dataLog.isBefore(fim);
-  }
-
-  bool _logEstaNaSemanaAtual(DateTime dataLog, DateTime now) {
-    final inicio = _inicioSemanaAtual(now);
-    return !dataLog.isBefore(inicio);
   }
 
   void _incrementarContadorComLog(
@@ -2008,22 +1993,8 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     aplicarLogs(logsCargaCompleta);
     aplicarLogs(logsIncrementais);
 
-    final batch = _firestore.batch();
-    for (final alunoId in idsAlunos) {
-      final contador = contadores[alunoId] ?? _contadorVazio(alunoId);
-      contador['ultima_sync_logs'] = now;
-      contador['updatedAt'] = FieldValue.serverTimestamp();
-      contador['cache_versao'] = 5;
-      contador['modelo'] = forcarRecalculoCompleto
-          ? 'contador_recalculado_dos_logs_reais_v5'
-          : 'contador_incremental_por_aluno_v5';
-      contador['recalculado_completo'] = forcarRecalculoCompleto;
-      batch.set(_contadorAlunoRef(alunoId), {
-        ...contador,
-        'ultima_sync_logs': Timestamp.fromDate(now),
-      });
-    }
-    await batch.commit();
+    // O fallback legado calcula em memória. Contadores persistidos são
+    // atualizados exclusivamente pela transação autenticada da chamada.
 
     return alunos.map((aluno) {
       final alunoId = aluno['id']?.toString() ?? '';
@@ -2130,6 +2101,55 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     return ((notaAvaliacao * 0.60) + (scoreFrequencia * 0.40)).clamp(0.0, 10.0);
   }
 
+  void _abrirExtratoDisciplinar(Map<String, dynamic> aluno) {
+    final resumo = _disciplinaEstados[aluno['id']?.toString() ?? ''];
+    final eventos = (resumo?['eventos'] as List? ?? [])
+        .whereType<Map>()
+        .toList();
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Extrato • ${aluno['nome'] ?? ''}'),
+        content: SizedBox(
+          width: 480,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Nota-base (60% avaliação + 40% frequência): ${_parseDouble(aluno['nota_destaque_base']).toStringAsFixed(2)}',
+                ),
+                Text(
+                  'Desconto vigente (teto $_disciplinaTeto): ${_parseDouble(aluno['disciplina_desconto']).toStringAsFixed(2)}',
+                ),
+                Text(
+                  'Nota final: ${_parseDouble(aluno['nota_destaque']).toStringAsFixed(2)}',
+                ),
+                const Divider(),
+                for (final e in eventos)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Text(
+                      '${e['tipo']} • ${e['status']} • ${e['pontos'] ?? 0} ponto(s)\n${e['motivo'] ?? ''}\nValidade: ${e['penalidade_inicio'] ?? '--'} até ${e['penalidade_fim_exclusivo'] ?? '--'} (exclusive)',
+                    ),
+                  ),
+                if (eventos.isEmpty)
+                  const Text('Sem ocorrências disciplinares.'),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Fechar'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Color _corNotaDestaque(double nota) {
     if (nota >= 9) return context.uai.success;
     if (nota >= 8) return context.uai.success;
@@ -2172,30 +2192,61 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
               .fold<int>(0, (maior, valor) => valor > maior ? valor : maior);
 
     _alunosDestaque =
-        _alunosDaTurma.map((aluno) {
-          final notaAvaliacao = _getNotaAvaliacaoAluno(aluno);
-          final scoreFrequencia = _calcularScoreFrequencia(
-            aluno,
-            maiorFrequencia,
-          );
-          final notaDestaque = _calcularNotaDestaque(
-            notaAvaliacao: notaAvaliacao,
-            scoreFrequencia: scoreFrequencia,
-          );
+        _alunosDaTurma
+            .map((aluno) {
+              final notaAvaliacao = _getNotaAvaliacaoAluno(aluno);
+              final scoreFrequencia = _calcularScoreFrequencia(
+                aluno,
+                maiorFrequencia,
+              );
+              final estado = _disciplinaEstados[aluno['id']?.toString() ?? ''];
+              final suspenso = DisciplinaService.suspenso(
+                estado,
+                DisciplinaService.hoje(),
+              );
+              final desconto = DisciplinaService.penalidade(
+                estado,
+                DisciplinaService.hoje(),
+                teto: _disciplinaTeto,
+              );
+              final notaBase = _calcularNotaDestaque(
+                notaAvaliacao: notaAvaliacao,
+                scoreFrequencia: scoreFrequencia,
+              );
+              final notaDestaque = double.parse(
+                (notaBase - desconto).clamp(0.0, 10.0).toStringAsFixed(2),
+              );
 
-          return {
-            ...aluno,
-            'nota_avaliacao': notaAvaliacao,
-            'score_frequencia': scoreFrequencia,
-            'nota_destaque': notaDestaque,
-            'conceito_destaque': _conceitoDestaque(notaDestaque),
-            'conceito_avaliacao': _getConceitoAvaliacaoAluno(aluno),
-          };
-        }).toList()..sort(
-          (a, b) => _parseDouble(
-            b['nota_destaque'],
-          ).compareTo(_parseDouble(a['nota_destaque'])),
-        );
+              return {
+                ...aluno,
+                'disciplina_expulso':
+                    DisciplinaService.estado(
+                      estado,
+                      DisciplinaService.hoje(),
+                    ) ==
+                    EstadoDisciplinar.expulso,
+                'disciplina_suspenso': suspenso,
+                'disciplina_desconto': desconto,
+                'nota_destaque_base': notaBase,
+                'nota_avaliacao': notaAvaliacao,
+                'score_frequencia': scoreFrequencia,
+                'nota_destaque': notaDestaque,
+                'conceito_destaque': _conceitoDestaque(notaDestaque),
+                'conceito_avaliacao': _getConceitoAvaliacaoAluno(aluno),
+              };
+            })
+            .where(
+              (a) =>
+                  a['disciplina_expulso'] != true &&
+                  (!_excluirSuspensosDoDestaque ||
+                      a['disciplina_suspenso'] != true),
+            )
+            .toList()
+          ..sort(
+            (a, b) => _parseDouble(
+              b['nota_destaque'],
+            ).compareTo(_parseDouble(a['nota_destaque'])),
+          );
 
     if (_podeVerDashboardLogsDebug) {
       final avaliados = _alunosDestaque
@@ -2331,19 +2382,13 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     if (_colorCache.containsKey(hex)) return _colorCache[hex]!;
     String clean = hex.replaceFirst('#', '');
     Color color = context.uai.textMuted;
-    if (clean.length == 6)
-      { color = Color(int.parse('FF$clean', radix: 16)); }
-    else if (clean.length == 8)
-      { color = Color(int.parse(clean, radix: 16)); }
+    if (clean.length == 6) {
+      color = Color(int.parse('FF$clean', radix: 16));
+    } else if (clean.length == 8) {
+      color = Color(int.parse(clean, radix: 16));
+    }
     _colorCache[hex] = color;
     return color;
-  }
-
-  Color _corTextoContrasteSuave(Color background) {
-    final luminance = background.computeLuminance();
-    return luminance > 0.55
-        ? context.uai.textPrimary
-        : Colors.white.withAlpha(235);
   }
 
   Color _corTextoChipQuantidade(Color corBase) {
@@ -2759,10 +2804,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
           SizedBox(height: 2),
           Text(
             label,
-            style: TextStyle(
-              color: _onGradient().withAlpha(194),
-              fontSize: 10,
-            ),
+            style: TextStyle(color: _onGradient().withAlpha(194), fontSize: 10),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
@@ -3315,50 +3357,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     }
   }
 
-  void _drawImageCover(
-    Canvas canvas,
-    ui.Image image,
-    Rect dst, {
-    double borderRadius = 0,
-  }) {
-    final srcSize = Size(image.width.toDouble(), image.height.toDouble());
-    final dstSize = dst.size;
-
-    final scale = math.max(
-      dstSize.width / srcSize.width,
-      dstSize.height / srcSize.height,
-    );
-    final cropWidth = dstSize.width / scale;
-    final cropHeight = dstSize.height / scale;
-
-    final src = Rect.fromLTWH(
-      (srcSize.width - cropWidth) / 2,
-      (srcSize.height - cropHeight) / 2,
-      cropWidth,
-      cropHeight,
-    );
-
-    canvas.save();
-    if (borderRadius > 0) {
-      canvas.clipRRect(
-        RRect.fromRectAndRadius(dst, Radius.circular(borderRadius)),
-      );
-    } else {
-      canvas.clipRect(dst);
-    }
-
-    canvas.drawImageRect(
-      image,
-      src,
-      dst,
-      Paint()..filterQuality = FilterQuality.high,
-    );
-    canvas.restore();
-  }
-
   Future<ui.Image?> _carregarFotoAlunoRanking(String? url) async {
-    if (url == null || url.trim().isEmpty || !url.startsWith('http'))
-      { return null; }
+    if (url == null || url.trim().isEmpty || !url.startsWith('http')) {
+      return null;
+    }
 
     HttpClient? client;
     try {
@@ -3593,6 +3595,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   Future<Uint8List> _gerarImagemRankingAlunoDestaque() async {
+    final rankingTheme = context.uai;
     final top10 = _alunosDestaque.take(10).toList();
     final top3 = top10.take(3).toList();
     final demais = top10.length > 3
@@ -3881,7 +3884,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         x: 107,
         y: 558,
         maxWidth: 34,
-        color: context.uai.textPrimary,
+        color: rankingTheme.textPrimary,
         fontSize: 17.0,
         fontWeight: FontWeight.w900,
         textAlign: TextAlign.center,
@@ -3893,7 +3896,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         aluno,
         center: Offset(194, 640),
         radius: 70,
-        backgroundColor: context.uai.card,
+        backgroundColor: rankingTheme.card,
         textColor: Color(0xFF92400E),
         borderColor: Colors.white,
         borderWidth: 8,
@@ -4041,7 +4044,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         x: left + 34,
         y: top + 32,
         maxWidth: 42,
-        color: context.uai.textPrimary,
+        color: rankingTheme.textPrimary,
         fontSize: 16,
         fontWeight: FontWeight.w900,
         textAlign: TextAlign.center,
@@ -4065,7 +4068,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         aluno,
         center: Offset(left + 96, top + 142),
         radius: 56,
-        backgroundColor: context.uai.card,
+        backgroundColor: rankingTheme.card,
         textColor: accent,
         borderColor: Colors.white,
         borderWidth: 7,
@@ -4178,7 +4181,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
         x: 108,
         y: top + 20,
         maxWidth: 42,
-        color: context.uai.textPrimary,
+        color: rankingTheme.textPrimary,
         fontSize: 15,
         fontWeight: FontWeight.w900,
         textAlign: TextAlign.center,
@@ -4409,8 +4412,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   Future<Uint8List?> _baixarBytesRankingUrl(String? url) async {
-    if (url == null || url.trim().isEmpty || !url.startsWith('http'))
-      { return null; }
+    if (url == null || url.trim().isEmpty || !url.startsWith('http')) {
+      return null;
+    }
 
     HttpClient? client;
     try {
@@ -5995,6 +5999,11 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
   }
 
   Widget _buildAlunoDestaqueConteudo() {
+    if (!_disciplinaDisponivel) {
+      return _emptyChart(
+        'Ranking temporariamente indisponível: não foi possível validar a situação disciplinar. Atualize com internet.',
+      );
+    }
     final avaliados = _alunosDestaque
         .where((a) => _parseDouble(a['nota_avaliacao']) > 0)
         .length;
@@ -6344,46 +6353,13 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
     );
   }
 
-  Widget _destaqueResumoCard(String valor, String label, IconData icon) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 11),
-      decoration: BoxDecoration(
-        color: context.uai.card.withAlpha(33),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: context.uai.card.withAlpha(31)),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: context.uai.textPrimary, size: 20),
-          SizedBox(height: 4),
-          Text(
-            valor,
-            style: TextStyle(
-              color: context.uai.textPrimary,
-              fontWeight: FontWeight.bold,
-              fontSize: 17,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          Text(
-            label,
-            style: TextStyle(
-              color: context.uai.card.withAlpha(199),
-              fontSize: 10,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildAlunoDestaqueCard(int posicao, Map<String, dynamic> aluno) {
     final nome = aluno['nome']?.toString() ?? 'Sem nome';
     final freq = _getFrequenciaPorFiltro(aluno);
     final notaAvaliacao = _parseDouble(aluno['nota_avaliacao']);
     final scoreFrequencia = _parseDouble(aluno['score_frequencia']);
     final notaDestaque = _parseDouble(aluno['nota_destaque']);
+    final descontoDisciplinar = _parseDouble(aluno['disciplina_desconto']);
     final conceito =
         aluno['conceito_destaque']?.toString() ??
         _conceitoDestaque(notaDestaque);
@@ -6459,6 +6435,10 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                     spacing: 6,
                     runSpacing: 5,
                     children: [
+                      ActionChip(
+                        label: const Text('Extrato'),
+                        onPressed: () => _abrirExtratoDisciplinar(aluno),
+                      ),
                       _destaqueChip(
                         'Aval.',
                         notaAvaliacao.toStringAsFixed(1),
@@ -6470,6 +6450,12 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                         context.uai.info,
                       ),
                       _destaqueChip('Pres.', '$freq', context.uai.success),
+                      if (descontoDisciplinar > 0)
+                        _destaqueChip(
+                          'Penal.',
+                          '-${descontoDisciplinar.toStringAsFixed(1)}',
+                          context.uai.warning,
+                        ),
                     ],
                   ),
                   SizedBox(height: 6),
@@ -6694,8 +6680,8 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
               label: Text(ano),
               selected: ativo,
               onSelected: (s) {
-                if (s)
-                  { setState(() {
+                if (s) {
+                  setState(() {
                     anoSelecionado = ano;
                     _atualizarComFiltro();
                     _registrarCacaBugFiltroFrequencia(
@@ -6703,7 +6689,8 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                       mes: mesSelecionado,
                       ano: anoSelecionado,
                     );
-                  }); }
+                  });
+                }
               },
               backgroundColor: context.uai.cardAlt,
               selectedColor: context.uai.info.withAlpha(41),
@@ -6716,8 +6703,9 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
 
   // ============ GRÁFICOS ============
   Widget _buildGraficoFrequencia() {
-    if (_alunosFrequentes.isEmpty)
-      { return _emptyChart('Sem dados de frequência'); }
+    if (_alunosFrequentes.isEmpty) {
+      return _emptyChart('Sem dados de frequência');
+    }
     final Map<String, int> dados = {};
     int maxV = 0;
     for (var a in _alunosFrequentes) {
@@ -6803,15 +6791,16 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                         reservedSize: 35,
                         getTitlesWidget: (v, m) {
                           final idx = v.toInt();
-                          if (idx >= 0 && idx < dados.keys.length)
-                            { return Padding(
+                          if (idx >= 0 && idx < dados.keys.length) {
+                            return Padding(
                               padding: EdgeInsets.only(top: 8),
                               child: Text(
                                 dados.keys.elementAt(idx),
                                 style: TextStyle(fontSize: 10),
                                 overflow: TextOverflow.ellipsis,
                               ),
-                            ); }
+                            );
+                          }
                           return Text('');
                         },
                       ),
@@ -7581,10 +7570,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                     width: 42,
                     height: 42,
                     decoration: BoxDecoration(
-                      color: Color.alphaBlend(
-                        accent.withAlpha(26),
-                        t.cardAlt,
-                      ),
+                      color: Color.alphaBlend(accent.withAlpha(26), t.cardAlt),
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(color: accent.withAlpha(41)),
                     ),
@@ -7643,10 +7629,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                   Container(
                     padding: EdgeInsets.symmetric(horizontal: 9, vertical: 5),
                     decoration: BoxDecoration(
-                      color: Color.alphaBlend(
-                        accent.withAlpha(26),
-                        t.cardAlt,
-                      ),
+                      color: Color.alphaBlend(accent.withAlpha(26), t.cardAlt),
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(color: accent.withAlpha(41)),
                     ),
@@ -7997,11 +7980,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       ),
       borderRadius: BorderRadius.circular(18),
       boxShadow: [
-        BoxShadow(
-          color: c.withAlpha(61),
-          blurRadius: 10,
-          offset: Offset(0, 4),
-        ),
+        BoxShadow(color: c.withAlpha(61), blurRadius: 10, offset: Offset(0, 4)),
       ],
     ),
     child: Row(
@@ -8481,9 +8460,7 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
                     label: Text('Ver mais alunos'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: context.uai.info,
-                      side: BorderSide(
-                        color: context.uai.info.withAlpha(41),
-                      ),
+                      side: BorderSide(color: context.uai.info.withAlpha(41)),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14),
                       ),
@@ -8629,18 +8606,6 @@ class _DashboardTurmasPageState extends State<DashboardTurmasPage>
       ),
     ),
   );
-
-  String _formatarTempoCache() {
-    if (_ultimaAtualizacao == null) return 'Cache vazio';
-    final agora = DateTime.now();
-    final diferenca = agora.difference(_ultimaAtualizacao!);
-    final minutosRestantes = _cacheValidadeMinutos - diferenca.inMinutes;
-    if (minutosRestantes <= 0) return 'Expirado';
-    if (minutosRestantes < 60) return '${minutosRestantes}min';
-    final horas = minutosRestantes ~/ 60;
-    final minutos = minutosRestantes % 60;
-    return '${horas}h${minutos > 0 ? '${minutos}m' : ''}';
-  }
 }
 
 // ============================================

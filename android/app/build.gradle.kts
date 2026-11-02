@@ -47,11 +47,15 @@ dependencies {
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-messaging")
     implementation("com.google.firebase:firebase-firestore")
+    implementation("com.google.firebase:firebase-functions")
     implementation("com.google.firebase:firebase-storage")
 
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.3")
     implementation("androidx.multidex:multidex:2.0.1")
 
     implementation("androidx.core:core:1.12.0")
+    implementation("androidx.work:work-runtime:2.10.5")
+    implementation("com.google.guava:guava:33.4.8-android")
     implementation("androidx.activity:activity:1.8.0")
+    testImplementation("junit:junit:4.13.2")
 }

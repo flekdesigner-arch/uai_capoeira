@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 
 class ItemEstoqueCard extends StatelessWidget {
+  final bool podeConfigurar;
   final String docId;
   final Map<String, dynamic> data;
   final NumberFormat realFormat;
@@ -14,6 +15,7 @@ class ItemEstoqueCard extends StatelessWidget {
 
   const ItemEstoqueCard({
     super.key,
+    this.podeConfigurar = true,
     required this.docId,
     required this.data,
     required this.realFormat,
@@ -319,34 +321,21 @@ class ItemEstoqueCard extends StatelessWidget {
                     ),
                   ),
                 const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    OutlinedButton.icon(
-                      onPressed: () => onEditar(docId, data),
-                      icon: const Icon(Icons.edit, size: 18),
-                      label: const Text('Editar'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: context.uai.primary,
-                        side: BorderSide(
-                          color: context.uai.primary.withAlpha(128),
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(
-                            context.uai.buttonRadius,
+                if (podeConfigurar)
+                  Wrap(
+                    alignment: WrapAlignment.end,
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: () => onEditar(docId, data),
+                        icon: const Icon(Icons.edit, size: 18),
+                        label: const Text('Editar'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: context.uai.primary,
+                          side: BorderSide(
+                            color: context.uai.primary.withAlpha(128),
                           ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    if (controlaEstoque) ...[
-                      ElevatedButton.icon(
-                        onPressed: () => onRegistrarEntrada(docId, data),
-                        icon: const Icon(Icons.add, size: 18),
-                        label: const Text('Entrada'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: context.uai.success,
-                          foregroundColor: _readableOn(context.uai.success),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(
                               context.uai.buttonRadius,
@@ -355,46 +344,62 @@ class ItemEstoqueCard extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      ElevatedButton.icon(
-                        onPressed: quantidade > 0
-                            ? () => onRegistrarSaida(docId, data)
-                            : null,
-                        icon: const Icon(Icons.remove, size: 18),
-                        label: const Text('Saída'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: quantidade > 0
-                              ? context.uai.warning
-                              : context.uai.border,
-                          foregroundColor: quantidade > 0
-                              ? _readableOn(context.uai.warning)
-                              : context.uai.textMuted,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(
-                              context.uai.buttonRadius,
+                      if (controlaEstoque) ...[
+                        ElevatedButton.icon(
+                          onPressed: () => onRegistrarEntrada(docId, data),
+                          icon: const Icon(Icons.add, size: 18),
+                          label: const Text('Entrada'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: context.uai.success,
+                            foregroundColor: _readableOn(context.uai.success),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(
+                                context.uai.buttonRadius,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
-                    if (onExcluir != null) ...[
-                      const SizedBox(width: 8),
-                      ElevatedButton.icon(
-                        onPressed: () => _confirmarExclusao(context),
-                        icon: const Icon(Icons.delete, size: 18),
-                        label: const Text('Excluir'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: context.uai.error,
-                          foregroundColor: _readableOn(context.uai.error),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(
-                              context.uai.buttonRadius,
+                        const SizedBox(width: 8),
+                        ElevatedButton.icon(
+                          onPressed: quantidade > 0
+                              ? () => onRegistrarSaida(docId, data)
+                              : null,
+                          icon: const Icon(Icons.remove, size: 18),
+                          label: const Text('Saída'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: quantidade > 0
+                                ? context.uai.warning
+                                : context.uai.border,
+                            foregroundColor: quantidade > 0
+                                ? _readableOn(context.uai.warning)
+                                : context.uai.textMuted,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(
+                                context.uai.buttonRadius,
+                              ),
                             ),
                           ),
                         ),
-                      ),
+                      ],
+                      if (onExcluir != null) ...[
+                        const SizedBox(width: 8),
+                        ElevatedButton.icon(
+                          onPressed: () => _confirmarExclusao(context),
+                          icon: const Icon(Icons.delete, size: 18),
+                          label: const Text('Excluir'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: context.uai.error,
+                            foregroundColor: _readableOn(context.uai.error),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(
+                                context.uai.buttonRadius,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
-                ),
+                  ),
               ],
             ),
           ),

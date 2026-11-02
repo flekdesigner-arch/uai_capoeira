@@ -7,6 +7,8 @@ class RegistrarPagamentoModal extends StatefulWidget {
   final double valorTotal;
   final List<double> sugestoes;
   final bool temPatrocinio;
+  final bool permiteParcelamento;
+  final int maxParcelas;
 
   const RegistrarPagamentoModal({
     super.key,
@@ -14,6 +16,8 @@ class RegistrarPagamentoModal extends StatefulWidget {
     required this.valorTotal,
     required this.sugestoes,
     this.temPatrocinio = false,
+    this.permiteParcelamento = false,
+    this.maxParcelas = 1,
   });
 
   @override
@@ -28,58 +32,10 @@ class _RegistrarPagamentoModalState extends State<RegistrarPagamentoModal> {
         : const Color(0xFFFFFFFF);
   }
 
-  Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance())
-        .abs();
-    if (diff >= 0.26) return color;
-
-    final bgIsDark = background.computeLuminance() < 0.45;
-    final hsl = HSLColor.fromColor(color);
-
-    return hsl
-        .withLightness(bgIsDark ? 0.72 : 0.32)
-        .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
-        .toColor();
-  }
-
-  Color _onCard() => _readableOn(context.uai.card);
-  Color _onCardMuted() => _onCard().withAlpha(173);
   Color _appBarBg() =>
       Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
   Color _appBarFg() =>
       Theme.of(context).appBarTheme.foregroundColor ?? _readableOn(_appBarBg());
-
-  InputDecoration _uaiInputDecoration({
-    required String label,
-    IconData? icon,
-    String? hint,
-    String? prefixText,
-  }) {
-    final accent = _ensureVisible(context.uai.primary, context.uai.card);
-
-    return InputDecoration(
-      labelText: label,
-      hintText: hint,
-      prefixText: prefixText,
-      labelStyle: TextStyle(color: context.uai.textSecondary),
-      hintStyle: TextStyle(color: context.uai.textMuted),
-      prefixIcon: icon == null ? null : Icon(icon, color: accent),
-      filled: true,
-      fillColor: context.uai.cardAlt,
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(context.uai.buttonRadius),
-        borderSide: BorderSide(color: context.uai.border),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(context.uai.buttonRadius),
-        borderSide: BorderSide(color: context.uai.border),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(context.uai.buttonRadius),
-        borderSide: BorderSide(color: accent, width: 1.4),
-      ),
-    );
-  }
 
   final _formKey = GlobalKey<FormState>();
   final _valorController = TextEditingController();
@@ -163,9 +119,7 @@ class _RegistrarPagamentoModalState extends State<RegistrarPagamentoModal> {
                   decoration: BoxDecoration(
                     color: context.uai.info.withAlpha(20),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: context.uai.info.withAlpha(61),
-                    ),
+                    border: Border.all(color: context.uai.info.withAlpha(61)),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -358,22 +312,29 @@ class _RegistrarPagamentoModalState extends State<RegistrarPagamentoModal> {
                         filled: true,
                         fillColor: context.uai.cardAlt,
                       ),
-                      items: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((
-                        parcela,
-                      ) {
-                        final valorParcela =
-                            (double.tryParse(
-                                  _valorController.text.replaceAll(',', '.'),
-                                ) ??
-                                0) /
-                            parcela;
-                        return DropdownMenuItem(
-                          value: parcela,
-                          child: Text(
-                            '$parcela x ${_formatarMoeda(valorParcela)}',
-                          ),
-                        );
-                      }).toList(),
+                      items:
+                          List<int>.generate(
+                            widget.permiteParcelamento
+                                ? widget.maxParcelas.clamp(1, 36).toInt()
+                                : 1,
+                            (index) => index + 1,
+                          ).map((parcela) {
+                            final valorParcela =
+                                (double.tryParse(
+                                      _valorController.text.replaceAll(
+                                        ',',
+                                        '.',
+                                      ),
+                                    ) ??
+                                    0) /
+                                parcela;
+                            return DropdownMenuItem(
+                              value: parcela,
+                              child: Text(
+                                '$parcela x ${_formatarMoeda(valorParcela)}',
+                              ),
+                            );
+                          }).toList(),
                       onChanged: (value) {
                         setState(() {
                           _parcelas = value ?? 1;

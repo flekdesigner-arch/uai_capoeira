@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/widgets.dart';
 
@@ -15,17 +14,14 @@ class GeradorCertificadoEventoService {
   final CertificadoExportService _exportService;
   final CertificadoEventoMapperService _mapperService;
   final FirebaseStorage _storage;
-  final FirebaseFirestore _firestore;
 
   GeradorCertificadoEventoService({
     CertificadoExportService? exportService,
     CertificadoEventoMapperService? mapperService,
     FirebaseStorage? storage,
-    FirebaseFirestore? firestore,
   }) : _exportService = exportService ?? const CertificadoExportService(),
        _mapperService = mapperService ?? CertificadoEventoMapperService(),
-       _storage = storage ?? FirebaseStorage.instance,
-       _firestore = firestore ?? FirebaseFirestore.instance;
+       _storage = storage ?? FirebaseStorage.instance;
 
   Future<Uint8List> capturarPngDaPreview(
     GlobalKey repaintKey, {

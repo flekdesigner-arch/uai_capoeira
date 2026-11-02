@@ -1,8 +1,11 @@
 import 'dart:typed_data';
 
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:uai_capoeira/modules/usuarios/services/usuario_identidade_service.dart';
 
 import 'package:uai_capoeira/core/permissions/permission_access_guard.dart';
 import 'package:uai_capoeira/core/permissions/permissao_service.dart';
@@ -78,6 +81,16 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
   DateTime? _dataLimitePrimeiraParcela;
 
   bool _temCamisa = false;
+  bool _temControleGastos = false;
+  bool _temPatrocinadores = false;
+  bool _auditoriaVisivelGestores = false;
+  bool _temRelatorioFinanceiro = false;
+  bool _temCobrancaInscricao = false;
+  bool _linksHabilitados = false;
+  // Seções expansíveis inspiradas na edição de alunos.
+  String? _secaoEventoAberta;
+  Set<String> _gestoresSelecionados = {};
+  bool _gestoresPersonalizados = false;
 
   // Compatibilidade antiga: continua existindo como valor padrão da camisa.
   // Na prática, ele será sincronizado com o valor de MANGA.
@@ -392,11 +405,6 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
     _valorCamisa = manga;
   }
 
-  double _valorPorTipoCamisa(String tipo) {
-    final clean = _normalizarTipoCamisa(tipo);
-    return _valoresPorTipoCamisa[clean] ?? _valorCamisa;
-  }
-
   Future<void> _verificarPermissoes() async {
     if (mounted) {
       setState(() => _carregandoPermissoes = true);
@@ -450,32 +458,6 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
     _showSnack(mensagem, type: _SnackType.error);
   }
 
-  Future<void> _irParaSecao(GlobalKey key) async {
-    final contextSecao = key.currentContext;
-    if (contextSecao == null) return;
-
-    await Scrollable.ensureVisible(
-      contextSecao,
-      duration: const Duration(milliseconds: 420),
-      curve: Curves.easeOutCubic,
-      alignment: 0.04,
-    );
-  }
-
-  String _modeloCertificadoLabel() {
-    switch (_configCertificado.modeloPadrao) {
-      case 'CERTIFICADO':
-        return 'Certificado simples';
-      case 'CERTIFICADOCOMCPF':
-        return 'Certificado com CPF';
-      case 'DIPLOMA':
-        return 'Diploma';
-      case ConfiguracoesCertificadoEvento.modeloAutomatico:
-      default:
-        return 'Auto por graduação';
-    }
-  }
-
   void _preencherFormulario() {
     final e = widget.evento!;
 
@@ -502,6 +484,14 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
     _dataLimitePrimeiraParcela = e.dataLimitePrimeiraParcela;
 
     _temCamisa = e.temCamisa;
+    _temControleGastos = e.temControleGastos;
+    _temPatrocinadores = e.temPatrocinadores;
+    _temRelatorioFinanceiro = e.temRelatorioFinanceiro;
+    _auditoriaVisivelGestores = e.auditoriaVisivelGestores;
+    _temCobrancaInscricao = e.temCobrancaInscricao;
+    _linksHabilitados = e.linksHabilitados;
+    _gestoresPersonalizados = e.gestoresAutorizadosUids != null;
+    _gestoresSelecionados = {...?e.gestoresAutorizadosUids};
     _valorCamisa = e.valorCamisa ?? 0;
     _valoresPorTipoCamisa = _normalizarValoresPorTipoCamisa(
       e.valoresPorTipoCamisa,
@@ -1413,249 +1403,6 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
     );
   }
 
-  Widget _buildSectionNavigator() {
-    final t = context.uai;
-
-    final itens = [
-      _SectionShortcut(
-        keyRef: _dadosKey,
-        icon: Icons.event_rounded,
-        label: 'Dados',
-        subtitle: _tipoController.text.trim().isEmpty
-            ? 'Tipo pendente'
-            : _tipoController.text.trim(),
-        color: t.primary,
-        ativo: _nomeController.text.trim().isNotEmpty,
-      ),
-      _SectionShortcut(
-        keyRef: _bannerKey,
-        icon: Icons.image_rounded,
-        label: 'Banner',
-        subtitle: _bannerBytes != null || _bannerUrl != null
-            ? 'Imagem definida'
-            : 'Sem imagem',
-        color: t.info,
-        ativo: _bannerBytes != null || _bannerUrl != null,
-      ),
-      _SectionShortcut(
-        keyRef: _financeiroKey,
-        icon: Icons.payments_rounded,
-        label: 'Taxas',
-        subtitle: _valorInscricao > 0
-            ? 'R\$ ${_valorInscricao.toStringAsFixed(2).replaceAll('.', ',')}'
-            : 'Gratuito',
-        color: t.success,
-        ativo: _valorInscricao > 0,
-      ),
-      _SectionShortcut(
-        keyRef: _camisaKey,
-        icon: Icons.checkroom_rounded,
-        label: 'Camisa',
-        subtitle: _temCamisa
-            ? '${_tamanhosSelecionados.length} tam. • '
-                  '${_modelagensCamisaSelecionadas.length} mod. • '
-                  '${_tiposCamisaSelecionados.length} tipo(s)'
-            : 'Desativada',
-        color: t.warning,
-        ativo: _temCamisa,
-      ),
-      _SectionShortcut(
-        keyRef: _certificadoKey,
-        icon: Icons.workspace_premium_rounded,
-        label: 'Certificado',
-        subtitle: _temCertificado ? _modeloCertificadoLabel() : 'Desativado',
-        color: t.success,
-        ativo: _temCertificado,
-      ),
-      _SectionShortcut(
-        keyRef: _webKey,
-        icon: Icons.public_rounded,
-        label: 'Web',
-        subtitle: _mostrarNoPortfolioWeb ? 'Visível no site' : 'Oculto',
-        color: t.info,
-        ativo: _mostrarNoPortfolioWeb,
-      ),
-      _SectionShortcut(
-        keyRef: _linksKey,
-        icon: Icons.link_rounded,
-        label: 'Links',
-        subtitle:
-            _linkFotosController.text.trim().isNotEmpty ||
-                _linkPreviaController.text.trim().isNotEmpty ||
-                _linkPlaylistController.text.trim().isNotEmpty
-            ? 'Preenchidos'
-            : 'Opcional',
-        color: t.associacao,
-        ativo:
-            _linkFotosController.text.trim().isNotEmpty ||
-            _linkPreviaController.text.trim().isNotEmpty ||
-            _linkPlaylistController.text.trim().isNotEmpty,
-      ),
-    ];
-
-    return _sectionCard(
-      icon: Icons.dashboard_customize_rounded,
-      title: 'Painel rápido',
-      subtitle: 'Toque em uma seção para ir direto ao ponto.',
-      color: t.primary,
-      dense: true,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final itemWidth = constraints.maxWidth < 520
-              ? (constraints.maxWidth - 10) / 2
-              : constraints.maxWidth < 760
-              ? (constraints.maxWidth - 20) / 3
-              : (constraints.maxWidth - 30) / 4;
-
-          return Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: itens.map((item) {
-              return SizedBox(
-                width: itemWidth.clamp(150.0, 230.0),
-                child: _sectionShortcutCard(item),
-              );
-            }).toList(),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _sectionShortcutCard(_SectionShortcut item) {
-    final t = context.uai;
-    final accent = _ensureVisible(item.color, t.cardAlt);
-
-    return Material(
-      color: item.ativo
-          ? Color.alphaBlend(accent.withAlpha(26), t.cardAlt)
-          : t.cardAlt,
-      borderRadius: BorderRadius.circular(t.inputRadius),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => _irParaSecao(item.keyRef),
-        child: Container(
-          padding: const EdgeInsets.all(11),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(t.inputRadius),
-            border: Border.all(
-              color: item.ativo ? accent.withAlpha(66) : t.border,
-            ),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: accent.withAlpha(31),
-                  borderRadius: BorderRadius.circular(t.buttonRadius),
-                ),
-                child: Icon(item.icon, color: accent, size: 18),
-              ),
-              const SizedBox(width: 9),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      item.label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: t.textPrimary,
-                        fontWeight: FontWeight.w900,
-                        fontSize: 12.5,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      item.subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: item.ativo ? accent : t.textSecondary,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 10.5,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPermissaoEventoCard() {
-    final t = context.uai;
-
-    if (_carregandoPermissoes) {
-      return _sectionCard(
-        icon: Icons.security_rounded,
-        title: 'Permissões',
-        subtitle: 'Conferindo permissões do evento...',
-        color: t.info,
-        child: Row(
-          children: [
-            SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: t.primary,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                'Conferindo permissões do evento...',
-                style: TextStyle(
-                  color: t.textSecondary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    final liberado = _podeSalvarEvento;
-    final color = liberado ? t.success : t.warning;
-
-    return _sectionCard(
-      icon: liberado ? Icons.check_circle_rounded : Icons.lock_outline_rounded,
-      title: 'Permissões',
-      subtitle: liberado
-          ? (_modoEdicao
-                ? 'Permissão liberada para editar este evento.'
-                : 'Permissão liberada para criar evento.')
-          : (_modoEdicao
-                ? 'Você pode visualizar, mas não tem permissão para editar este evento.'
-                : 'Você não tem permissão para criar eventos.'),
-      color: color,
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: OutlinedButton.icon(
-          onPressed: _verificarPermissoes,
-          icon: const Icon(Icons.refresh_rounded, size: 16),
-          label: const Text('Recarregar'),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: _ensureVisible(t.primary, t.card),
-            side: BorderSide(color: t.border),
-            visualDensity: VisualDensity.compact,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(t.buttonRadius),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildSemAcessoEvento() {
     final t = context.uai;
     final warning = _ensureVisible(t.warning, t.card);
@@ -1739,9 +1486,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
     );
 
     return Material(
-      color: value
-          ? Color.alphaBlend(accent.withAlpha(20), t.card)
-          : t.card,
+      color: value ? Color.alphaBlend(accent.withAlpha(20), t.card) : t.card,
       borderRadius: BorderRadius.circular(t.inputRadius),
       clipBehavior: Clip.antiAlias,
       child: Container(
@@ -1845,9 +1590,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: (_temCertificado ? success : warning).withAlpha(
-                    28,
-                  ),
+                  color: (_temCertificado ? success : warning).withAlpha(28),
                   borderRadius: BorderRadius.circular(t.buttonRadius),
                 ),
                 child: Icon(
@@ -2036,6 +1779,425 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
     );
   }
 
+  String _nomeGestor(Map<String, dynamic> data) {
+    for (final campo in ['nome_completo', 'nome', 'name', 'displayName']) {
+      final valor = (data[campo] ?? '').toString().trim();
+      if (valor.isNotEmpty) return valor;
+    }
+    return (data['email'] ?? 'Usuário sem nome').toString();
+  }
+
+  String? _fotoGestor(Map<String, dynamic> data) {
+    for (final campo in [
+      'foto_url',
+      'fotoUrl',
+      'photoURL',
+      'photoUrl',
+      'url_foto',
+      'imagem_url',
+      'imagemUrl',
+      'foto_perfil',
+      'foto_perfil_url',
+      'fotoPerfilUrl',
+      'foto_perfil_aluno',
+      'avatar',
+      'avatar_url',
+    ]) {
+      final valor = (data[campo] ?? '').toString().trim();
+      if (valor.startsWith('https://') || valor.startsWith('http://')) {
+        return valor;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _configurarGestoresEvento() async {
+    if (!await _permissaoService.usuarioAtualEhAdmin()) {
+      if (mounted) {
+        _showSnack(
+          'Somente administradores podem definir gestores por evento.',
+          type: _SnackType.error,
+        );
+      }
+      return;
+    }
+    try {
+      final usuarios = await FirebaseFirestore.instance
+          .collection('usuarios')
+          .get();
+      if (!mounted) return;
+      // Mesma identidade da tela Gerenciar Usuários, mas só contas de gestão.
+      // Nunca listar identidades que são apenas da Área do Aluno.
+      final itens =
+          usuarios.docs.where((doc) {
+            final data = doc.data();
+            return UsuarioIdentidadeService.deveExibirNaGestao(data) &&
+                UsuarioIdentidadeService.temAcessoGestao(data) &&
+                (data['status_conta'] ?? '').toString().toLowerCase() !=
+                    'bloqueada' &&
+                (data['status_conta'] ?? '').toString().toLowerCase() !=
+                    'inativa';
+          }).toList()..sort(
+            (a, b) => _nomeGestor(
+              a.data(),
+            ).toLowerCase().compareTo(_nomeGestor(b.data()).toLowerCase()),
+          );
+      final selecionados = {..._gestoresSelecionados};
+      var personalizado = _gestoresPersonalizados;
+      var busca = '';
+      final resultado = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (dialogContext, atualizar) {
+            final filtrados = itens.where((doc) {
+              final data = doc.data();
+              return _nomeGestor(data).toLowerCase().contains(busca) ||
+                  (data['email'] ?? '').toString().toLowerCase().contains(
+                    busca,
+                  ) ||
+                  (data['tipo'] ?? '').toString().toLowerCase().contains(busca);
+            }).toList();
+            return Dialog(
+              insetPadding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 24,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(22),
+              ),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxWidth: 500,
+                  maxHeight: 620,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          const CircleAvatar(
+                            backgroundColor: Color(0xFFFCE8E8),
+                            child: Icon(
+                              Icons.admin_panel_settings_rounded,
+                              color: Color(0xFFBD1E1E),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Acesso à gestão',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                Text(
+                                  'Escolha quem poderá gerenciar este evento',
+                                  style: TextStyle(fontSize: 11),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: 'Fechar',
+                            onPressed: () =>
+                                Navigator.pop(dialogContext, false),
+                            icon: const Icon(Icons.close_rounded),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Theme.of(
+                            dialogContext,
+                          ).colorScheme.surfaceContainerLow,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: SwitchListTile.adaptive(
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                          ),
+                          title: const Text(
+                            'Restringir gestores',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 13,
+                            ),
+                          ),
+                          subtitle: Text(
+                            personalizado
+                                ? 'Somente selecionados e administradores podem gerir.'
+                                : 'Permissões gerais continuam valendo.',
+                            style: const TextStyle(fontSize: 11),
+                          ),
+                          value: personalizado,
+                          onChanged: (v) => atualizar(() => personalizado = v),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      if (personalizado) ...[
+                        TextField(
+                          decoration: InputDecoration(
+                            prefixIcon: const Icon(Icons.search_rounded),
+                            hintText: 'Buscar nome, e-mail ou função',
+                            isDense: true,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                          onChanged: (v) =>
+                              atualizar(() => busca = v.trim().toLowerCase()),
+                        ),
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            '${selecionados.length} selecionado(s) · ${filtrados.length} usuário(s) de gestão',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                      ],
+                      Flexible(
+                        child: personalizado
+                            ? filtrados.isEmpty
+                                  ? const Center(
+                                      child: Padding(
+                                        padding: EdgeInsets.all(20),
+                                        child: Text(
+                                          'Nenhum usuário de gestão encontrado.',
+                                        ),
+                                      ),
+                                    )
+                                  : ListView.separated(
+                                      shrinkWrap: true,
+                                      itemCount: filtrados.length,
+                                      separatorBuilder: (_, _) =>
+                                          const SizedBox(height: 7),
+                                      itemBuilder: (context, index) {
+                                        final doc = filtrados[index];
+                                        final data = doc.data();
+                                        final nome = _nomeGestor(data);
+                                        final foto = _fotoGestor(data);
+                                        final selecionado = selecionados
+                                            .contains(doc.id);
+                                        final email = (data['email'] ?? '')
+                                            .toString();
+                                        final tipo = (data['tipo'] ?? 'Gestão')
+                                            .toString()
+                                            .toUpperCase();
+                                        return Material(
+                                          color: selecionado
+                                              ? const Color(0xFFFFF0F0)
+                                              : Theme.of(
+                                                  context,
+                                                ).colorScheme.surface,
+                                          borderRadius: BorderRadius.circular(
+                                            14,
+                                          ),
+                                          child: InkWell(
+                                            borderRadius: BorderRadius.circular(
+                                              14,
+                                            ),
+                                            onTap: () => atualizar(() {
+                                              if (selecionado) {
+                                                selecionados.remove(doc.id);
+                                              } else {
+                                                selecionados.add(doc.id);
+                                              }
+                                            }),
+                                            child: Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 9,
+                                                    vertical: 10,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                borderRadius:
+                                                    BorderRadius.circular(14),
+                                                border: Border.all(
+                                                  color: selecionado
+                                                      ? const Color(0xFFCB2424)
+                                                      : Theme.of(context)
+                                                            .dividerColor
+                                                            .withAlpha(90),
+                                                ),
+                                              ),
+                                              child: Row(
+                                                children: [
+                                                  CircleAvatar(
+                                                    radius: 20,
+                                                    backgroundColor:
+                                                        const Color(0xFFF4E4E4),
+                                                    backgroundImage:
+                                                        foto == null
+                                                        ? null
+                                                        : CachedNetworkImageProvider(
+                                                            foto,
+                                                          ),
+                                                    child: foto != null
+                                                        ? null
+                                                        : Text(
+                                                            nome.isNotEmpty
+                                                                ? nome[0]
+                                                                      .toUpperCase()
+                                                                : '?',
+                                                            style:
+                                                                const TextStyle(
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .bold,
+                                                                  color: Color(
+                                                                    0xFFAD2020,
+                                                                  ),
+                                                                ),
+                                                          ),
+                                                  ),
+                                                  const SizedBox(width: 9),
+                                                  Expanded(
+                                                    child: Column(
+                                                      crossAxisAlignment:
+                                                          CrossAxisAlignment
+                                                              .start,
+                                                      children: [
+                                                        Text(
+                                                          nome,
+                                                          maxLines: 1,
+                                                          overflow: TextOverflow
+                                                              .ellipsis,
+                                                          style:
+                                                              const TextStyle(
+                                                                fontSize: 12,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w800,
+                                                              ),
+                                                        ),
+                                                        Text(
+                                                          email,
+                                                          maxLines: 1,
+                                                          overflow: TextOverflow
+                                                              .ellipsis,
+                                                          style:
+                                                              const TextStyle(
+                                                                fontSize: 10,
+                                                              ),
+                                                        ),
+                                                        Text(
+                                                          tipo,
+                                                          style:
+                                                              const TextStyle(
+                                                                fontSize: 9,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w700,
+                                                                color: Color(
+                                                                  0xFFC12424,
+                                                                ),
+                                                              ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                  Checkbox(
+                                                    value: selecionado,
+                                                    activeColor: const Color(
+                                                      0xFFBB1D1D,
+                                                    ),
+                                                    onChanged: (v) =>
+                                                        atualizar(() {
+                                                          if (v == true) {
+                                                            selecionados.add(
+                                                              doc.id,
+                                                            );
+                                                          } else {
+                                                            selecionados.remove(
+                                                              doc.id,
+                                                            );
+                                                          }
+                                                        }),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    )
+                            : const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 14),
+                                child: Text(
+                                  'Todos os usuários com permissão geral poderão acessar.',
+                                ),
+                              ),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () =>
+                                  Navigator.pop(dialogContext, false),
+                              child: const Text('CANCELAR'),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: FilledButton(
+                              onPressed: () =>
+                                  Navigator.pop(dialogContext, true),
+                              child: const Text('CONFIRMAR'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      );
+      if (resultado == true && mounted) {
+        setState(() {
+          _gestoresPersonalizados = personalizado;
+          _gestoresSelecionados = selecionados;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        _showSnack(
+          'Não foi possível carregar os usuários: $e',
+          type: _SnackType.error,
+        );
+      }
+    }
+  }
+
+  Widget _seletorGestoresEvento() => Card(
+    child: ListTile(
+      leading: const Icon(Icons.admin_panel_settings_outlined),
+      title: const Text('Gestores autorizados'),
+      subtitle: Text(
+        _gestoresPersonalizados
+            ? '${_gestoresSelecionados.length} usuário(s) selecionado(s) · sujeito às permissões individuais'
+            : 'Permissões gerais (compatibilidade com eventos existentes)',
+      ),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: _configurarGestoresEvento,
+    ),
+  );
+
   Future<void> _salvar() async {
     final permitido = await _accessGuard.revalidate(
       context,
@@ -2079,11 +2241,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
       final tipo = _tipoController.text;
       final alteraGraduacao =
           tipo.contains('BATIZADO') || tipo.contains('CAMPEONATO');
-      final geraCertificado =
-          tipo.contains('BATIZADO') ||
-          tipo.contains('CAMPEONATO') ||
-          tipo.contains('AULÃO') ||
-          _temCertificado;
+      final geraCertificado = _temCertificado;
 
       final bool bannerFoiRemovido =
           widget.evento?.linkBanner != null &&
@@ -2148,15 +2306,22 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
         maxParcelas: _maxParcelas,
         descontoAVista: _descontoAVista,
         dataLimitePrimeiraParcela: _dataLimitePrimeiraParcela,
+        temControleGastos: _temControleGastos,
+        temPatrocinadores: _temPatrocinadores,
+        temRelatorioFinanceiro: _temRelatorioFinanceiro,
+        auditoriaVisivelGestores: _auditoriaVisivelGestores,
+        temCobrancaInscricao: _temCobrancaInscricao,
+        linksHabilitados: _linksHabilitados,
+        gestoresAutorizadosUids: _gestoresPersonalizados
+            ? _gestoresSelecionados.toList()
+            : null,
         temCamisa: _temCamisa,
-        valorCamisa: _temCamisa ? _valorCamisa : null,
-        valoresPorTipoCamisa: _temCamisa ? _valoresPorTipoCamisa : const {},
-        tamanhosDisponiveis: _temCamisa ? _tamanhosSelecionados : [],
-        modelagensCamisaDisponiveis: _temCamisa
-            ? _modelagensCamisaSelecionadas
-            : [],
-        tiposCamisaDisponiveis: _temCamisa ? _tiposCamisaSelecionados : [],
-        camisaObrigatoria: _temCamisa ? _camisaObrigatoria : false,
+        valorCamisa: _valorCamisa,
+        valoresPorTipoCamisa: _valoresPorTipoCamisa,
+        tamanhosDisponiveis: _tamanhosSelecionados,
+        modelagensCamisaDisponiveis: _modelagensCamisaSelecionadas,
+        tiposCamisaDisponiveis: _tiposCamisaSelecionados,
+        camisaObrigatoria: _camisaObrigatoria,
         alteraGraduacao: alteraGraduacao,
         geraCertificado: geraCertificado,
         tipoPublico: 'todos',
@@ -2174,9 +2339,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
             ? _linkPlaylistController.text.trim()
             : null,
         temCertificado: _temCertificado,
-        configuracoesCertificado: _temCertificado
-            ? _configCertificado.toMap()
-            : null,
+        configuracoesCertificado: _configCertificado.toMap(),
         modeloCertificadoId: _temCertificado
             ? _configCertificado.modeloPadrao
             : null,
@@ -2484,6 +2647,61 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
     );
   }
 
+  List<Widget> _orderedEventSections(List<Widget> children) {
+    final active = <Widget>[];
+    final inactive = <Widget>[];
+    final fixed = <Widget>[];
+    final admin = <Widget>[];
+    for (final child in children) {
+      if (child is SizedBox) continue;
+      final key = child.key;
+      bool? enabled;
+      if (key == _financeiroKey) enabled = _temCobrancaInscricao;
+      if (key == const ValueKey('Módulos financeiros do evento')) {
+        enabled =
+            _temControleGastos || _temPatrocinadores || _temRelatorioFinanceiro;
+      }
+      if (key == _camisaKey) enabled = _temCamisa;
+      if (key == _certificadoKey) enabled = _temCertificado;
+      if (key == _webKey) enabled = _mostrarNoPortfolioWeb;
+      if (key == _linksKey) enabled = _linksHabilitados;
+      if (key == const ValueKey('Auditoria do evento')) {
+        enabled = _auditoriaVisivelGestores;
+      }
+      if (key == const ValueKey('gestores')) {
+        admin.add(child);
+      } else if (enabled == true) {
+        active.add(child);
+      } else if (enabled == false) {
+        inactive.add(child);
+      } else {
+        fixed.add(child);
+      }
+    }
+    Widget heading(String text) => Padding(
+      key: ValueKey('grupo_$text'),
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: context.uai.textSecondary,
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 1,
+        ),
+      ),
+    );
+    return [
+      for (final child in fixed) ...[child, const SizedBox(height: 14)],
+      if (active.isNotEmpty) heading('SEÇÕES ATIVAS'),
+      for (final child in active) ...[child, const SizedBox(height: 14)],
+      if (inactive.isNotEmpty) heading('SEÇÕES DESATIVADAS'),
+      for (final child in inactive) ...[child, const SizedBox(height: 14)],
+      if (admin.isNotEmpty) heading('ADMINISTRAÇÃO'),
+      ...admin,
+    ];
+  }
+
   Widget _sectionCard({
     Key? sectionKey,
     required IconData icon,
@@ -2492,12 +2710,15 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
     required Color color,
     required Widget child,
     bool dense = false,
+    bool expandable = true,
+    bool enabled = true,
   }) {
     final t = context.uai;
-    final accent = _ensureVisible(color, t.card);
+    final accent = enabled ? _ensureVisible(color, t.card) : t.textMuted;
+    final aberta = !expandable || _secaoEventoAberta == title;
 
     return KeyedSubtree(
-      key: sectionKey,
+      key: sectionKey ?? ValueKey(title),
       child: Material(
         color: t.card,
         borderRadius: BorderRadius.circular(t.cardRadius),
@@ -2513,14 +2734,43 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _sectionHeader(
-                icon: icon,
-                title: title,
-                subtitle: subtitle,
-                color: accent,
+              InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: expandable
+                    ? () => setState(
+                        () => _secaoEventoAberta = aberta ? null : title,
+                      )
+                    : null,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _sectionHeader(
+                        icon: enabled ? icon : Icons.tune_rounded,
+                        title: title,
+                        subtitle: enabled ? subtitle : "$subtitle • desativado",
+                        color: accent,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    if (expandable)
+                      Icon(
+                        aberta
+                            ? Icons.keyboard_arrow_up_rounded
+                            : Icons.keyboard_arrow_down_rounded,
+                        color: t.textSecondary,
+                      ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 14),
-              child,
+              // Mantém os controles vivos: recolher não descarta alterações.
+              Visibility(
+                visible: aberta,
+                maintainState: true,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 14),
+                  child: child,
+                ),
+              ),
             ],
           ),
         ),
@@ -2701,7 +2951,9 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
   Future<void> _abrirAjusteBanner() async {
     final ImageProvider? provider = _bannerBytes != null
         ? MemoryImage(_bannerBytes!)
-        : (_bannerUrl != null && _bannerUrl!.trim().isNotEmpty ? NetworkImage(_bannerUrl!) : null);
+        : (_bannerUrl != null && _bannerUrl!.trim().isNotEmpty
+              ? NetworkImage(_bannerUrl!)
+              : null);
     if (provider == null) {
       _mostrarOpcoesImagem();
       return;
@@ -2724,7 +2976,9 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
 
   Widget _buildBannerPreview() {
     final t = context.uai;
-    final hasBanner = _bannerBytes != null || (_bannerUrl != null && _bannerUrl!.trim().isNotEmpty);
+    final hasBanner =
+        _bannerBytes != null ||
+        (_bannerUrl != null && _bannerUrl!.trim().isNotEmpty);
 
     return Material(
       color: t.cardAlt,
@@ -2747,13 +3001,23 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                   ClipRect(
                     child: Transform.scale(
                       scale: _portfolioCoverScale.clamp(1.0, 2.5).toDouble(),
-                      alignment: Alignment(_portfolioCoverPositionX, _portfolioCoverPositionY),
+                      alignment: Alignment(
+                        _portfolioCoverPositionX,
+                        _portfolioCoverPositionY,
+                      ),
                       child: Image.memory(
                         _bannerBytes!,
                         fit: BoxFit.cover,
-                        alignment: Alignment(_portfolioCoverPositionX, _portfolioCoverPositionY),
+                        alignment: Alignment(
+                          _portfolioCoverPositionX,
+                          _portfolioCoverPositionY,
+                        ),
                         gaplessPlayback: true,
-                        errorBuilder: (context, error, stack) => _bannerFallback(icon: Icons.broken_image_rounded, text: 'Erro ao carregar imagem'),
+                        errorBuilder: (context, error, stack) =>
+                            _bannerFallback(
+                              icon: Icons.broken_image_rounded,
+                              text: 'Erro ao carregar imagem',
+                            ),
                       ),
                     ),
                   )
@@ -2763,23 +3027,46 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                     positionX: _portfolioCoverPositionX,
                     positionY: _portfolioCoverPositionY,
                     scale: _portfolioCoverScale,
-                    placeholder: _bannerFallback(icon: Icons.broken_image_rounded, text: 'Erro ao carregar imagem'),
+                    placeholder: _bannerFallback(
+                      icon: Icons.broken_image_rounded,
+                      text: 'Erro ao carregar imagem',
+                    ),
                   )
                 else
-                  _bannerFallback(icon: Icons.add_photo_alternate_rounded, text: 'Toque para adicionar um banner'),
+                  _bannerFallback(
+                    icon: Icons.add_photo_alternate_rounded,
+                    text: 'Toque para adicionar um banner',
+                  ),
                 if (hasBanner)
                   Positioned(
                     left: 10,
                     bottom: 10,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                      decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(99)),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 7,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(99),
+                      ),
                       child: const Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.crop_free_rounded, color: Colors.white, size: 15),
+                          Icon(
+                            Icons.crop_free_rounded,
+                            color: Colors.white,
+                            size: 15,
+                          ),
                           SizedBox(width: 5),
-                          Text('Toque para ajustar a capa', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800)),
+                          Text(
+                            'Toque para ajustar a capa',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -2807,10 +3094,11 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
     );
   }
 
-
   Widget _buildPortfolioBannerFramingEditor() {
     final t = context.uai;
-    final hasBanner = _bannerBytes != null || (_bannerUrl != null && _bannerUrl!.trim().isNotEmpty);
+    final hasBanner =
+        _bannerBytes != null ||
+        (_bannerUrl != null && _bannerUrl!.trim().isNotEmpty);
     if (!hasBanner) return const SizedBox.shrink();
 
     return Padding(
@@ -2828,9 +3116,18 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
             final info = Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Enquadramento do portfólio', style: TextStyle(color: t.textPrimary, fontWeight: FontWeight.w900)),
+                Text(
+                  'Enquadramento do portfólio',
+                  style: TextStyle(
+                    color: t.textPrimary,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
                 const SizedBox(height: 3),
-                Text('O mesmo recorte 16:9 será usado na timeline e nos cards.', style: TextStyle(color: t.textMuted, fontSize: 12)),
+                Text(
+                  'O mesmo recorte 16:9 será usado na timeline e nos cards.',
+                  style: TextStyle(color: t.textMuted, fontSize: 12),
+                ),
               ],
             );
             final action = FilledButton.tonalIcon(
@@ -2839,8 +3136,17 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
               label: const Text('AJUSTAR CAPA'),
             );
             return narrow
-                ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [info, const SizedBox(height: 10), action])
-                : Row(children: [Expanded(child: info), const SizedBox(width: 12), action]);
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [info, const SizedBox(height: 10), action],
+                  )
+                : Row(
+                    children: [
+                      Expanded(child: info),
+                      const SizedBox(width: 12),
+                      action,
+                    ],
+                  );
           },
         ),
       ),
@@ -3027,12 +3333,8 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                       constraints: const BoxConstraints(maxWidth: 980),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
+                        children: _orderedEventSections([
                           _buildHero(),
-                          const SizedBox(height: 14),
-                          _buildPermissaoEventoCard(),
-                          const SizedBox(height: 14),
-                          _buildSectionNavigator(),
                           const SizedBox(height: 14),
                           _sectionCard(
                             sectionKey: _dadosKey,
@@ -3213,63 +3515,139 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                             title: 'Configurações de Taxa',
                             subtitle: 'Valor, parcelamento e desconto à vista.',
                             color: t.success,
+                            enabled: _temCobrancaInscricao,
                             child: Column(
                               children: [
-                                _numberField(
-                                  label: 'Valor da inscrição (R\$)',
-                                  icon: Icons.attach_money_rounded,
-                                  initialValue: _valorInscricao,
-                                  obrigatorio: true,
-                                  onChanged: (value) {
-                                    _valorInscricao =
-                                        double.tryParse(value) ?? 0;
-                                  },
-                                ),
-                                const SizedBox(height: 12),
                                 _buildToggleCard(
-                                  value: _permiteParcelamento,
-                                  icon: Icons.receipt_long_rounded,
-                                  title: 'Permite parcelamento?',
-                                  activeText: 'O evento permite parcelamento.',
+                                  value: _temCobrancaInscricao,
+                                  icon: Icons.payments_rounded,
+                                  title: 'Cobrança de inscrições',
+                                  activeText:
+                                      'Inscrições com cobrança habilitada.',
                                   inactiveText:
-                                      'O evento não permite parcelamento.',
+                                      'Participação sem cobrança de inscrição.',
                                   activeColor: t.success,
-                                  onChanged: (value) {
-                                    setState(() {
-                                      _permiteParcelamento = value;
-                                    });
-                                  },
+                                  onChanged: (value) => setState(
+                                    () => _temCobrancaInscricao = value,
+                                  ),
                                 ),
-                                if (_permiteParcelamento) ...[
-                                  const SizedBox(height: 8),
+                                if (_temCobrancaInscricao) ...[
+                                  const SizedBox(height: 12),
                                   _numberField(
-                                    label: 'Máximo de parcelas',
-                                    icon: Icons.format_list_numbered_rounded,
-                                    initialValue: _maxParcelas,
+                                    label: 'Valor da inscrição (R\$)',
+                                    icon: Icons.attach_money_rounded,
+                                    initialValue: _valorInscricao,
+                                    obrigatorio: _temCobrancaInscricao,
                                     onChanged: (value) {
-                                      _maxParcelas = int.tryParse(value) ?? 1;
+                                      _valorInscricao =
+                                          double.tryParse(value) ?? 0;
                                     },
                                   ),
                                   const SizedBox(height: 12),
+                                  _buildToggleCard(
+                                    value: _permiteParcelamento,
+                                    icon: Icons.receipt_long_rounded,
+                                    title: 'Permite parcelamento?',
+                                    activeText:
+                                        'O evento permite parcelamento.',
+                                    inactiveText:
+                                        'O evento não permite parcelamento.',
+                                    activeColor: t.success,
+                                    onChanged: (value) {
+                                      setState(() {
+                                        _permiteParcelamento = value;
+                                      });
+                                    },
+                                  ),
+                                  if (_permiteParcelamento) ...[
+                                    const SizedBox(height: 8),
+                                    _numberField(
+                                      label: 'Máximo de parcelas',
+                                      icon: Icons.format_list_numbered_rounded,
+                                      initialValue: _maxParcelas,
+                                      onChanged: (value) {
+                                        _maxParcelas = int.tryParse(value) ?? 1;
+                                      },
+                                    ),
+                                    const SizedBox(height: 12),
+                                  ],
+                                  _numberField(
+                                    label: 'Desconto à vista',
+                                    icon: Icons.percent_rounded,
+                                    suffixText: '%',
+                                    initialValue: _descontoAVista,
+                                    onChanged: (value) {
+                                      _descontoAVista =
+                                          int.tryParse(value) ?? 0;
+                                    },
+                                  ),
+                                  const SizedBox(height: 12),
+                                  _buildDateField(
+                                    label: 'Data limite 1ª parcela',
+                                    emptyText: 'Não definido',
+                                    value: _dataLimitePrimeiraParcela == null
+                                        ? ''
+                                        : '${_dataLimitePrimeiraParcela!.day}/${_dataLimitePrimeiraParcela!.month}/${_dataLimitePrimeiraParcela!.year}',
+                                    enabled: _permiteParcelamento,
+                                    onTap: _selecionarDataLimite,
+                                  ),
                                 ],
-                                _numberField(
-                                  label: 'Desconto à vista',
-                                  icon: Icons.percent_rounded,
-                                  suffixText: '%',
-                                  initialValue: _descontoAVista,
-                                  onChanged: (value) {
-                                    _descontoAVista = int.tryParse(value) ?? 0;
-                                  },
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          _sectionCard(
+                            icon: Icons.tune_rounded,
+                            title: 'Módulos financeiros do evento',
+                            subtitle:
+                                'Habilite apenas os controles utilizados neste evento.',
+                            color: t.success,
+                            enabled:
+                                _temCobrancaInscricao ||
+                                _temRelatorioFinanceiro ||
+                                _temControleGastos ||
+                                _temPatrocinadores ||
+                                _temCamisa,
+                            child: Column(
+                              children: [
+                                _buildToggleCard(
+                                  value: _temControleGastos,
+                                  icon: Icons.receipt_long_rounded,
+                                  title: 'Controle de gastos',
+                                  activeText:
+                                      'Permitir registro de gastos e relatório financeiro.',
+                                  inactiveText:
+                                      'Sem controle de gastos neste evento.',
+                                  activeColor: t.error,
+                                  onChanged: (value) => setState(
+                                    () => _temControleGastos = value,
+                                  ),
                                 ),
-                                const SizedBox(height: 12),
-                                _buildDateField(
-                                  label: 'Data limite 1ª parcela',
-                                  emptyText: 'Não definido',
-                                  value: _dataLimitePrimeiraParcela == null
-                                      ? ''
-                                      : '${_dataLimitePrimeiraParcela!.day}/${_dataLimitePrimeiraParcela!.month}/${_dataLimitePrimeiraParcela!.year}',
-                                  enabled: _permiteParcelamento,
-                                  onTap: _selecionarDataLimite,
+                                const SizedBox(height: 10),
+                                _buildToggleCard(
+                                  value: _temRelatorioFinanceiro,
+                                  icon: Icons.assessment_rounded,
+                                  title: 'Relatório financeiro',
+                                  activeText:
+                                      'Exibir relatório e permitir exportação conforme permissões e módulos do evento.',
+                                  inactiveText:
+                                      'Ocultar acesso ao relatório financeiro deste evento.',
+                                  activeColor: t.info,
+                                  onChanged: (value) => setState(
+                                    () => _temRelatorioFinanceiro = value,
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                _buildToggleCard(
+                                  value: _temPatrocinadores,
+                                  icon: Icons.volunteer_activism_rounded,
+                                  title: 'Patrocinadores',
+                                  activeText: 'Permitir gestão de patrocínios.',
+                                  inactiveText: 'Sem patrocínios neste evento.',
+                                  activeColor: t.success,
+                                  onChanged: (value) => setState(
+                                    () => _temPatrocinadores = value,
+                                  ),
                                 ),
                               ],
                             ),
@@ -3282,6 +3660,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                             subtitle:
                                 'Defina camisa, valores por tipo, tamanhos e modelagens.',
                             color: t.warning,
+                            enabled: _temCamisa,
                             child: Column(
                               children: [
                                 _buildToggleCard(
@@ -3295,22 +3674,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                                   onChanged: (value) {
                                     setState(() {
                                       _temCamisa = value;
-                                      if (!value) {
-                                        _tamanhosSelecionados = [];
-                                        _modelagensCamisaSelecionadas = [];
-                                        _tiposCamisaSelecionados = [];
-                                        _camisaObrigatoria = false;
-                                        _valorCamisa = 0;
-                                        _valoresPorTipoCamisa = {
-                                          _tipoManga: 0,
-                                          _tipoMangaLonga: 0,
-                                          _tipoRegata: 0,
-                                        };
-                                        _valorCamisaMangaController.clear();
-                                        _valorCamisaMangaLongaController
-                                            .clear();
-                                        _valorCamisaRegataController.clear();
-                                      } else {
+                                      if (value) {
                                         if (_valoresPorTipoCamisa.isEmpty) {
                                           _valoresPorTipoCamisa = {
                                             _tipoManga: _valorCamisa,
@@ -3444,11 +3808,14 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                             subtitle:
                                 'Defina se este evento terá certificados.',
                             color: t.success,
+                            enabled: _temCertificado,
                             child: Column(
                               children: [
                                 _buildCertificadoSimples(),
-                                const SizedBox(height: 10),
-                                _buildCertificadoResumoCard(),
+                                if (_temCertificado) ...[
+                                  const SizedBox(height: 10),
+                                  _buildCertificadoResumoCard(),
+                                ],
                                 if (_temCertificado) ...[
                                   const SizedBox(height: 10),
                                   _infoBox(
@@ -3469,6 +3836,7 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                             subtitle:
                                 'Controle se este evento será exibido no site institucional.',
                             color: t.info,
+                            enabled: _mostrarNoPortfolioWeb,
                             child: Column(
                               children: [
                                 _buildPortfolioWebSimples(),
@@ -3486,38 +3854,93 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
                           ),
                           const SizedBox(height: 14),
                           _sectionCard(
+                            icon: Icons.manage_search_rounded,
+                            title: 'Auditoria do evento',
+                            subtitle:
+                                'Controle se a auditoria será exibida nas ações de gestão.',
+                            color: t.info,
+                            enabled: _auditoriaVisivelGestores,
+                            child: Column(
+                              children: [
+                                _buildToggleCard(
+                                  value: _auditoriaVisivelGestores,
+                                  icon: Icons.shield_outlined,
+                                  title: 'Mostrar auditoria do evento',
+                                  activeText:
+                                      'O card da auditoria aparecerá em Gerenciar Evento para usuários autorizados.',
+                                  inactiveText:
+                                      'A auditoria continua registrando operações, mas o atalho fica oculto.',
+                                  activeColor: t.info,
+                                  onChanged: (value) => setState(
+                                    () => _auditoriaVisivelGestores = value,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'A visibilidade do card não concede permissão de leitura. Professores e monitores precisam de autorização validada no Firestore.',
+                                  style: TextStyle(
+                                    color: t.textSecondary,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          KeyedSubtree(
+                            key: const ValueKey('gestores'),
+                            child: _seletorGestoresEvento(),
+                          ),
+                          const SizedBox(height: 14),
+                          _sectionCard(
                             sectionKey: _linksKey,
                             icon: Icons.link_rounded,
                             title: 'Links',
                             subtitle:
                                 'Fotos, vídeos, prévia e playlist do evento.',
                             color: t.associacao,
+                            enabled: _linksHabilitados,
                             child: Column(
                               children: [
-                                _formField(
-                                  controller: _linkFotosController,
-                                  label: 'Link de Fotos/Vídeos',
-                                  icon: Icons.photo_library_rounded,
-                                  keyboardType: TextInputType.url,
+                                _buildToggleCard(
+                                  value: _linksHabilitados,
+                                  icon: Icons.link_rounded,
+                                  title: 'Exibir links do evento',
+                                  activeText:
+                                      'Links publicados nas informações do evento.',
+                                  inactiveText:
+                                      'Links ocultos; endereços anteriores preservados.',
+                                  activeColor: t.associacao,
+                                  onChanged: (value) =>
+                                      setState(() => _linksHabilitados = value),
                                 ),
-                                const SizedBox(height: 12),
-                                _formField(
-                                  controller: _linkPreviaController,
-                                  label: 'Link da Prévia',
-                                  icon: Icons.play_circle_rounded,
-                                  keyboardType: TextInputType.url,
-                                ),
-                                const SizedBox(height: 12),
-                                _formField(
-                                  controller: _linkPlaylistController,
-                                  label: 'Link da Playlist',
-                                  icon: Icons.playlist_play_rounded,
-                                  keyboardType: TextInputType.url,
-                                ),
+                                if (_linksHabilitados) ...[
+                                  const SizedBox(height: 12),
+                                  _formField(
+                                    controller: _linkFotosController,
+                                    label: 'Link de Fotos/Vídeos',
+                                    icon: Icons.photo_library_rounded,
+                                    keyboardType: TextInputType.url,
+                                  ),
+                                  const SizedBox(height: 12),
+                                  _formField(
+                                    controller: _linkPreviaController,
+                                    label: 'Link da Prévia',
+                                    icon: Icons.play_circle_rounded,
+                                    keyboardType: TextInputType.url,
+                                  ),
+                                  const SizedBox(height: 12),
+                                  _formField(
+                                    controller: _linkPlaylistController,
+                                    label: 'Link da Playlist',
+                                    icon: Icons.playlist_play_rounded,
+                                    keyboardType: TextInputType.url,
+                                  ),
+                                ],
                               ],
                             ),
                           ),
-                        ],
+                        ]),
                       ),
                     ),
                   ),
@@ -3596,24 +4019,6 @@ class _CriarEventoScreenState extends State<CriarEventoScreen> {
             ),
     );
   }
-}
-
-class _SectionShortcut {
-  final GlobalKey keyRef;
-  final IconData icon;
-  final String label;
-  final String subtitle;
-  final Color color;
-  final bool ativo;
-
-  const _SectionShortcut({
-    required this.keyRef,
-    required this.icon,
-    required this.label,
-    required this.subtitle,
-    required this.color,
-    required this.ativo,
-  });
 }
 
 enum _SnackType { success, error, warning, info }

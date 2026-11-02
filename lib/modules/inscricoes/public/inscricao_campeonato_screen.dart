@@ -94,7 +94,7 @@ class _InscricaoCampeonatoScreenState extends State<InscricaoCampeonatoScreen>
   double _taxaInscricao = 30.0;
   int _vagasDisponiveis = 0;
   int _vagasRestantes = 0;
-  bool _configuracoesCarregadas = false;
+
   bool _temVagas = true;
   bool _inscricoesAbertas = true;
   bool _recolherAssinatura = true;
@@ -298,7 +298,7 @@ class _InscricaoCampeonatoScreenState extends State<InscricaoCampeonatoScreen>
         if (_isMounted) {
           setState(() {
             _inscricoesAbertas = false;
-            _configuracoesCarregadas = true;
+
             _etapaValida[0] = false;
             _carregando = false;
           });
@@ -369,7 +369,7 @@ class _InscricaoCampeonatoScreenState extends State<InscricaoCampeonatoScreen>
           }
 
           _config = config;
-          _configuracoesCarregadas = true;
+
 
           _etapaValida[0] =
               _inscricoesAbertas &&
@@ -386,7 +386,7 @@ class _InscricaoCampeonatoScreenState extends State<InscricaoCampeonatoScreen>
       if (_isMounted) {
         setState(() {
           _inscricoesAbertas = false;
-          _configuracoesCarregadas = true;
+
           _etapaValida[0] = false;
           _carregando = false;
           _mensagem = 'Erro ao verificar disponibilidade';
@@ -1213,7 +1213,7 @@ Data e hora: [DATA_HORA]
     } catch (e) {
       debugPrint('❌ Erro ao salvar: $e');
 
-      if (_isMounted) {
+      if (mounted && _isMounted) {
         _showSnack('Erro ao enviar inscrição: $e', color: context.uai.error);
         setState(() {
           _enviando = false;
@@ -1459,8 +1459,14 @@ Data e hora: [DATA_HORA]
       return _buildInscricoesFechadas();
     }
 
-    return WillPopScope(
-      onWillPop: _onWillPop,
+    return PopScope<Object?>(
+      canPop: !_enviando && !_processandoEnvio && _currentStep == 0,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        final shouldPop = await _onWillPop();
+        if (!context.mounted || !shouldPop) return;
+        Navigator.of(context).pop(result);
+      },
       child: ColoredBox(
         color: t.background,
         child: SafeArea(

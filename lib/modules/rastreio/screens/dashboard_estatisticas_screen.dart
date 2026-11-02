@@ -394,47 +394,6 @@ class _DashboardEstatisticasScreenState
     }
   }
 
-  void _recalcularEstatisticasCompletas() {
-    final agora = DateTime.now();
-    final hoje = DateTime(agora.year, agora.month, agora.day);
-    final inicioSemana = hoje.subtract(Duration(days: hoje.weekday - 1));
-    final inicioMes = DateTime(agora.year, agora.month, 1);
-
-    int visitasHoje = 0;
-    int visitasSemana = 0;
-    int visitasMes = 0;
-
-    final porHora = <String, int>{};
-    final porDia = <String, int>{};
-
-    for (final acesso in _acessosCarregados) {
-      final timestamp = acesso['data_acesso'];
-      final dataAcesso = timestamp is Timestamp ? timestamp.toDate() : null;
-
-      if (dataAcesso == null) continue;
-
-      if (dataAcesso.isAfter(hoje)) visitasHoje++;
-      if (dataAcesso.isAfter(inicioSemana)) visitasSemana++;
-      if (dataAcesso.isAfter(inicioMes)) visitasMes++;
-
-      final horaKey = '${dataAcesso.hour.toString().padLeft(2, '0')}:00';
-      porHora[horaKey] = (porHora[horaKey] ?? 0) + 1;
-
-      final diasSemana = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab', 'Dom'];
-      final diaKey = diasSemana[dataAcesso.weekday - 1];
-      porDia[diaKey] = (porDia[diaKey] ?? 0) + 1;
-    }
-
-    if (!mounted) return;
-
-    setState(() {
-      _visitasHoje = visitasHoje;
-      _visitasSemana = visitasSemana;
-      _visitasMes = visitasMes;
-      _acessosPorHora = porHora;
-      _acessosPorDia = porDia;
-    });
-  }
 
   Map<String, dynamic> _converterNotacaoPontoParaArvore(
     Map<String, dynamic> dados,
@@ -725,16 +684,6 @@ class _DashboardEstatisticasScreenState
     return eventos.where((e) => !_eventoTecnicoRuido(e)).toList(growable: false);
   }
 
-  bool _eventoEhInscricao(Map<String, dynamic> evento) {
-    final tipo = evento['tipo']?.toString() ?? '';
-    final nome = evento['nome']?.toString() ?? '';
-    final pagina = evento['pagina_origem']?.toString() ?? '';
-    final metadata = _metadataEvento(evento);
-    return tipo == 'funil_inscricao' ||
-        nome.contains('inscricao_publica') ||
-        pagina.contains('inscricao_publica') ||
-        metadata['formulario']?.toString() == 'inscricao_publica';
-  }
 
   bool _sessaoVisualizouInscricao(List<Map<String, dynamic>> eventos) {
     return eventos.any((e) {

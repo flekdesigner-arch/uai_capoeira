@@ -6,7 +6,7 @@ import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/modules/usuarios/models/permissao_predefinida_model.dart';
 import 'package:uai_capoeira/modules/usuarios/services/permissao_predefinida_service.dart';
 import 'package:uai_capoeira/modules/usuarios/admin/usuario_role_catalog.dart';
-import 'package:uai_capoeira/modules/usuarios/services/usuario_auditoria_service.dart';
+import 'package:uai_capoeira/core/services/uai_callable_client.dart';
 
 class AprovarUsuarioScreen extends StatefulWidget {
   final String userId;
@@ -26,7 +26,6 @@ class AprovarUsuarioScreen extends StatefulWidget {
 
 class _AprovarUsuarioScreenState extends State<AprovarUsuarioScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseAuth _auth = FirebaseAuth.instance;
   final PermissaoPredefinidaService _presetService =
       PermissaoPredefinidaService();
 
@@ -127,13 +126,6 @@ class _AprovarUsuarioScreenState extends State<AprovarUsuarioScreen> {
       .toList(growable: false);
 
 
-  Map<String, dynamic> get _tipoSelecionado {
-    if (_tiposUsuarios.isEmpty) return const <String, dynamic>{};
-    return _tiposUsuarios.firstWhere(
-      (item) => item['tipo']?.toString() == _selectedTipo,
-      orElse: () => _tiposUsuarios.first,
-    );
-  }
 
   PermissaoPredefinidaModel? get _presetSelecionado {
     final id = _selectedPresetId;
@@ -142,13 +134,6 @@ class _AprovarUsuarioScreenState extends State<AprovarUsuarioScreen> {
       if (preset.id == id) return preset;
     }
     return null;
-  }
-
-  int _peso(Map<String, dynamic> tipo) {
-    final value = tipo['peso'];
-    if (value is int) return value;
-    if (value is num) return value.toInt();
-    return int.tryParse(value?.toString() ?? '') ?? 0;
   }
 
   String _descricao(Map<String, dynamic> tipo) =>
@@ -198,13 +183,6 @@ class _AprovarUsuarioScreenState extends State<AprovarUsuarioScreen> {
 
   Future<void> _aprovarUsuario() async {
     if (_aprovando || _selectedTipo == null) return;
-    final currentUser = _auth.currentUser;
-    if (currentUser == null) {
-      _snack('Usuário administrador não autenticado.', erro: true);
-      return;
-    }
-
-    final tipo = _tipoSelecionado;
     final preset = _presetSelecionado;
     final nome = _nomeUsuario;
 
@@ -220,7 +198,7 @@ class _AprovarUsuarioScreenState extends State<AprovarUsuarioScreen> {
             const SizedBox(height: 10),
             Text(
               preset == null
-                  ? 'Nenhuma predefinição será aplicada agora. As permissões específicas poderão ser configuradas depois.'
+                  ? 'Será aplicado o conjunto inicial seguro do perfil. Permissões adicionais poderão ser configuradas depois.'
                   : 'Predefinição: ${preset.nome} (${preset.totalAtivas} permissões ativas).',
             ),
             if (_possuiAreaAluno) ...[
@@ -257,67 +235,12 @@ class _AprovarUsuarioScreenState extends State<AprovarUsuarioScreen> {
       icon: Icons.verified_user_rounded,
     );
     try {
-      final adminNome = widget.adminData['nome_completo']?.toString().trim();
-      final userRef = _firestore.collection('usuarios').doc(widget.userId);
-      final permissoesRef = userRef
-          .collection('permissoes_usuario')
-          .doc('configuracoes');
-      final batch = _firestore.batch();
-
-      batch.set(
-        userRef,
-        {
-          'tipo': _selectedTipo,
-          'peso_permissao': _peso(tipo),
-          'status_conta': 'ativa',
-          'acesso_gestao': true,
-          'exibir_na_gestao': true,
-          'solicitacao_acesso_gestao': false,
-          'aprovado_por': currentUser.uid,
-          'aprovado_por_nome':
-              (adminNome == null || adminNome.isEmpty) ? 'Administrador' : adminNome,
-          'aprovado_em': FieldValue.serverTimestamp(),
-          'ultima_atualizacao': FieldValue.serverTimestamp(),
-          'predefinicao_permissoes_id': preset?.id,
-          'predefinicao_permissoes_nome': preset?.nome,
-          'predefinicao_aplicada_em':
-              preset == null ? null : FieldValue.serverTimestamp(),
-          'predefinicao_aplicada_por': preset == null ? null : currentUser.uid,
-        },
-        SetOptions(merge: true),
-      );
-
-      if (preset != null) {
-        batch.set(
-          permissoesRef,
-          Map<String, bool>.from(preset.permissoes),
-          SetOptions(merge: true),
-        );
-      }
-
-      batch.set(
-        UsuarioAuditoriaService.novoEventoRef(widget.userId),
-        UsuarioAuditoriaService.evento(
-          tipo: 'aprovacao',
-          titulo: 'Acesso à gestão aprovado',
-          descricao: preset == null
-              ? '$nome aprovado como ${_labelTipo(_selectedTipo!)}.'
-              : '$nome aprovado como ${_labelTipo(_selectedTipo!)} com a predefinição ${preset.nome}.',
-          atorUid: currentUser.uid,
-          atorNome: (adminNome == null || adminNome.isEmpty) ? 'Administrador' : adminNome,
-          antes: {
-            'status_conta': widget.userData['status_conta'],
-            'tipo': widget.userData['tipo'],
-          },
-          depois: {
-            'status_conta': 'ativa',
-            'tipo': _selectedTipo,
-            'predefinicao': preset?.nome,
-          },
-        ),
-      );
-
-      await batch.commit();
+      await FirebaseAuth.instance.currentUser?.getIdToken(true);
+      await UaiCallableClient.instance.call('aprovarSolicitacaoGestaoSegura', {
+        'userId': widget.userId,
+        'tipo': _selectedTipo,
+        if (preset != null) 'predefinicaoId': preset.id,
+      });
 
       if (!mounted) return;
       _snack(

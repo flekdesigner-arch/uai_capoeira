@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 
 class PendenciaCard extends StatelessWidget {
+  final bool podeReceberPagamento;
   final String docId;
   final Map<String, dynamic> data;
   final NumberFormat realFormat;
@@ -11,6 +12,7 @@ class PendenciaCard extends StatelessWidget {
 
   const PendenciaCard({
     super.key,
+    this.podeReceberPagamento = false,
     required this.docId,
     required this.data,
     required this.realFormat,
@@ -22,20 +24,6 @@ class PendenciaCard extends StatelessWidget {
     return background.computeLuminance() > 0.48
         ? const Color(0xFF111827)
         : const Color(0xFFFFFFFF);
-  }
-
-  static Color _ensureVisible(Color color, Color background) {
-    final diff = (color.computeLuminance() - background.computeLuminance())
-        .abs();
-    if (diff >= 0.26) return color;
-
-    final bgIsDark = background.computeLuminance() < 0.45;
-    final hsl = HSLColor.fromColor(color);
-
-    return hsl
-        .withLightness(bgIsDark ? 0.72 : 0.32)
-        .withSaturation((hsl.saturation + 0.10).clamp(0.0, 1.0))
-        .toColor();
   }
 
   String _formatarData(dynamic data) {
@@ -232,7 +220,9 @@ class PendenciaCard extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 ElevatedButton.icon(
-                  onPressed: () => onRegistrarPagamento(docId, data, restante),
+                  onPressed: podeReceberPagamento
+                      ? () => onRegistrarPagamento(docId, data, restante)
+                      : null,
                   icon: const Icon(Icons.payment, size: 18),
                   label: const Text('Registrar Pagamento'),
                   style: ElevatedButton.styleFrom(

@@ -197,11 +197,6 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
   Color _onCard() => _readableOn(context.uai.card);
   Color _onCardMuted() => _onCard().withAlpha(173);
 
-  Color _primaryButtonBg() =>
-      Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
-  Color _primaryButtonFg() =>
-      Theme.of(context).appBarTheme.foregroundColor ??
-      _readableOn(_primaryButtonBg());
 
   Color _safeAccent(Color color, [Color? background]) {
     return _ensureVisible(color, background ?? context.uai.card);
@@ -1886,7 +1881,7 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
                                             Future.delayed(
                                               const Duration(milliseconds: 100),
                                               () {
-                                                if (mounted)
+                                                if (context.mounted)
                                                   { _mostrarTermo(
                                                     context,
                                                     dados,
@@ -2650,44 +2645,8 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
     );
   }
 
-  Widget _buildInfoRow(String label, String? value) {
-    return _buildInfoTile(
-      icon: Icons.info_outline_rounded,
-      label: label,
-      value: value,
-    );
-  }
 
-  Widget _buildInfoRowClickable(
-    String label,
-    String? value,
-    VoidCallback onTap,
-  ) {
-    return _buildInfoTile(
-      icon: Icons.touch_app_rounded,
-      label: label,
-      value: value,
-      onTap: onTap,
-    );
-  }
 
-  Future<void> _atualizarContadorTurma(String turmaId) async {
-    try {
-      final snapshot = await _firestore
-          .collection('alunos')
-          .where('turma_id', isEqualTo: turmaId)
-          .where('status_atividade', isEqualTo: 'ATIVO(A)')
-          .get();
-
-      await _firestore.collection('turmas').doc(turmaId).update({
-        'alunos_count': snapshot.docs.length,
-        'alunos_ativos': snapshot.docs.length,
-        'atualizado_em': FieldValue.serverTimestamp(),
-      });
-    } catch (e) {
-      developer.log('Erro ao atualizar contador da turma: $e');
-    }
-  }
 
   Future<void> _atualizarContadorInscricoes() async {
     if (widget.operations != null) {
@@ -3230,67 +3189,6 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
     );
   }
 
-  Widget _buildAgendamentoCard(String docId, Map<String, dynamic> data) {
-    final aula = _aulaExperimentalOf(data);
-    if (aula.isEmpty) return const SizedBox.shrink();
-    final accent = _safeAccent(context.uai.success, context.uai.card);
-    final turma = _texto(aula['turma_nome'], fallback: 'Turma não informada');
-    final podeRemarcar = _acoes.contatarAluno || _acoes.contatarResponsavel;
-    return Container(
-      margin: const EdgeInsets.only(top: 10),
-      padding: const EdgeInsets.all(11),
-      decoration: BoxDecoration(
-        color: Color.alphaBlend(accent.withAlpha(20), context.uai.cardAlt),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: accent.withAlpha(46)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: accent.withAlpha(31),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(Icons.event_available_rounded, color: accent, size: 21),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'AULA EXPERIMENTAL',
-                  style: TextStyle(color: accent, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: .5),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  _formatarAulaExperimental(data),
-                  style: TextStyle(color: context.uai.textPrimary, fontWeight: FontWeight.w900, fontSize: 12.5),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  turma,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: context.uai.textSecondary, fontSize: 11, fontWeight: FontWeight.w700),
-                ),
-              ],
-            ),
-          ),
-          if (podeRemarcar)
-            Tooltip(
-              message: 'Alterar data da aula experimental',
-              child: IconButton.filledTonal(
-                onPressed: () => _remarcarPeloCard(docId, data),
-                icon: const Icon(Icons.edit_calendar_rounded, size: 19),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
 
   Color _cardStageColor(String etapa) {
     final stages = Map<String, dynamic>.from(
@@ -3806,7 +3704,7 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
       ),
     );
 
-    if (confirmado != true || !mounted) return;
+    if (confirmado != true || !mounted || !origemContext.mounted) return;
 
     BuildContext? loadingContext;
     showDialog<void>(
@@ -3844,8 +3742,9 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
         inscricaoId: inscricaoId,
         arquivada: arquivada,
       );
-      if (loadingContext != null && mounted) Navigator.pop(loadingContext!);
-      if (Navigator.canPop(origemContext)) Navigator.pop(origemContext);
+      final dialogContext = loadingContext;
+      if (dialogContext != null && dialogContext.mounted) Navigator.pop(dialogContext);
+      if (origemContext.mounted && Navigator.canPop(origemContext)) Navigator.pop(origemContext);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -3856,7 +3755,8 @@ class _GerenciarInscricoesScreenState extends State<GerenciarInscricoesScreen> {
         ),
       );
     } catch (e) {
-      if (loadingContext != null && mounted) Navigator.pop(loadingContext!);
+      final dialogContext = loadingContext;
+      if (dialogContext != null && dialogContext.mounted) Navigator.pop(dialogContext);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

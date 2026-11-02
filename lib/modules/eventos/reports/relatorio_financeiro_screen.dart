@@ -1,6 +1,7 @@
 // lib/screens/relatorios/relatorio_financeiro_screen.dart
 
 import 'package:flutter/material.dart';
+import '../models/evento_model.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -36,6 +37,23 @@ class RelatorioFinanceiroScreen extends StatefulWidget {
 class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
   final DateFormat _formatter = DateFormat('dd/MM/yyyy');
   bool _isLoading = false;
+  bool _eventoTemCamisa = true;
+  bool _eventoTemPatrocinadores = true;
+  bool _eventoTemGastos = true;
+  bool _eventoTemInscricoes = true;
+  bool _eventoPermiteRelatorio = true;
+
+  Future<void> _lerConfiguracaoEvento() async {
+    final doc = await FirebaseFirestore.instance.collection('eventos').doc(widget.eventoId).get();
+    if (!doc.exists) throw StateError('Evento não encontrado.');
+    final evento = EventoModel.fromFirestore(doc);
+    _eventoTemCamisa = evento.temCamisa;
+    _eventoTemPatrocinadores = evento.temPatrocinadores;
+    _eventoTemGastos = evento.temControleGastos;
+    _eventoTemInscricoes = evento.temCobrancaInscricao;
+    _eventoPermiteRelatorio = evento.temRelatorioFinanceiro;
+  }
+
   String _loadingEtapa = 'Preparando relatório...';
   final List<String> _loadingLogs = [];
 
@@ -155,40 +173,11 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
   Color _onPrimary() => _readableOn(context.uai.primary);
   Color _onSuccess() => _readableOn(context.uai.success);
   Color _onError() => _readableOn(context.uai.error);
-  Color _onInfo() => _readableOn(context.uai.info);
-  Color _onWarning() => _readableOn(context.uai.warning);
-  Color _onAssociacao() => _readableOn(context.uai.associacao);
 
   Color _shadowColor([double opacity = 0.08]) {
     final isDark = context.uai.background.computeLuminance() < 0.35;
     return Color(0xFF000000).withAlpha((255.0 * (isDark ? opacity * 2.1 : opacity)).round());
   }
-
-  BoxShadow _softBoxShadow([double opacity = 0.06]) {
-    return BoxShadow(
-      color: _shadowColor(opacity),
-      blurRadius: 10,
-      offset: const Offset(0, 4),
-    );
-  }
-
-  BoxDecoration _themedCardDecoration({
-    Color? borderColor,
-    Color? backgroundColor,
-    double? radius,
-    bool strongShadow = false,
-  }) {
-    final t = context.uai;
-
-    return BoxDecoration(
-      color: backgroundColor ?? t.card,
-      borderRadius: BorderRadius.circular(radius ?? t.cardRadius),
-      border: material.Border.all(color: borderColor ?? t.border),
-      boxShadow: strongShadow ? t.cardShadow : t.softShadow,
-    );
-  }
-
-  Color _statusColor(Color color) => _ensureVisible(color, context.uai.card);
 
   // ==================== CAMISAS: MODELAGEM / TIPO / TAMANHO ====================
   String _normalizarModelagemCamisa(dynamic value) {
@@ -553,11 +542,16 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
     }
 
     try {
+      await _lerConfiguracaoEvento();
+      if (!_eventoPermiteRelatorio) {
+        if (mounted) setState(() => _isLoading = false);
+        return;
+      }
       _logCarregamento('🧹 Limpando contadores antigos...');
       _resetarVariaveis();
 
       _logCarregamento('👕 Carregando valores oficiais das camisas...');
-      await _carregarValoresCamisaDoEvento();
+      if (_eventoTemCamisa) await _carregarValoresCamisaDoEvento();
 
       _logCarregamento('📌 Buscando participações do evento...');
       final participacoesValidas = await _buscarParticipacoesValidas();
@@ -568,7 +562,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
       _logCarregamento(
         '🤝 Carregando patrocínios e cruzando com alunos válidos...',
       );
-      await _carregarPatrocinios(participacoesValidas);
+      if (_eventoTemPatrocinadores) await _carregarPatrocinios(participacoesValidas);
       _logCarregamento('✅ Patrocínios válidos: ${_usosPatrocinio.length} usos');
 
       _logCarregamento(
@@ -580,13 +574,13 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
       );
 
       _logCarregamento('👕 Carregando camisas avulsas...');
-      await _carregarCamisasAvulsas();
+      if (_eventoTemCamisa) await _carregarCamisasAvulsas();
       _logCarregamento(
         '✅ Camisas totais: ${_detalhesCamisas['total_camisas'] ?? 0}',
       );
 
       _logCarregamento('💰 Carregando gastos do evento...');
-      await _carregarGastos();
+      if (_eventoTemGastos) await _carregarGastos();
 
       if (mounted) {
         setState(() {
@@ -1105,7 +1099,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
         final valorInscricao =
             (data['valor_inscricao'] as num?)?.toDouble() ?? 0;
         final valorCamisa = (data['valor_camisa'] as num?)?.toDouble() ?? 0;
-        final totalDevido = valorInscricao + valorCamisa;
+        final totalDevido = (_eventoTemInscricoes ? valorInscricao : 0) + (_eventoTemCamisa ? valorCamisa : 0);
         final tamanhoCamisaRaw = data['tamanho_camisa'];
         final tamanhoCamisa = tamanhoCamisaRaw?.toString();
         final alunoNome = data['aluno_nome'] as String? ?? '';
@@ -1152,9 +1146,9 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
               continue;
             }
 
-            if (valorCamisa > 0 && observacoes.contains('camisa')) {
-              totalCamisasParticipacoes += valor;
-            } else {
+            if (observacoes.contains('camisa')) {
+              if (_eventoTemCamisa) totalCamisasParticipacoes += valor;
+            } else if (_eventoTemInscricoes) {
               totalInscricoes += valor;
             }
 
@@ -1162,7 +1156,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
           }
         }
 
-        if (tamanhoCamisa != null && tamanhoCamisa.trim().isNotEmpty) {
+        if (_eventoTemCamisa && tamanhoCamisa != null && tamanhoCamisa.trim().isNotEmpty) {
           final tamanho = _normalizarTamanhoCamisa(tamanhoCamisa);
           final chaveGrade = _chaveGradeCamisa(data);
 
@@ -1888,15 +1882,24 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
       sheet.appendRow([]);
 
       sheet.appendRow(['💰 RECEITAS POR TIPO']);
-      sheet.appendRow([
-        'Inscrições:',
-        'R\$ ${_totalInscricoes.toStringAsFixed(2)}',
-      ]);
-      sheet.appendRow(['Camisas:', 'R\$ ${_totalCamisas.toStringAsFixed(2)}']);
-      sheet.appendRow([
-        'Patrocínios:',
-        'R\$ ${_totalPatrocinios.toStringAsFixed(2)}',
-      ]);
+      if (_eventoTemInscricoes) {
+        sheet.appendRow([
+          'Inscrições:',
+          'R\$ ${_totalInscricoes.toStringAsFixed(2)}',
+        ]);
+      }
+      if (_eventoTemCamisa) {
+        sheet.appendRow([
+          'Camisas:',
+          'R\$ ${_totalCamisas.toStringAsFixed(2)}',
+        ]);
+      }
+      if (_eventoTemPatrocinadores) {
+        sheet.appendRow([
+          'Patrocínios:',
+          'R\$ ${_totalPatrocinios.toStringAsFixed(2)}',
+        ]);
+      }
       sheet.appendRow([]);
 
       sheet.appendRow(['👥 PARTICIPAÇÕES']);
@@ -2215,79 +2218,6 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
         eventoNome: widget.eventoNome,
       );
     });
-  }
-
-  Widget _buildPermissoesRelatorioCard() {
-    if (_carregandoPermissoes) {
-      return Container(
-        padding: EdgeInsets.all(14),
-        decoration: _relatorioCardDecoration(context.uai.cardAlt),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: _ensureVisible(context.uai.success, context.uai.card),
-              ),
-            ),
-            SizedBox(width: 10),
-            Text(
-              'Conferindo permissões do relatório...',
-              style: TextStyle(
-                color: context.uai.textSecondary,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    final liberado = _podeVerRelatorio || _podeExportarRelatorio;
-    final color = liberado ? context.uai.success : context.uai.warning;
-
-    return Container(
-      padding: EdgeInsets.all(14),
-      decoration: _relatorioCardDecoration(color.withAlpha(56)),
-      child: Row(
-        children: [
-          Icon(
-            liberado ? Icons.check_circle_rounded : Icons.lock_outline_rounded,
-            color: _ensureVisible(color, context.uai.card),
-          ),
-          SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              liberado
-                  ? 'Relatório liberado para visualização e exportação conforme suas permissões.'
-                  : 'Você não tem permissão para visualizar ou exportar este relatório.',
-              style: TextStyle(
-                color: _ensureVisible(color, context.uai.card),
-                height: 1.25,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  BoxDecoration _relatorioCardDecoration(Color borderColor) {
-    return BoxDecoration(
-      color: context.uai.card,
-      borderRadius: BorderRadius.circular(18),
-      border: material.Border.all(color: borderColor),
-      boxShadow: [
-        BoxShadow(
-          color: _shadowColor(0.025),
-          blurRadius: 6,
-          offset: Offset(0, 2),
-        ),
-      ],
-    );
   }
 
   Widget _buildSemAcessoRelatorio() {
@@ -2680,8 +2610,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
               tooltip: 'Exportar relatórios',
               onSelected: (value) {
                 if (value == 'excel') _exportarExcel();
-                if (value == 'confeccao') _gerarPdfConfeccao();
-                if (value == 'confeccao_completo') _gerarPdfConfeccaoCompleto();
+                if (value == 'confeccao' && _eventoTemCamisa) _gerarPdfConfeccao();
+                if (value == 'confeccao_completo' && _eventoTemCamisa) _gerarPdfConfeccaoCompleto();
                 if (value == 'lista_entrega_camisas')
                   { _gerarPdfListaEntregaCamisas(); }
                 if (value == 'geral') _gerarPdfGeral();
@@ -2693,15 +2623,15 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
               itemBuilder: (_) => [
                 PopupMenuItem(value: 'excel', child: Text('📊 Exportar Excel')),
                 PopupMenuDivider(),
-                PopupMenuItem(
+                if (_eventoTemCamisa) PopupMenuItem(
                   value: 'confeccao',
                   child: Text('👕 PDF Confecção Camisas (Total)'),
                 ),
-                PopupMenuItem(
+                if (_eventoTemCamisa) PopupMenuItem(
                   value: 'confeccao_completo',
                   child: Text('👕 PDF Confecção Completo (Alunos + Avulsos)'),
                 ),
-                PopupMenuItem(
+                if (_eventoTemCamisa) PopupMenuItem(
                   value: 'lista_entrega_camisas',
                   child: Text('✅ PDF Lista de Entrega de Camisas'),
                 ),
@@ -2729,7 +2659,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
       ),
       body: _carregandoPermissoes
           ? _buildLoadingComLogs()
-          : (!_podeVerRelatorio && !_podeExportarRelatorio)
+          : (!_podeVerRelatorio && !_podeExportarRelatorio || !_eventoPermiteRelatorio)
           ? _buildSemAcessoRelatorio()
           : _isLoading
           ? _buildLoadingComLogs()
@@ -2889,21 +2819,21 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                                     ),
                                   ),
                                   SizedBox(height: 16),
-                                  _buildReceitaTipoRow(
+                                  if (_eventoTemInscricoes) _buildReceitaTipoRow(
                                     'Inscrições',
                                     _totalInscricoes,
                                     Icons.receipt,
                                     context.uai.info,
                                   ),
-                                  SizedBox(height: 8),
-                                  _buildReceitaTipoRow(
+                                  if (_eventoTemInscricoes && _eventoTemCamisa) SizedBox(height: 8),
+                                  if (_eventoTemCamisa) _buildReceitaTipoRow(
                                     'Camisas',
                                     _totalCamisas,
                                     Icons.shopping_bag,
                                     context.uai.warning,
                                   ),
-                                  SizedBox(height: 8),
-                                  _buildReceitaTipoRow(
+                                  if ((_eventoTemInscricoes || _eventoTemCamisa) && _eventoTemPatrocinadores) SizedBox(height: 8),
+                                  if (_eventoTemPatrocinadores) _buildReceitaTipoRow(
                                     'Patrocínios',
                                     _totalPatrocinios,
                                     Icons.volunteer_activism,
@@ -2915,8 +2845,8 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
 
                             SizedBox(height: 16),
 
-                            // ===== GRÁFICO DE PIZZA =====
-                            Container(
+                            // Sem gastos, não há comparativo de receitas versus despesas.
+                            if (_eventoTemGastos && (_totalGastos + _totalReceitas) > 0) Container(
                               padding: EdgeInsets.all(16),
                               decoration: BoxDecoration(
                                 color: context.uai.card,
@@ -3274,6 +3204,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                             SizedBox(height: 16),
 
                             // ===== DETALHES DAS CAMISAS =====
+                            if (_eventoTemCamisa)
                             Container(
                               padding: EdgeInsets.all(16),
                               decoration: BoxDecoration(
@@ -3393,7 +3324,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
 
                             SizedBox(height: 16),
 
-                            Container(
+                            if (_eventoTemCamisa) Container(
                               padding: EdgeInsets.all(16),
                               decoration: BoxDecoration(
                                 color: context.uai.card,
@@ -3513,6 +3444,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                             SizedBox(height: 16),
 
                             // ===== RESUMO TOTAL DE CAMISAS =====
+                            if (_eventoTemCamisa)
                             Container(
                               padding: EdgeInsets.all(16),
                               decoration: BoxDecoration(
@@ -3633,6 +3565,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
                             SizedBox(height: 16),
 
                             // ===== DETALHES DOS PATROCÍNIOS =====
+                            if (_eventoTemPatrocinadores)
                             Container(
                               padding: EdgeInsets.all(16),
                               decoration: BoxDecoration(
@@ -3839,6 +3772,7 @@ class _RelatorioFinanceiroScreenState extends State<RelatorioFinanceiroScreen> {
 
                             // ===== GASTOS POR CATEGORIA =====
                             if (_gastosPorCategoria.isNotEmpty)
+                              if (_eventoTemGastos)
                               Container(
                                 padding: EdgeInsets.all(16),
                                 decoration: BoxDecoration(

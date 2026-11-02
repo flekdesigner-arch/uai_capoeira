@@ -116,7 +116,7 @@ class LocalPublishStep {
       LocalPublishStep(id: 'install_windows', title: 'Instalar Windows', description: 'Atualiza C:\\UAI Capoeira e o atalho da Área de Trabalho.'),
       LocalPublishStep(id: 'upload_apk', title: 'Enviar Android', description: 'Envia cada ABI para a árvore releases/ no Storage.'),
       LocalPublishStep(id: 'publish_version', title: 'Publicar manifesto', description: 'Publica a release e os artefatos no Firestore.'),
-      LocalPublishStep(id: 'notify_users', title: 'Notificar usuários', description: 'Fica manual para você testar antes de avisar.'),
+      LocalPublishStep(id: 'notify_users', title: 'Avisar atualização', description: 'Público definido no lançamento e sinal de Wi-Fi conforme consentimento.'),
     ];
   }
 }

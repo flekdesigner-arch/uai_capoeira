@@ -10,6 +10,7 @@ import 'package:confetti/confetti.dart';
 
 import 'aluno_detalhe_screen.dart';
 import 'arte_aniversario_screen.dart';
+import 'package:uai_capoeira/modules/alunos/services/birthday_settings_service.dart';
 
 // =====================================================
 // 🎂 ANIVERSARIANTES PAGE — VERSÃO PIKA DAS GALÁXIAS
@@ -25,7 +26,9 @@ import 'arte_aniversario_screen.dart';
 // - Datas mais seguras: Timestamp, DateTime, String ISO ou dd/MM/yyyy
 
 class AniversariantesPage extends StatefulWidget {
-  const AniversariantesPage({super.key});
+  const AniversariantesPage({super.key, this.celebrarAoAbrir = false});
+
+  final bool celebrarAoAbrir;
 
   @override
   State<AniversariantesPage> createState() => _AniversariantesPageState();
@@ -33,6 +36,8 @@ class AniversariantesPage extends StatefulWidget {
 
 class _AniversariantesPageState extends State<AniversariantesPage>
     with SingleTickerProviderStateMixin {
+  // O acesso direto tambem respeita o desligamento administrativo.
+
   Color _readableOn(Color background) {
     return background.computeLuminance() > 0.48
         ? const Color(0xFF111827)
@@ -206,6 +211,12 @@ class _AniversariantesPageState extends State<AniversariantesPage>
     super.initState();
     _today = _normalizarData(DateTime.now());
     _confettiController = ConfettiController(duration: Duration(seconds: 3));
+    if (widget.celebrarAoAbrir) {
+      _filtroRapido = 'Hoje';
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _explodirConfetes();
+      });
+    }
   }
 
   @override
@@ -597,6 +608,27 @@ class _AniversariantesPageState extends State<AniversariantesPage>
     });
   }
 
+  void _abrirArteColetiva(List<QueryDocumentSnapshot<Map<String, dynamic>>> alunos) {
+    final participantes = alunos.map((doc) {
+      final data = doc.data();
+      final nascimento = _parseDataNascimento(data['data_nascimento']);
+      return BirthdayArtPerson(
+        nome: (data['nome'] ?? 'Aluno').toString(),
+        fotoUrl: data['foto_perfil_aluno']?.toString(),
+        idade: nascimento == null ? null : _calcularIdade(nascimento),
+        sexo: (data['sexo'] ?? data['genero'])?.toString(),
+      );
+    }).toList();
+    if (participantes.length < 2) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ArteAniversarioScreen(
+        alunoId: 'coletiva',
+        nomeAluno: 'Aniversariantes de Hoje',
+        participantes: participantes,
+      ),
+    ));
+  }
+
   void _abrirArteAniversario(
       BuildContext context,
       Map<String, dynamic> aluno,
@@ -609,6 +641,7 @@ class _AniversariantesPageState extends State<AniversariantesPage>
           alunoId: alunoId,
           nomeAluno: aluno['nome'] ?? 'Aluno',
           fotoUrl: aluno['foto_perfil_aluno'],
+          sexoAluno: (aluno['sexo'] ?? aluno['genero'])?.toString(),
         ),
       ),
     );
@@ -895,7 +928,19 @@ class _AniversariantesPageState extends State<AniversariantesPage>
   // =====================================================
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => StreamBuilder<Map<String, dynamic>>(
+    stream: BirthdaySettingsService.instance.watch(),
+    builder: (context, settings) {
+      if (settings.hasError) return const Center(child: Text('Não foi possível verificar a disponibilidade de Aniversariantes.'));
+      if (!settings.hasData) return const Center(child: CircularProgressIndicator());
+      if (!BirthdaySettingsService.enabled(settings.data!)) {
+        return const Center(child: Text('Módulo de aniversariantes desativado pela administração.'));
+      }
+      return _buildBirthdayContent(context);
+    },
+  );
+
+  Widget _buildBirthdayContent(BuildContext context) {
     return PopScope(
       canPop: _selectedMonth == null,
       onPopInvokedWithResult: (didPop, result) {
@@ -905,7 +950,9 @@ class _AniversariantesPageState extends State<AniversariantesPage>
       },
       child: Scaffold(
         backgroundColor: context.uai.background,
-        body: StreamBuilder<List<QueryDocumentSnapshot<Map<String, dynamic>>>>(
+        body: Stack(
+          children: [
+            StreamBuilder<List<QueryDocumentSnapshot<Map<String, dynamic>>>>(
           stream: _getAlunosAtivosStream(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
@@ -937,6 +984,30 @@ class _AniversariantesPageState extends State<AniversariantesPage>
 
             return _buildMainView(alunosOriginais, alunosComBusca);
           },
+        ),
+            if (_mostrarConfetes && widget.celebrarAoAbrir)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    child: ConfettiWidget(
+                      confettiController: _confettiController,
+                      blastDirectionality: BlastDirectionality.explosive,
+                      shouldLoop: false,
+                      numberOfParticles: 50,
+                      gravity: 0.15,
+                      emissionFrequency: 0.04,
+                      colors: const [
+                        Color(0xFFF43F5E),
+                        Color(0xFFFBBF24),
+                        Color(0xFF34D399),
+                        Color(0xFF60A5FA),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -990,6 +1061,44 @@ class _AniversariantesPageState extends State<AniversariantesPage>
                   count: todayBirthdays.length,
                   icon: Icons.celebration_rounded,
                   color: context.uai.primary,
+                ),
+              ),
+            if (todayBirthdays.length > 1)
+              SliverToBoxAdapter(
+                child: StreamBuilder<Map<String, dynamic>>(
+                  stream: BirthdaySettingsService.instance.watch(),
+                  builder: (context, settings) {
+                    if (settings.hasError ||
+                        !BirthdaySettingsService.collectiveEnabled(settings.data ?? {})) {
+                      return const SizedBox.shrink();
+                    }
+                    return Padding(
+                      padding: _dashboardPagePadding.copyWith(top: 0, bottom: 8),
+                      child: _dashboardWidthLimiter(
+                        Material(
+                          color: context.uai.card,
+                          borderRadius: BorderRadius.circular(16),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(16),
+                            onTap: () => _abrirArteColetiva(todayBirthdays),
+                            child: Padding(
+                              padding: const EdgeInsets.all(14),
+                              child: Row(children: [
+                                CircleAvatar(backgroundColor: context.uai.primary.withAlpha(40),
+                                  child: Icon(Icons.auto_awesome, color: context.uai.primary)),
+                                const SizedBox(width: 12),
+                                const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                  Text('Criar arte coletiva do dia', style: TextStyle(fontWeight: FontWeight.w900)),
+                                  Text('Uma homenagem com fotos e idades de todos', style: TextStyle(fontSize: 11)),
+                                ])),
+                                Icon(Icons.arrow_forward_ios_rounded, color: context.uai.primary, size: 18),
+                              ]),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
             if (todayBirthdays.isNotEmpty)

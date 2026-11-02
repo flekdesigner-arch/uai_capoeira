@@ -59,6 +59,30 @@ class PermissionCatalog {
 
   static const List<PermissionDefinition> all = [
     PermissionDefinition(
+      title: 'Aplicar advertência disciplinar',
+      description: 'Autoriza advertência em alunos das turmas vinculadas.',
+      key: 'pode_aplicar_advertencia',
+      icon: Icons.report_outlined,
+      category: categoryStudents,
+      critical: true,
+    ),
+    PermissionDefinition(
+      title: 'Aplicar suspensão disciplinar',
+      description: 'Autoriza suspensão em alunos das turmas vinculadas.',
+      key: 'pode_aplicar_suspensao',
+      icon: Icons.gavel_rounded,
+      category: categoryStudents,
+      critical: true,
+    ),
+    PermissionDefinition(
+      title: 'Anular ocorrência disciplinar',
+      description: 'Exige justificativa e cria trilha de auditoria.',
+      key: 'pode_anular_ocorrencia_disciplinar',
+      icon: Icons.undo_rounded,
+      category: categoryStudents,
+      critical: true,
+    ),
+    PermissionDefinition(
       title: 'Acessar transportes',
       description: 'Mostra o menu Transportes na barra lateral do app.',
       key: 'pode_acessar_transportes',
@@ -83,7 +107,8 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Editar transporte',
-      description: 'Permite editar viagem, veículo, capacidade, custo e rateio.',
+      description:
+          'Permite editar viagem, veículo, capacidade, custo e rateio.',
       key: 'pode_editar_transporte',
       icon: Icons.edit_road_rounded,
       category: categoryTransportGeneral,
@@ -112,7 +137,8 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Adicionar passageiro ao transporte',
-      description: 'Permite adicionar alunos ativos ou convidados ao transporte.',
+      description:
+          'Permite adicionar alunos ativos ou convidados ao transporte.',
       key: 'pode_adicionar_passageiro_transporte',
       icon: Icons.person_add_alt_1_rounded,
       category: categoryTransportPassengers,
@@ -164,7 +190,8 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Excluir pagamento do transporte',
-      description: 'Permite excluir pagamentos, exigindo justificativa no módulo.',
+      description:
+          'Permite excluir pagamentos, exigindo justificativa no módulo.',
       key: 'pode_excluir_pagamento_transporte',
       icon: Icons.delete_sweep_rounded,
       category: categoryTransportPayments,
@@ -179,7 +206,8 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Configurar transportes',
-      description: 'Permite acessar o painel administrativo e configurar tipos de veículo.',
+      description:
+          'Permite acessar o painel administrativo e configurar tipos de veículo.',
       key: 'pode_configurar_transportes',
       icon: Icons.settings_suggest_rounded,
       category: categoryTransportAdmin,
@@ -187,7 +215,8 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Ver logs de transportes',
-      description: 'Permite consultar o histórico de atividades e auditoria do módulo.',
+      description:
+          'Permite consultar o histórico de atividades e auditoria do módulo.',
       key: 'pode_ver_logs_transporte',
       icon: Icons.history_rounded,
       category: categoryTransportAudit,
@@ -210,7 +239,8 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Ver histórico de inscrições',
-      description: 'Permite consultar inscrições aprovadas e recusadas/arquivadas.',
+      description:
+          'Permite consultar inscrições aprovadas e recusadas/arquivadas.',
       key: 'pode_ver_historico_inscricoes',
       icon: Icons.history_rounded,
       category: categoryRegistrations,
@@ -224,7 +254,8 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Recusar e arquivar inscrição',
-      description: 'Permite recusar a solicitação e movê-la para o histórico arquivado.',
+      description:
+          'Permite recusar a solicitação e movê-la para o histórico arquivado.',
       key: 'pode_recusar_inscricao',
       icon: Icons.archive_rounded,
       category: categoryRegistrations,
@@ -232,14 +263,16 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Reativar inscrição arquivada',
-      description: 'Permite devolver uma inscrição arquivada para a fila de pendentes.',
+      description:
+          'Permite devolver uma inscrição arquivada para a fila de pendentes.',
       key: 'pode_reativar_inscricao_arquivada',
       icon: Icons.restore_rounded,
       category: categoryRegistrations,
     ),
     PermissionDefinition(
       title: 'Excluir inscrição permanentemente',
-      description: 'Permite apagar definitivamente inscrições pendentes ou arquivadas, removendo dados, foto e assinatura.',
+      description:
+          'Permite apagar definitivamente inscrições pendentes ou arquivadas, removendo dados, foto e assinatura.',
       key: 'pode_excluir_permanentemente_inscricao',
       icon: Icons.delete_forever_rounded,
       category: categoryRegistrations,
@@ -247,35 +280,40 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Enviar convite ao aluno',
-      description: 'Permite contatar o aluno e agendar aula experimental pelo WhatsApp.',
+      description:
+          'Permite contatar o aluno e agendar aula experimental pelo WhatsApp.',
       key: 'pode_contatar_aluno_inscricao',
       icon: Icons.chat_rounded,
       category: categoryRegistrations,
     ),
     PermissionDefinition(
       title: 'Enviar convite ao responsável',
-      description: 'Permite contatar o responsável e agendar aula experimental pelo WhatsApp.',
+      description:
+          'Permite contatar o responsável e agendar aula experimental pelo WhatsApp.',
       key: 'pode_contatar_responsavel_inscricao',
       icon: Icons.family_restroom_rounded,
       category: categoryRegistrations,
     ),
     PermissionDefinition(
       title: 'Visualizar termo da inscrição',
-      description: 'Permite abrir o termo e a assinatura digital enviados na inscrição.',
+      description:
+          'Permite abrir o termo e a assinatura digital enviados na inscrição.',
       key: 'pode_visualizar_termo_inscricao',
       icon: Icons.description_rounded,
       category: categoryRegistrations,
     ),
     PermissionDefinition(
       title: 'Receber alerta de nova inscrição',
-      description: 'Envia notificação push quando uma nova inscrição pendente for recebida.',
+      description:
+          'Envia notificação push quando uma nova inscrição pendente for recebida.',
       key: 'pode_receber_notificacao_nova_inscricao',
       icon: Icons.notifications_active_rounded,
       category: categoryRegistrations,
     ),
     PermissionDefinition(
       title: 'Configurar inscrições',
-      description: 'Permite abrir a engrenagem do módulo, alterar regras e configurar o robô da aula experimental.',
+      description:
+          'Permite abrir a engrenagem do módulo, alterar regras e configurar o robô da aula experimental.',
       key: 'pode_configurar_inscricoes',
       icon: Icons.settings_rounded,
       category: categoryRegistrations,
@@ -283,7 +321,8 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Ver auditoria de inscrições',
-      description: 'Permite consultar quem aprovou, remarcou ou arquivou inscrições e as execuções do robô.',
+      description:
+          'Permite consultar quem aprovou, remarcou ou arquivou inscrições e as execuções do robô.',
       key: 'pode_ver_auditoria_inscricoes',
       icon: Icons.fact_check_rounded,
       category: categoryRegistrations,
@@ -291,8 +330,8 @@ class PermissionCatalog {
     PermissionDefinition(
       title: 'Acessar uniformes',
       description: 'Mostra o menu Uniformes no app.',
-      key: 'pode_acessar_uniformes',
-      aliases: ['podeAcessarUniformes'],
+      key: 'podeAcessarUniformes',
+      aliases: ['pode_acessar_uniformes'],
       icon: Icons.shopping_bag_rounded,
       category: categoryVisibility,
     ),
@@ -562,6 +601,14 @@ class PermissionCatalog {
       category: categoryEventsFinancial,
     ),
     PermissionDefinition(
+      title: 'Ver auditoria do evento',
+      description:
+          'Permite consultar a auditoria de eventos autorizados e com visibilidade ativa.',
+      key: 'pode_ver_auditoria_evento',
+      icon: Icons.history_rounded,
+      category: categoryEventsFinancial,
+    ),
+    PermissionDefinition(
       title: 'Ver relatórios do evento',
       description: 'Permite abrir relatórios financeiros e listas do evento.',
       key: 'pode_ver_relatorio_evento',
@@ -692,6 +739,33 @@ class PermissionCatalog {
       delegable: false,
     ),
     PermissionDefinition(
+      title: 'Registrar entrega de uniformes',
+      description:
+          'Permite confirmar ou corrigir a entrega de vendas de uniformes.',
+      key: 'pode_registrar_entrega_uniforme',
+      icon: Icons.local_shipping_outlined,
+      category: categoryUniforms,
+    ),
+    PermissionDefinition(
+      title: 'Ver auditoria de uniformes',
+      description:
+          'Permite consultar autoria, valores e alterações operacionais.',
+      key: 'pode_ver_auditoria_uniformes',
+      icon: Icons.fact_check_outlined,
+      category: categoryUniforms,
+    ),
+    PermissionDefinition(
+      title: 'Configurar uniformes',
+      description:
+          'Configuração crítica exclusiva ao administrador ativo peso 100.',
+      key: 'pode_configurar_uniformes',
+      icon: Icons.settings_outlined,
+      category: categoryUniforms,
+      critical: true,
+      adminOnlySuggested: true,
+      delegable: false,
+    ),
+    PermissionDefinition(
       title: 'Editar vendas',
       description: 'Permite editar vendas de uniformes.',
       key: 'pode_editar_venda',
@@ -735,7 +809,8 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Registrar pagamentos de vendas',
-      description: 'Permite registrar pagamentos recebidos em vendas de uniformes.',
+      description:
+          'Permite registrar pagamentos recebidos em vendas de uniformes.',
       key: 'pode_registrar_pagamento_uniforme',
       icon: Icons.payments_rounded,
       category: categoryUniforms,
@@ -749,14 +824,16 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Registrar pagamentos de pedidos',
-      description: 'Permite registrar valores pagos pelos alunos em pedidos de uniformes.',
+      description:
+          'Permite registrar valores pagos pelos alunos em pedidos de uniformes.',
       key: 'pode_registrar_pagamento_pedido',
       icon: Icons.price_check_rounded,
       category: categoryUniforms,
     ),
     PermissionDefinition(
       title: 'Alterar status e entrega de pedidos',
-      description: 'Permite mover pedidos para confecção e marcar como entregues.',
+      description:
+          'Permite mover pedidos para confecção e marcar como entregues.',
       key: 'pode_alterar_status_pedido',
       icon: Icons.local_shipping_rounded,
       category: categoryUniforms,
@@ -770,35 +847,40 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Gerenciar fornecedores de uniformes',
-      description: 'Permite abrir e administrar fornecedores do módulo de uniformes.',
+      description:
+          'Permite abrir e administrar fornecedores do módulo de uniformes.',
       key: 'pode_gerenciar_fornecedores_uniformes',
       icon: Icons.business_rounded,
       category: categoryUniforms,
     ),
     PermissionDefinition(
       title: 'Ver relatório financeiro de uniformes',
-      description: 'Permite consultar o relatório financeiro próprio do módulo de uniformes.',
+      description:
+          'Permite consultar o relatório financeiro próprio do módulo de uniformes.',
       key: 'pode_ver_relatorio_uniformes',
       icon: Icons.bar_chart_rounded,
       category: categoryUniforms,
     ),
     PermissionDefinition(
       title: 'Ver financeiro da associação',
-      description: 'Permite abrir e consultar o livro-caixa, saldos, contas e auditoria da Associação.',
+      description:
+          'Permite abrir e consultar o livro-caixa, saldos, contas e auditoria da Associação.',
       key: 'pode_ver_financeiro_associacao',
       icon: Icons.account_balance_wallet_rounded,
       category: categoryAssociationFinance,
     ),
     PermissionDefinition(
       title: 'Lançar entradas e saídas da associação',
-      description: 'Permite registrar movimentações financeiras manuais na Associação.',
+      description:
+          'Permite registrar movimentações financeiras manuais na Associação.',
       key: 'pode_lancar_financeiro_associacao',
       icon: Icons.add_card_rounded,
       category: categoryAssociationFinance,
     ),
     PermissionDefinition(
       title: 'Estornar lançamentos da associação',
-      description: 'Permite estornar movimentações financeiras preservando a trilha de auditoria.',
+      description:
+          'Permite estornar movimentações financeiras preservando a trilha de auditoria.',
       key: 'pode_estornar_financeiro_associacao',
       icon: Icons.undo_rounded,
       category: categoryAssociationFinance,
@@ -806,7 +888,8 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Sincronizar histórico financeiro',
-      description: 'Permite importar para o Financeiro dados históricos de módulos integrados.',
+      description:
+          'Permite importar para o Financeiro dados históricos de módulos integrados.',
       key: 'pode_sincronizar_financeiro_associacao',
       icon: Icons.sync_rounded,
       category: categoryAssociationFinance,
@@ -814,21 +897,24 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Configurar contas e categorias',
-      description: 'Permite criar e alterar contas e categorias do Financeiro da Associação.',
+      description:
+          'Permite criar e alterar contas e categorias do Financeiro da Associação.',
       key: 'pode_configurar_financeiro_associacao',
       icon: Icons.tune_rounded,
       category: categoryAssociationFinance,
     ),
     PermissionDefinition(
       title: 'Exportar relatórios financeiros',
-      description: 'Permite gerar PDF e relatórios do Financeiro da Associação.',
+      description:
+          'Permite gerar PDF e relatórios do Financeiro da Associação.',
       key: 'pode_exportar_financeiro_associacao',
       icon: Icons.picture_as_pdf_rounded,
       category: categoryAssociationFinance,
     ),
     PermissionDefinition(
       title: 'Ver associados',
-      description: 'Permite abrir o cadastro, perfis e informações dos associados.',
+      description:
+          'Permite abrir o cadastro, perfis e informações dos associados.',
       key: 'pode_ver_associados_associacao',
       icon: Icons.groups_rounded,
       category: categoryAssociationMembers,
@@ -842,14 +928,16 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Gerenciar mensalidades e contribuições',
-      description: 'Permite gerar mensalidades, registrar pagamentos, estornos, doações e contribuições.',
+      description:
+          'Permite gerar mensalidades, registrar pagamentos, estornos, doações e contribuições.',
       key: 'pode_gerenciar_mensalidades_associacao',
       icon: Icons.payments_rounded,
       category: categoryAssociationMembers,
     ),
     PermissionDefinition(
       title: 'Gerenciar gestões e mandatos',
-      description: 'Permite criar, agendar e ativar gestões, cargos e mandatos da Associação.',
+      description:
+          'Permite criar, agendar e ativar gestões, cargos e mandatos da Associação.',
       key: 'pode_gerenciar_gestoes_associacao',
       icon: Icons.account_balance_rounded,
       category: categoryAssociationMembers,
@@ -857,14 +945,16 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Ver ofícios',
-      description: 'Permite consultar o arquivo de ofícios e visualizar documentos existentes.',
+      description:
+          'Permite consultar o arquivo de ofícios e visualizar documentos existentes.',
       key: 'pode_ver_oficios_associacao',
       icon: Icons.folder_copy_rounded,
       category: categoryAssociationOffices,
     ),
     PermissionDefinition(
       title: 'Criar ofício',
-      description: 'Permite iniciar e salvar novos ofícios em nome da Associação.',
+      description:
+          'Permite iniciar e salvar novos ofícios em nome da Associação.',
       key: 'pode_criar_oficio_associacao',
       icon: Icons.note_add_rounded,
       category: categoryAssociationOffices,
@@ -878,7 +968,8 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Usar IA nos ofícios',
-      description: 'Permite usar o Gemini para profissionalizar, corrigir, encurtar ou formalizar textos.',
+      description:
+          'Permite usar o Gemini para profissionalizar, corrigir, encurtar ou formalizar textos.',
       key: 'pode_usar_ia_oficio_associacao',
       icon: Icons.auto_awesome_rounded,
       category: categoryAssociationOffices,
@@ -892,21 +983,24 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Registrar resposta de ofício',
-      description: 'Permite registrar se o pedido foi aprovado, atendido parcialmente ou recusado.',
+      description:
+          'Permite registrar se o pedido foi aprovado, atendido parcialmente ou recusado.',
       key: 'pode_registrar_resposta_oficio_associacao',
       icon: Icons.mark_email_read_rounded,
       category: categoryAssociationOffices,
     ),
     PermissionDefinition(
       title: 'Ver configurações da associação',
-      description: 'Permite consultar CNPJ, dados institucionais, identidade e padrões documentais.',
+      description:
+          'Permite consultar CNPJ, dados institucionais, identidade e padrões documentais.',
       key: 'pode_ver_config_associacao',
       icon: Icons.settings_rounded,
       category: categoryAssociationConfig,
     ),
     PermissionDefinition(
       title: 'Editar configurações da associação',
-      description: 'Permite alterar dados oficiais usados por Ofícios e demais módulos.',
+      description:
+          'Permite alterar dados oficiais usados por Ofícios e demais módulos.',
       key: 'pode_editar_config_associacao',
       icon: Icons.admin_panel_settings_rounded,
       category: categoryAssociationConfig,
@@ -914,28 +1008,32 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Ver arquivos úteis da associação',
-      description: 'Permite abrir a biblioteca de atalhos e arquivos institucionais.',
+      description:
+          'Permite abrir a biblioteca de atalhos e arquivos institucionais.',
       key: 'pode_ver_arquivos_associacao',
       icon: Icons.folder_special_rounded,
       category: categoryAssociationFiles,
     ),
     PermissionDefinition(
       title: 'Gerenciar arquivos úteis da associação',
-      description: 'Permite cadastrar, editar, favoritar, arquivar e restaurar arquivos institucionais.',
+      description:
+          'Permite cadastrar, editar, favoritar, arquivar e restaurar arquivos institucionais.',
       key: 'pode_gerenciar_arquivos_associacao',
       icon: Icons.drive_file_move_rounded,
       category: categoryAssociationFiles,
     ),
     PermissionDefinition(
       title: 'Compartilhar arquivos úteis',
-      description: 'Permite tornar arquivos do Google Drive públicos ou privados e alterar o acesso por link.',
+      description:
+          'Permite tornar arquivos do Google Drive públicos ou privados e alterar o acesso por link.',
       key: 'pode_compartilhar_arquivos_associacao',
       icon: Icons.public_rounded,
       category: categoryAssociationFiles,
     ),
     PermissionDefinition(
       title: 'Excluir arquivos úteis',
-      description: 'Permite remover o item do catálogo e enviar os respectivos arquivos do Google Drive para a lixeira.',
+      description:
+          'Permite remover o item do catálogo e enviar os respectivos arquivos do Google Drive para a lixeira.',
       key: 'pode_excluir_arquivos_associacao',
       icon: Icons.delete_forever_rounded,
       category: categoryAssociationFiles,
@@ -943,7 +1041,8 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Limpar arquivos sem vínculo no Drive',
-      description: 'Permite auditar a pasta Arquivos Úteis, localizar uploads sem vínculo ou repetidos e enviá-los para a lixeira.',
+      description:
+          'Permite auditar a pasta Arquivos Úteis, localizar uploads sem vínculo ou repetidos e enviá-los para a lixeira.',
       key: 'pode_limpar_drive_arquivos_associacao',
       icon: Icons.cleaning_services_rounded,
       category: categoryAssociationFiles,
@@ -951,7 +1050,8 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Ver inventário e patrimônio',
-      description: 'Permite abrir o módulo, consultar bens, fotos, valores, lotes, cautelas e histórico.',
+      description:
+          'Permite abrir o módulo, consultar bens, fotos, valores, lotes, cautelas e histórico.',
       key: 'pode_ver_patrimonio_associacao',
       icon: Icons.visibility_rounded,
       category: categoryAssociationAssets,
@@ -965,42 +1065,48 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Editar cadastro patrimonial',
-      description: 'Permite alterar dados, foto, quantidade, lotes, origem, fonte do recurso, local e responsável.',
+      description:
+          'Permite alterar dados, foto, quantidade, lotes, origem, fonte do recurso, local e responsável.',
       key: 'pode_editar_patrimonio_associacao',
       icon: Icons.edit_rounded,
       category: categoryAssociationAssets,
     ),
     PermissionDefinition(
       title: 'Vincular documentos ao patrimônio',
-      description: 'Permite relacionar notas fiscais, garantias, termos, manuais e outros Arquivos Úteis aos bens e lotes.',
+      description:
+          'Permite relacionar notas fiscais, garantias, termos, manuais e outros Arquivos Úteis aos bens e lotes.',
       key: 'pode_documentos_patrimonio_associacao',
       icon: Icons.attach_file_rounded,
       category: categoryAssociationAssets,
     ),
     PermissionDefinition(
       title: 'Gerenciar cautelas e devoluções',
-      description: 'Permite emprestar bens, registrar cautelas e confirmar devoluções.',
+      description:
+          'Permite emprestar bens, registrar cautelas e confirmar devoluções.',
       key: 'pode_cautelas_patrimonio_associacao',
       icon: Icons.assignment_ind_rounded,
       category: categoryAssociationAssets,
     ),
     PermissionDefinition(
       title: 'Transferir patrimônio',
-      description: 'Permite alterar localização e responsável por meio de movimentação registrada no histórico.',
+      description:
+          'Permite alterar localização e responsável por meio de movimentação registrada no histórico.',
       key: 'pode_transferir_patrimonio_associacao',
       icon: Icons.swap_horiz_rounded,
       category: categoryAssociationAssets,
     ),
     PermissionDefinition(
       title: 'Gerenciar manutenção',
-      description: 'Permite enviar um bem para manutenção e registrar a conclusão do serviço.',
+      description:
+          'Permite enviar um bem para manutenção e registrar a conclusão do serviço.',
       key: 'pode_manutencao_patrimonio_associacao',
       icon: Icons.build_rounded,
       category: categoryAssociationAssets,
     ),
     PermissionDefinition(
       title: 'Dar baixa patrimonial',
-      description: 'Permite registrar a baixa de um bem mantendo cadastro, documentos e histórico para auditoria.',
+      description:
+          'Permite registrar a baixa de um bem mantendo cadastro, documentos e histórico para auditoria.',
       key: 'pode_baixar_patrimonio_associacao',
       icon: Icons.inventory_2_outlined,
       category: categoryAssociationAssets,
@@ -1008,7 +1114,8 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Excluir / restaurar cadastro patrimonial',
-      description: 'Permite retirar um cadastro da operação normal e restaurá-lo depois. A exclusão é auditável e não apaga o histórico.',
+      description:
+          'Permite retirar um cadastro da operação normal e restaurá-lo depois. A exclusão é auditável e não apaga o histórico.',
       key: 'pode_excluir_patrimonio_associacao',
       icon: Icons.delete_forever_rounded,
       category: categoryAssociationAssets,
@@ -1120,7 +1227,11 @@ class PermissionCatalog {
       title: 'Acessar Central de Certificados',
       description: 'Permite abrir a Central de Certificados.',
       key: 'pode_acessar_certificados',
-      aliases: ['pode_configurar_certificados', 'pode_gerar_certificados_evento', 'pode_gerar_certificados'],
+      aliases: [
+        'pode_configurar_certificados',
+        'pode_gerar_certificados_evento',
+        'pode_gerar_certificados',
+      ],
       icon: Icons.workspace_premium_rounded,
       category: categoryCertificates,
     ),
@@ -1150,7 +1261,8 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Excluir templates',
-      description: 'Permite remover templates da biblioteca. Não altera snapshots já salvos em eventos.',
+      description:
+          'Permite remover templates da biblioteca. Não altera snapshots já salvos em eventos.',
       key: 'pode_excluir_templates_certificados',
       icon: Icons.delete_forever_rounded,
       category: categoryCertificates,
@@ -1158,7 +1270,8 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Configurar QR e autenticidade',
-      description: 'Permite alterar domínio, privacidade e regras globais de validação.',
+      description:
+          'Permite alterar domínio, privacidade e regras globais de validação.',
       key: 'pode_configurar_qr_certificados',
       icon: Icons.qr_code_2_rounded,
       category: categoryCertificates,
@@ -1168,13 +1281,17 @@ class PermissionCatalog {
       title: 'Gerar prévias',
       description: 'Permite testar/gerar PDF sem criar emissão oficial.',
       key: 'pode_gerar_previa_certificados',
-      aliases: ['pode_configurar_certificados', 'pode_gerar_certificados_evento'],
+      aliases: [
+        'pode_configurar_certificados',
+        'pode_gerar_certificados_evento',
+      ],
       icon: Icons.preview_rounded,
       category: categoryCertificates,
     ),
     PermissionDefinition(
       title: 'Emitir certificados',
-      description: 'Permite criar emissão oficial V2 com identidade e QR quando o motor V2 estiver ativo.',
+      description:
+          'Permite criar emissão oficial V2 com identidade e QR quando o motor V2 estiver ativo.',
       key: 'pode_emitir_certificados',
       aliases: ['pode_gerar_certificados_evento', 'pode_gerar_certificados'],
       icon: Icons.verified_rounded,
@@ -1183,7 +1300,8 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Reemitir certificado',
-      description: 'Permite gerar novamente o PDF da mesma emissão sem criar uma nova identidade.',
+      description:
+          'Permite gerar novamente o PDF da mesma emissão sem criar uma nova identidade.',
       key: 'pode_reemitir_certificados',
       aliases: ['pode_gerar_certificados_evento'],
       icon: Icons.replay_rounded,
@@ -1191,7 +1309,8 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Visualizar certificados emitidos',
-      description: 'Permite consultar a futura central de emissões e autenticidade.',
+      description:
+          'Permite consultar a futura central de emissões e autenticidade.',
       key: 'pode_visualizar_certificados_emitidos',
       aliases: ['pode_gerar_certificados_evento'],
       icon: Icons.fact_check_rounded,
@@ -1223,7 +1342,8 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Reativar certificado',
-      description: 'Permite restaurar uma emissão revogada ou cancelada para o status válido, sempre com histórico administrativo.',
+      description:
+          'Permite restaurar uma emissão revogada ou cancelada para o status válido, sempre com histórico administrativo.',
       key: 'pode_reativar_certificados',
       icon: Icons.restore_rounded,
       category: categoryCertificates,
@@ -1231,7 +1351,8 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Excluir emissão oficial',
-      description: 'Permite excluir definitivamente uma emissão oficial, sua validação pública e o PDF associado. Use apenas para emissões criadas por engano.',
+      description:
+          'Permite excluir definitivamente uma emissão oficial, sua validação pública e o PDF associado. Use apenas para emissões criadas por engano.',
       key: 'pode_excluir_emissoes_certificados',
       icon: Icons.delete_forever_rounded,
       category: categoryCertificates,
@@ -1248,9 +1369,13 @@ class PermissionCatalog {
     ),
     PermissionDefinition(
       title: 'Configurar certificados',
-      description: 'Permite abrir as configurações globais e administrar o Studio.',
+      description:
+          'Permite abrir as configurações globais e administrar o Studio.',
       key: 'pode_configurar_certificados',
-      aliases: ['pode_configurar_certificados_evento', 'pode_configurar_certificado_evento'],
+      aliases: [
+        'pode_configurar_certificados_evento',
+        'pode_configurar_certificado_evento',
+      ],
       icon: Icons.tune_rounded,
       category: categoryCertificates,
     ),

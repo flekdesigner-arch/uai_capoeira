@@ -6,6 +6,7 @@ const { onDocumentWritten } = require('firebase-functions/v2/firestore');
 const admin = require('firebase-admin');
 const { Storage } = require('@google-cloud/storage');
 const { DateTime } = require('luxon');
+const disciplinaMotor = require('./disciplina/motor');
 const axios = require('axios');
 const crypto = require('crypto');
 const sharp = require('sharp');
@@ -21,6 +22,22 @@ const GOOGLE_DRIVE_CLIENT_SECRET = defineSecret('GOOGLE_DRIVE_CLIENT_SECRET');
 admin.initializeApp();
 
 const db = admin.firestore();
+const disciplinaCalls = disciplinaMotor.registrarDisciplina({db, admin,
+    onChange: async (turmaId) => {
+        if (!turmaId) return;
+        await db.collection('turmas').doc(turmaId).collection('dashboard_cache').doc('meta').set({
+            necessita_reconstrucao:true, atualizado_em:admin.firestore.FieldValue.serverTimestamp(),
+        },{merge:true});
+        await reconstruirDashboardTurmaCacheInterno(turmaId,{force:true,origem:'ocorrencia_disciplinar'});
+    },
+});
+exports.aplicarOcorrenciaDisciplinar = disciplinaCalls.aplicar;
+exports.anularOcorrenciaDisciplinar = disciplinaCalls.anular;
+exports.publicarPoliticaDisciplina = disciplinaCalls.publicar;
+exports.expulsarAlunoDisciplina = disciplinaCalls.expulsar;
+exports.reativarAlunoExpulso = disciplinaCalls.reativarExpulso;
+exports.revisarOcorrenciaDisciplinar = disciplinaCalls.revisar;
+exports.listarCentralDisciplina = disciplinaCalls.listar;
 const storage = new Storage();
 const bucketName = 'uai-capoeira-52753.firebasestorage.app';
 const ESTUDOS_CRITERIO_APROVACAO_PERCENTUAL = 70;
@@ -2133,22 +2150,26 @@ async function enviarMulticastEmLotes({ tokens, title, body, data = {}, tokenOwn
 
         try {
             await messaging.send({
-                notification: { title, body },
-                data,
+                ...(data.tipo === 'aniversario' ? {} : { notification: { title, body } }),
+                data: { ...data, title, body },
+                ...(data.tipo === 'aniversario' ? { webpush: { notification: { title, body } } } : {}),
                 android: {
                     priority: 'high',
-                    notification: {
+                    ...(data.tipo === 'aniversario' ? {} : { notification: {
                         channelId: 'default_channel',
                         icon: androidIcon,
+                        ...(data.tipo === 'aniversario' && /^https:\/\//i.test(data.foto_url || '')
+                            ? { imageUrl: data.foto_url } : {}),
                         priority: 'high',
                         defaultSound: true,
                         defaultVibrateTimings: true,
-                    },
+                    } }),
                 },
                 apns: {
                     payload: {
                         aps: {
                             sound: 'default',
+                            ...(data.tipo === 'aniversario' ? { alert: { title, body } } : {}),
                         },
                     },
                 },
@@ -2206,10 +2227,19 @@ exports.sendBirthdayNotifications = onSchedule(
         console.log(`🔔 Verificando aniversariantes para ${day}/${month} (Horário BR)...`);
 
         try {
-            const alunosSnapshot = await db
-                .collection('alunos')
-                .where('status_atividade', '==', 'ATIVO(A)')
-                .get();
+            const confDoc = await db.collection('configuracoes').doc('aniversariantes').get();
+            const conf = confDoc.exists ? confDoc.data() : {};
+            const hora = hojeBrasilia.hour;
+            if (conf.enabled === false || conf.notificationsEnabled === false ||
+                (hora === 8 && conf.sendMorning === false) ||
+                (hora === 18 && conf.sendEvening === false)) {
+                console.log('🎂 Execucao agendada ignorada por configuracao do modulo.', {hora});
+                return;
+            }
+            const alunosRef = db.collection('alunos');
+            const alunosSnapshot = conf.includeInactive === true
+                ? await alunosRef.get()
+                : await alunosRef.where('status_atividade', '==', 'ATIVO(A)').get();
 
             console.log(`👥 Alunos ativos encontrados: ${alunosSnapshot.size}`);
 
@@ -2222,7 +2252,12 @@ exports.sendBirthdayNotifications = onSchedule(
                 if (!nascimento) return;
 
                 if (nascimento.day === day && nascimento.month === month) {
-                    birthdayStudents.push(data.nome || data.apelido || 'Aluno');
+                    birthdayStudents.push({
+                        nome: String(data.nome || data.apelido || 'Aluno'),
+                        idade: calcularIdade(data.data_nascimento),
+                        foto: String(data.foto_perfil_aluno || data.foto_url || data.foto || ''),
+                        id: doc.id,
+                    });
                 }
             });
 
@@ -2231,7 +2266,7 @@ exports.sendBirthdayNotifications = onSchedule(
                 return;
             }
 
-            console.log(`🎉 ${birthdayStudents.length} aniversariante(s) hoje:`, birthdayStudents);
+            console.log(`🎉 ${birthdayStudents.length} aniversariante(s) hoje:`, birthdayStudents.map(a => a.nome));
 
             const { usuariosAtivos, usuariosNotificaveis, tokens, tokenOwners, usuariosMap } = await buscarTokensUsuariosAtivos();
 
@@ -2240,19 +2275,30 @@ exports.sendBirthdayNotifications = onSchedule(
                 return;
             }
 
+            const primeiro = birthdayStudents[0];
             const title = birthdayStudents.length === 1
-                ? '🎉 Aniversariante do Dia!'
-                : `🎉 ${birthdayStudents.length} Aniversariantes Hoje!`;
-
+                ? `🎂 ${primeiro.nome}`
+                : `🎉 ${birthdayStudents.length} aniversariantes hoje!`;
+            const idade = primeiro.idade;
             const body = birthdayStudents.length === 1
-                ? `${birthdayStudents[0]} está fazendo aniversário hoje! 🎂`
-                : `Hoje fazem aniversário: ${birthdayStudents.join(', ')}`;
+                ? (idade === null ? 'Hoje é dia de celebrar! 🥳' : `Completando ${idade} anos hoje! 🥳`)
+                : birthdayStudents.map(a => a.idade === null ? a.nome : `${a.nome} • ${a.idade} anos`).join(' | ');
 
             const payloadAniversario = {
                 tipo: 'aniversario',
                 quantidade: String(birthdayStudents.length),
                 data: hojeBrasilia.toFormat('yyyy-MM-dd'),
-                nomes: birthdayStudents.join(', '),
+                nomes: birthdayStudents.map(a => a.nome).join(', '),
+                nome: primeiro.nome,
+                idade: primeiro.idade === null ? '' : String(primeiro.idade),
+                foto_url: conf.includePhoto !== false && /^https:\/\//i.test(primeiro.foto) ? primeiro.foto : '',
+                alunos_json: JSON.stringify(birthdayStudents.slice(0, 5).map(a => ({
+                    n: a.nome.slice(0, 90),
+                    i: a.idade === null ? '' : String(a.idade),
+                    f: conf.includePhoto !== false && /^https:\/\//i.test(a.foto) ? a.foto.slice(0, 600) : '',
+                }))),
+                aluno_id: primeiro.id,
+                rota: 'aniversariantes',
                 origem: 'scheduler_aniversario',
             };
 
@@ -2349,6 +2395,85 @@ exports.testarNotificacaoAniversario = onCall(async (request) => {
     }
 });
 
+// Teste real do formato expansivel, isolado do agendador automatico.
+// Envia exclusivamente para tokens do administrador solicitante.
+exports.testarNotificacaoAniversarioExpandida = onCall(async (request) => {
+    const operador = await validarAdminEstudosFundamentos(request);
+    const usuarioDoc = await db.collection('usuarios').doc(operador.uid).get();
+    const usuario = usuarioDoc.data() || {};
+    const tokens = [...new Set([
+        usuario.current_fcm_token,
+        ...(Array.isArray(usuario.fcm_tokens) ? usuario.fcm_tokens : []),
+    ].filter(t => typeof t === 'string' && t.length > 0))];
+    if (!tokens.length) {
+        throw new HttpsError('failed-precondition', 'Seu usuario nao possui token FCM cadastrado. Abra o APK e permita notificacoes.');
+    }
+    const confDoc = await db.collection('configuracoes').doc('aniversariantes').get();
+    const conf = confDoc.data() || {};
+    const agora = DateTime.now().setZone('America/Sao_Paulo');
+    const alunosSnap = conf.includeInactive === true
+        ? await db.collection('alunos').get()
+        : await db.collection('alunos').where('status_atividade', '==', 'ATIVO(A)').get();
+    const todos = [];
+    const aniversariantes = [];
+    alunosSnap.forEach(doc => {
+        const aluno = doc.data();
+        const nascimento = extrairDataNascimento(aluno.data_nascimento);
+        if (!nascimento) return;
+        const pessoa = {
+            id: doc.id,
+            nome: String(aluno.nome || aluno.apelido || 'Aluno'),
+            idade: calcularIdade(aluno.data_nascimento),
+            foto: String(aluno.foto_perfil_aluno || aluno.foto_url || aluno.foto || ''),
+        };
+        todos.push(pessoa);
+        if (nascimento.day === agora.day && nascimento.month === agora.month) {
+            aniversariantes.push(pessoa);
+        }
+    });
+    const simulacao = aniversariantes.length === 0;
+    const pessoas = simulacao ? todos.slice(0, 5) : aniversariantes;
+    if (!pessoas.length) {
+        throw new HttpsError('failed-precondition', 'Nao ha alunos com data de nascimento cadastrada para montar a previa.');
+    }
+    const primeira = pessoas[0];
+    const title = simulacao
+        ? `🧪 Teste de aniversarios • ${pessoas.length} alunos`
+        : pessoas.length === 1 ? `🧪 Teste • 🎂 ${primeira.nome}` : `🧪 Teste • 🎉 ${pessoas.length} aniversariantes hoje!`;
+    const body = pessoas.map(a => a.idade == null ? a.nome : `${a.nome} • ${a.idade} anos`).join(' | ');
+    const payload = {
+        tipo: 'aniversario',
+        quantidade: String(pessoas.length),
+        data: agora.toFormat('yyyy-MM-dd'),
+        nomes: pessoas.map(a => a.nome).join(', '),
+        nome: primeira.nome,
+        idade: primeira.idade == null ? '' : String(primeira.idade),
+        foto_url: conf.includePhoto !== false && /^https:\/\//i.test(primeira.foto) ? primeira.foto : '',
+        alunos_json: JSON.stringify(pessoas.slice(0, 5).map(a => ({
+            n: a.nome.slice(0, 90),
+            i: a.idade == null ? '' : String(a.idade),
+            f: conf.includePhoto !== false && /^https:\/\//i.test(a.foto) ? a.foto.slice(0, 600) : '',
+        }))),
+        aluno_id: primeira.id,
+        rota: 'aniversariantes',
+        origem: 'teste_manual_admin',
+    };
+    const dono = db.collection('usuarios').doc(operador.uid);
+    const tokenOwners = new Map(tokens.map(token => [token, dono]));
+    const resultado = await enviarMulticastEmLotes({
+        tokens, title, body, data: payload, tokenOwners,
+        androidIcon: 'ic_notification_birthday',
+    });
+    return {
+        success: resultado.successCount > 0,
+        successCount: resultado.successCount,
+        failureCount: resultado.failureCount,
+        tokens: tokens.length,
+        quantidade: pessoas.length,
+        simulacao,
+    };
+});
+
 // ============================================
 // HELPERS - CONTADORES DE FREQUÊNCIA DO DASHBOARD
 // ============================================
@@ -2431,13 +2556,20 @@ function montarUpdatesContadorFrequencia({
         updates.ultimo_dia_presente = dataBrasilia.toFormat('yyyy-MM-dd');
     }
 
-    return updates;
+    const aninhados = {};
+    for (const [path,value] of Object.entries(updates)) {
+        const keys=path.split('.'); let target=aninhados;
+        for (const key of keys.slice(0,-1)) target=target[key] ||= {};
+        target[keys.at(-1)]=value;
+    }
+    return aninhados;
 }
 
 // ============================================================
 // AUTORIZACAO DE CHAMADAS POR USUARIO + TURMA
 // ============================================================
-async function validarAcessoChamadaNaTurma(uid, turmaId, acao = 'criar') {
+async function validarAcessoChamadaNaTurma(uid, turmaId, acao = 'criar', tx = null) {
+    const ler = ref => tx ? tx.get(ref) : ref.get();
     if (!uid) {
         throw new HttpsError('unauthenticated', 'Usuário não autenticado');
     }
@@ -2448,9 +2580,9 @@ async function validarAcessoChamadaNaTurma(uid, turmaId, acao = 'criar') {
 
     const usuarioRef = db.collection('usuarios').doc(uid);
     const [usuarioDoc, permissoesDoc, turmaDoc] = await Promise.all([
-        usuarioRef.get(),
-        usuarioRef.collection('permissoes_usuario').doc('configuracoes').get(),
-        db.collection('turmas').doc(turmaId).get(),
+        ler(usuarioRef),
+        ler(usuarioRef.collection('permissoes_usuario').doc('configuracoes')),
+        ler(db.collection('turmas').doc(turmaId)),
     ]);
 
     if (!usuarioDoc.exists) {
@@ -2458,15 +2590,8 @@ async function validarAcessoChamadaNaTurma(uid, turmaId, acao = 'criar') {
     }
 
     const usuario = usuarioDoc.data() || {};
-    const statusConta = String(usuario.status_conta || usuario.statusConta || '')
-        .trim()
-        .toLowerCase();
-    const statusBloqueado = new Set([
-        'bloqueada', 'bloqueado', 'inativa', 'inativo', 'rejeitada', 'rejeitado'
-    ]);
-
-    if (statusBloqueado.has(statusConta) || usuario.ativo === false) {
-        throw new HttpsError('permission-denied', 'Conta sem acesso para realizar chamadas.');
+    if (!disciplinaMotor.contaLiberada(usuario)) {
+        throw new HttpsError('permission-denied','Conta sem acesso para realizar chamadas.');
     }
 
     const pesoPermissao = Number(usuario.peso_permissao || 0);
@@ -2525,7 +2650,7 @@ async function validarAcessoChamadaNaTurma(uid, turmaId, acao = 'criar') {
     if (!vinculado) {
         const academiaId = String(turma.academia_id || '').trim();
         if (academiaId) {
-            const academiaDoc = await db.collection('academias').doc(academiaId).get();
+            const academiaDoc = await ler(db.collection('academias').doc(academiaId));
             if (academiaDoc.exists) {
                 const academia = academiaDoc.data() || {};
                 const professoresAcademia = Array.isArray(academia.professores_ids)
@@ -2548,558 +2673,222 @@ async function validarAcessoChamadaNaTurma(uid, turmaId, acao = 'criar') {
     return { usuario, turma, admin: false };
 }
 
-// ============================================
-// FUNÇÃO 2: PROCESSAR CHAMADA (COM CONTADORES DO DASHBOARD)
-// ============================================
-exports.processarChamada = onCall(async (request) => {
-    if (!request.auth) {
-        throw new Error('Usuário não autenticado');
+// Uma transação compartilha autorização, projeção disciplinar, logs e contadores.
+// O lock visual é consultivo; a exclusividade real é turma + dia no servidor.
+async function mutarChamadaSegura(request, acao) {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError('unauthenticated', 'Faça login para continuar.');
+    const d = request.data || {};
+    const idValido = id => typeof id === 'string' && /^[\w-]{1,128}$/.test(id);
+    if (!idValido(d.turmaId) || (acao !== 'criar' && !idValido(d.chamadaId))) {
+        throw new HttpsError('invalid-argument', 'Turma ou chamada inválida.');
     }
-
-    const data = request.data;
-
-    const {
-        turmaId,
-        turmaNome,
-        academiaId,
-        academiaNome,
-        dataChamada,
-        alunos,
-        tipoAula,
-        professorId,
-        professorNome
-    } = data;
-
-    if (!turmaId || !dataChamada || !Array.isArray(alunos)) {
-        throw new HttpsError('invalid-argument', 'Dados inválidos para processar chamada');
-    }
-
-    // Segurança no backend: não basta estar autenticado. O usuário precisa
-    // ter permissão para fazer chamada E vínculo com esta turma/academia.
-    await validarAcessoChamadaNaTurma(request.auth.uid, turmaId, 'criar');
-
-    // Evita que um cliente alterado atribua a chamada a outro usuário.
-    if (professorId && professorId !== request.auth.uid) {
-        throw new HttpsError('permission-denied', 'Professor informado não corresponde ao usuário autenticado.');
-    }
-
-    // 🔥 CORREÇÃO DO FUSO HORÁRIO
-    // O app Flutter já envia no horário local (Brasília)
-    const dataBrasilia = DateTime.fromISO(dataChamada, { zone: 'America/Sao_Paulo' });
-    const dataFormatada = dataBrasilia.toFormat('yyyy-MM-dd');
-    const timestampBrasilia = admin.firestore.Timestamp.fromDate(dataBrasilia.toJSDate());
-    const diaSemanaAbrev = normalizarDiaSemanaAbrev(
-        dataBrasilia.setLocale('pt-BR').toFormat('ccc')
-    );
-    const mesAno = dataFormatada.substring(0, 7);
-
-    console.log(`🕐 Data recebida: ${dataChamada}`);
-    console.log(`🕐 Data Brasília: ${dataFormatada} ${dataBrasilia.toFormat('HH:mm')}`);
-    console.log(`📅 Dia da semana: ${diaSemanaAbrev}`);
-
-    // 🔒 Evita duplicar chamada e duplicar contador se houver retry/toque duplo
-    const chamadaExistente = await db
-        .collection('chamadas')
-        .where('turma_id', '==', turmaId)
-        .where('data_formatada', '==', dataFormatada)
-        .limit(1)
-        .get();
-
-    if (!chamadaExistente.empty) {
-        const existente = chamadaExistente.docs[0];
-        const dados = existente.data();
-
-        console.log(`⚠️ Chamada já existia para ${turmaId} em ${dataFormatada}. Retornando sem duplicar contadores.`);
-
-        await db.collection('locks_chamada').doc(turmaId).delete().catch(() => {});
-
-        return {
-            success: true,
-            duplicate: true,
-            chamadaId: existente.id,
-            processados: dados.total_alunos || alunos.length,
-            presentes: dados.presentes || 0,
-            ausentes: dados.ausentes || 0,
-            porcentagem_frequencia: dados.porcentagem_frequencia || 0,
-            diaSemanaAbrev,
-            dataFormatada,
-            contadoresAtualizados: false
-        };
-    }
-
-    const presentes = alunos.filter(a => a.presente === true).length;
-    const ausentes = alunos.length - presentes;
-    const porcentagem = alunos.length > 0 ? Math.round((presentes / alunos.length) * 100) : 0;
-
-    const batch = db.batch();
-    const chamadaRef = db.collection('chamadas').doc();
-
-    const chamadaData = {
-        turma_id: turmaId,
-        turma_nome: turmaNome,
-        academia_id: academiaId,
-        academia_nome: academiaNome,
-        data_chamada: timestampBrasilia,
-        data_formatada: dataFormatada,
-        dia_semana_abrev: diaSemanaAbrev,
-        tipo_aula: tipoAula,
-        total_alunos: alunos.length,
-        presentes,
-        ausentes,
-        porcentagem_frequencia: porcentagem,
-        professor_id: professorId,
-        professor_nome: professorNome,
-        criado_em: admin.firestore.FieldValue.serverTimestamp(),
-        atualizado_em: admin.firestore.FieldValue.serverTimestamp(),
-        alunos: alunos.map(aluno => {
-            const fotoPerfilAluno = String(
-                aluno.foto_perfil_aluno ||
-                aluno.foto ||
-                aluno.foto_url ||
-                aluno.imagem_url ||
-                aluno.avatar_url ||
-                ''
-            ).trim();
-
-            return {
-                aluno_id: aluno.id,
-                aluno_nome: aluno.nome,
-                apelido: aluno.apelido || '',
-                presente: aluno.presente === true,
-                observacao: aluno.observacao || '',
-
-                // Snapshot econômico para listas/histórico.
-                // Evita consultar alunos/{id} só para exibir foto em chamadas novas.
-                foto_perfil_aluno: fotoPerfilAluno,
-                foto: fotoPerfilAluno,
-                graduacao_id: aluno.graduacao_id || null,
-                graduacao_nome: aluno.graduacao_nome || aluno.graduacao || aluno.corda || '',
-                ultimo_dia_presente: aluno.ultimo_dia_presente ||
-                    aluno.ultimoDiaPresente ||
-                    aluno.ultima_presenca ||
-                    aluno.ultimaPresenca ||
-                    aluno.data_ultima_presenca ||
-                    aluno.dataUltimaPresenca ||
-                    null,
+    const comando = d.comandoId || (acao === 'excluir' ? d.chamadaId : null);
+    if (acao !== 'criar' && !idValido(comando)) throw new HttpsError('invalid-argument', 'Identificador da operação obrigatório.');
+    const operacaoId = crypto.createHash('sha256').update(`${uid}:${acao}:${comando || d.turmaId + ':' + d.dataChamada}`).digest('hex');
+    const assinatura = crypto.createHash('sha256').update(JSON.stringify(d)).digest('hex');
+    const opRef = db.collection('logs_chamadas_operacoes').doc(operacaoId);
+    const resultado = await db.runTransaction(async tx => {
+        const acesso = await validarAcessoChamadaNaTurma(uid, d.turmaId, acao, tx);
+        const operacao = await tx.get(opRef);
+        if (operacao.exists) {
+            if (operacao.data().assinatura !== assinatura) throw new HttpsError('already-exists','Identificador já utilizado com outros dados. Reabra a chamada.');
+            return {...operacao.data().resultado, duplicate:true};
+        }
+        if (acao !== 'excluir') {
+            const lock = await tx.get(db.collection('locks_chamada').doc(d.turmaId));
+            const dadosLock = lock.data();
+            const heartbeat = dadosLock?.ultimo_heartbeat || dadosLock?.timestamp;
+            if (dadosLock?.usuario_id && dadosLock.usuario_id !== uid && heartbeat?.toMillis &&
+                heartbeat.toMillis() > Date.now() - 30 * 60 * 1000) {
+                throw new HttpsError('aborted','Outro usuário está operando a chamada. Aguarde a liberação.');
+            }
+        }
+        let ref, anterior = null;
+        if (acao !== 'criar') {
+            ref = db.collection('chamadas').doc(d.chamadaId);
+            const snap = await tx.get(ref);
+            if (!snap.exists) throw new HttpsError('not-found', 'Chamada não encontrada.');
+            anterior = snap.data();
+            if (anterior.turma_id !== d.turmaId) throw new HttpsError('permission-denied', 'Turma divergente.');
+            if (d.criadoEmEsperado != null && d.criadoEmEsperado !== anterior.criado_em?.toMillis()) {
+                throw new HttpsError('aborted','Esta chamada foi substituída. Reabra a lista antes de continuar.');
+            }
+            if (acao === 'editar' && d.versaoEsperada !== (anterior.versao || 0)) {
+                throw new HttpsError('aborted', 'A chamada foi alterada. Reabra antes de editar.');
+            }
+        }
+        const data = acao === 'excluir'
+            ? DateTime.fromJSDate(anterior.data_chamada.toDate(), {zone:'America/Sao_Paulo'})
+            : DateTime.fromISO(String(d.dataChamada || ''), {zone:'America/Sao_Paulo'});
+        if (!data.isValid) throw new HttpsError('invalid-argument', 'Data da aula inválida.');
+        const dia = data.toISODate();
+        const dataAnterior = anterior ? DateTime.fromJSDate(anterior.data_chamada.toDate(), {zone:'America/Sao_Paulo'}) : null;
+        const diaAnterior = anterior?.data_formatada;
+        const timestamp = admin.firestore.Timestamp.fromDate(data.toJSDate());
+        const colisao = await tx.get(db.collection('chamadas').where('turma_id','==',d.turmaId).where('data_formatada','==',dia));
+        const outra = colisao.docs.find(doc => doc.id !== ref?.id);
+        if (outra && acao === 'criar') return {success:true, duplicate:true, chamadaId:outra.id, ...Object.fromEntries(['presentes','ausentes','total_alunos','porcentagem_frequencia'].map(k=>[k,outra.data()[k] || 0]))};
+        if (outra && acao === 'editar') throw new HttpsError('already-exists','Já existe chamada para a turma nesta data.');
+        if (!ref) ref = db.collection('chamadas').doc(crypto.createHash('sha256').update(`${d.turmaId}:${dia}`).digest('hex').slice(0,32));
+        // Ler a chave determinística faz criações simultâneas disputarem o
+        // mesmo documento, mesmo quando ambas consultaram uma lista vazia.
+        if (acao === 'criar') {
+            const existente = await tx.get(ref);
+            if (existente.exists) throw new HttpsError('already-exists','Chamada já registrada. Atualize a lista.');
+        }
+        const anteriores = anterior?.alunos || [];
+        const raw = acao === 'excluir' ? [] : d.alunos;
+        if (!Array.isArray(raw) || raw.length > 500) throw new HttpsError('invalid-argument','Lista de alunos inválida.');
+        const alunos = raw.map(a => ({...a, aluno_id:a.aluno_id || a.id}));
+        if (alunos.some(a => !idValido(a.aluno_id) || typeof a.presente !== 'boolean') || new Set(alunos.map(a=>a.aluno_id)).size !== alunos.length) {
+            throw new HttpsError('invalid-argument','Alunos duplicados ou presença inválida.');
+        }
+        // Não remover/adicionar pessoas pelo editor histórico; mudanças de turma
+        // posteriores não invalidam os participantes originais da aula.
+        if (acao === 'editar' && (alunos.length !== anteriores.length || alunos.some(a=>!anteriores.some(b=>(b.aluno_id || b.id)===a.aluno_id)))) {
+            throw new HttpsError('invalid-argument','Participantes da chamada histórica não podem ser substituídos.');
+        }
+        const ids = [...new Set([...anteriores,...alunos].map(a=>a.aluno_id || a.id))];
+        const leituras = await Promise.all(ids.map(async id => {
+            const alunoRef = db.collection('alunos').doc(id);
+            const [cadastro, resumo, logs, recentes, presencas, contador] = await Promise.all([
+                tx.get(alunoRef), tx.get(alunoRef.collection('situacao_disciplinar').doc('atual')),
+                tx.get(db.collection('log_presenca_alunos').where('aluno_id','==',id).where('turma_id','==',d.turmaId).where('data_formatada','==',diaAnterior || dia)),
+                tx.get(db.collection('log_presenca_alunos').where('aluno_id','==',id).orderBy('data_aula','desc').limit(3)),
+                tx.get(db.collection('log_presenca_alunos').where('aluno_id','==',id).where('presente','==',true).orderBy('data_aula','desc').limit(3)),
+                tx.get(alunoRef.collection('contadores').doc('frequencia_dashboard')),
+            ]);
+            if (!cadastro.exists) throw new HttpsError('not-found','Aluno não encontrado.');
+            const c = cadastro.data();
+            if (acao === 'criar' && !((acesso.turma.alunos || []).includes(id) || (c.turma_id || c.turmaId) === d.turmaId)) {
+                throw new HttpsError('permission-denied','Aluno não pertence à turma.');
+            }
+            const estado = disciplinaMotor.statusDe(resumo.data() || {}, dia);
+            const novo = alunos.find(a=>a.aluno_id === id);
+            if (novo?.presente && (estado.suspenso || estado.expulso)) throw new HttpsError('failed-precondition','Aluno impedido na data da aula. Atualize a chamada.');
+            const destino = db.collection('log_presenca_alunos').doc(`log_${d.turmaId}_${id}_${dia}`);
+            const existente = await tx.get(destino);
+            if (existente.exists && existente.data().chamada_id && existente.data().chamada_id !== ref.id) {
+                throw new HttpsError('already-exists','Log vinculado a outra chamada; requer conciliação.');
+            }
+            return {id, alunoRef, cadastro:c, estado, novo, logs, recentes, presencas, contador, destino};
+        }));
+        const now = admin.firestore.FieldValue.serverTimestamp();
+        const professorNome = String(d.professorNome || anterior?.professor_nome || acesso.usuario.nome_completo || acesso.usuario.nome || 'Professor').slice(0,160);
+        const professorId = anterior?.professor_id || uid;
+        const snapshots = [];
+        for (const r of leituras) {
+            const velho = anteriores.find(a=>(a.aluno_id || a.id)===r.id);
+            const presenteAntes = velho?.presente === true || (!anterior && r.logs.docs.some(l=>l.data().presente === true));
+            const presenteDepois = r.novo?.presente === true;
+            const impedido = r.estado.suspenso || r.estado.expulso;
+            // Em edição sem mudança de data, preservar a classificação histórica
+            // de ausências já registradas, inclusive após revisão/anulação.
+            const frequencia = anterior && diaAnterior === dia && velho.presente === presenteDepois
+                ? (velho.estado_frequencia || (velho.suspenso_na_aula ? 'impedimento_disciplinar' : presenteDepois ? 'presenca' : 'falta'))
+                : presenteDepois ? 'presenca' : impedido ? 'impedimento_disciplinar' : 'falta';
+            const delta = {};
+            const soma = (path,n) => {delta[path] = (delta[path] || 0) + n;};
+            const contar = (dt,n) => {
+                const p = getChavesPeriodo(dt);
+                soma('total',n); soma(`porAno.${p.ano}`,n); soma(`porMes.${p.mesAno}`,n); soma(`porSemana.${p.semana}`,n);
+                const semana = normalizarDiaSemanaAbrev(dt.setLocale('pt-BR').toFormat('ccc'));
+                soma(`porDiaSemana.${semana}`,n); soma(semana,n);
             };
-        })
-    };
-
-    batch.set(chamadaRef, chamadaData);
-
-    for (const aluno of alunos) {
-        const alunoId = aluno.id;
-        const presenteDepois = aluno.presente === true;
-
-        // 🔥 ID fixo evita duplicar log do mesmo aluno/turma/data
-        const logId = `log_${turmaId}_${alunoId}_${dataFormatada}`;
-
-        const logRef = db.collection('log_presenca_alunos').doc(logId);
-
-        const contadorDashboardRef = db
-            .collection('alunos')
-            .doc(alunoId)
-            .collection('contadores')
-            .doc('frequencia_dashboard');
-
-        const alunoRef = db.collection('alunos').doc(alunoId);
-
-        const contadorGeralRef = db
-            .collection('contador_presencas_alunos')
-            .doc(alunoId);
-
-        const logAnteriorDoc = await logRef.get();
-        const presenteAntes =
-            logAnteriorDoc.exists && logAnteriorDoc.data()?.presente === true;
-
-        const logData = {
-            log_id: logId,
-            chamada_id: chamadaRef.id,
-            aluno_id: alunoId,
-            aluno_nome: aluno.nome,
-            turma_id: turmaId,
-            turma_nome: turmaNome,
-            academia_id: academiaId,
-            academia_nome: academiaNome,
-            data_aula: timestampBrasilia,
-            data_formatada: dataFormatada,
-            dia_semana_abrev: diaSemanaAbrev,
-            presente: presenteDepois,
-            tipo_aula: tipoAula,
-            observacao: aluno.observacao || '',
-            foto_perfil_aluno: String(
-                aluno.foto_perfil_aluno ||
-                aluno.foto ||
-                aluno.foto_url ||
-                aluno.imagem_url ||
-                aluno.avatar_url ||
-                ''
-            ).trim(),
-            apelido: aluno.apelido || '',
-            graduacao_id: aluno.graduacao_id || null,
-            graduacao_nome: aluno.graduacao_nome || aluno.graduacao || aluno.corda || '',
-            professor_id: professorId,
-            professor_nome: professorNome,
-            registrado_em: logAnteriorDoc.exists
-                ? (logAnteriorDoc.data()?.registrado_em || admin.firestore.FieldValue.serverTimestamp())
-                : admin.firestore.FieldValue.serverTimestamp(),
-            atualizado_em: admin.firestore.FieldValue.serverTimestamp(),
-            tipo_registro: 'chamada_turma'
-        };
-
-        batch.set(logRef, logData, { merge: true });
-
-        // Mantém compatibilidade com seu contador mensal antigo dentro do documento do aluno
-        if (presenteDepois !== presenteAntes) {
-            const delta = presenteDepois ? 1 : -1;
-
-            batch.set(alunoRef, {
-                [`contadores.${mesAno}`]: admin.firestore.FieldValue.increment(delta),
-            }, { merge: true });
+            if (presenteAntes) contar(dataAnterior || data,-1);
+            if (presenteDepois) contar(data,1);
+            // Construir mapas aninhados: set(merge) não interpreta pontos como
+            // field paths. Não produzir campos literais 'porMes.2026-11'.
+            const incrementos = {};
+            const contadorData = r.contador.data() || {};
+            for (const [path,n] of Object.entries(delta)) {
+                if (!n) continue;
+                const parts = path.split('.'); let target = incrementos;
+                for (const p of parts.slice(0,-1)) target = target[p] ||= {};
+                const aninhado = parts.reduce((obj,k)=>obj?.[k],contadorData);
+                const legadoLiteral = contadorData[path];
+                target[parts.at(-1)] = aninhado == null && Number.isFinite(legadoLiteral)
+                    ? legadoLiteral + n : admin.firestore.FieldValue.increment(n);
+            }
+            const atual = getChavesPeriodo(DateTime.now().setZone('America/Sao_Paulo'));
+            const mes = Number(contadorData.porMes?.[atual.mesAno] ?? contadorData[`porMes.${atual.mesAno}`] ?? 0) + (delta[`porMes.${atual.mesAno}`] || 0);
+            const semana = Number(contadorData.porSemana?.[atual.semana] ?? contadorData[`porSemana.${atual.semana}`] ?? 0) + (delta[`porSemana.${atual.semana}`] || 0);
+            const outros = snap => snap.docs.filter(l=>l.data().chamada_id !== ref.id && !r.logs.docs.some(old=>old.id===l.id)).map(l=>l.data());
+            let registro = null;
+            if (r.novo) {
+                const cadastro = r.cadastro;
+                registro = {...(velho || {}),aluno_id:r.id,aluno_nome:cadastro.nome || r.novo.aluno_nome || r.novo.nome || '',
+                    apelido:cadastro.apelido || '', presente:presenteDepois,estado_frequencia:frequencia,
+                    suspenso_na_aula:frequencia === 'impedimento_disciplinar',
+                    observacao:String(r.novo.observacao || '').slice(0,1000),
+                    foto_perfil_aluno:cadastro.foto_perfil_aluno || r.novo.foto_perfil_aluno || r.novo.foto || '',
+                    graduacao_id:cadastro.graduacao_id || r.novo.graduacao_id || null,
+                    graduacao_nome:cadastro.graduacao_nome || r.novo.graduacao_nome || velho?.graduacao_nome || '',
+                    ultimo_dia_presente:velho?.ultimo_dia_presente || cadastro.ultimo_dia_presente || null};
+                snapshots.push(registro);
+            }
+            const log = registro ? {...registro,log_id:r.destino.id,chamada_id:ref.id,turma_id:d.turmaId,
+                turma_nome:acesso.turma.nome || anterior?.turma_nome || '', academia_id:acesso.turma.academia_id || '',
+                academia_nome:anterior?.academia_nome || String(d.academiaNome || ''),
+                data_aula:timestamp,data_formatada:dia,dia_semana_abrev:normalizarDiaSemanaAbrev(data.setLocale('pt-BR').toFormat('ccc')),
+                tipo_aula:String(d.tipoAula || anterior?.tipo_aula || 'OBJETIVA'),professor_id:professorId,professor_nome:professorNome,
+                registrado_em:r.logs.docs[0]?.data().registrado_em || now,atualizado_em:now,tipo_registro:'chamada_turma'} : null;
+            for (const l of r.logs.docs) if (l.id !== r.destino.id || !log) tx.delete(l.ref);
+            if (log) tx.set(r.destino,log);
+            const ordenar = arr => arr.sort((a,b)=>b.data_aula.toMillis()-a.data_aula.toMillis())[0];
+            const ultima = ordenar([...outros(r.recentes),...(log ? [log] : [])]);
+            const presenca = ordenar([...outros(r.presencas),...(log?.presente ? [log] : [])]);
+            const ultimos = {ultima_presenca:presenca?.data_aula || null,ultimo_dia_presente:presenca?.data_formatada || null};
+            const legado = {};
+            if (presenteAntes) legado[(diaAnterior || dia).slice(0,7)] = -1;
+            if (presenteDepois) legado[dia.slice(0,7)] = (legado[dia.slice(0,7)] || 0) + 1;
+            tx.set(r.alunoRef,{...ultimos,contadores:Object.fromEntries(Object.entries(legado).filter(([,n])=>n).map(([k,n])=>[k,
+                r.cadastro.contadores?.[k] == null && Number.isFinite(r.cadastro[`contadores.${k}`])
+                    ? r.cadastro[`contadores.${k}`] + n : admin.firestore.FieldValue.increment(n)])),
+                ultima_chamada:ultima?.data_aula || null,ultima_chamada_por:ultima?.professor_nome || null,ultima_chamada_por_id:ultima?.professor_id || null},{merge:true});
+            tx.set(r.alunoRef.collection('contadores').doc('frequencia_dashboard'),{...incrementos,...ultimos,
+                aluno_id:r.id,mes,semana,periodo_mes_atual:atual.mesAno,periodo_semana_atual:atual.semana,
+                cache_versao:5,atualizado_em:now,ultima_sync_logs:now},{merge:true});
+            tx.set(db.collection('contador_presencas_alunos').doc(r.id),{aluno_id:r.id,turma_id:d.turmaId,
+                atualizado_em:now,...ultimos},{merge:true});
         }
-
-        const alunoUpdate = {
-            ultima_chamada: admin.firestore.FieldValue.serverTimestamp(),
-            ultima_chamada_por: professorNome,
-            ultima_chamada_por_id: professorId,
-        };
-
-        if (presenteDepois) {
-            alunoUpdate.ultima_presenca = timestampBrasilia;
-            alunoUpdate.ultimo_dia_presente = dataFormatada;
-        }
-
-        batch.set(alunoRef, alunoUpdate, { merge: true });
-
-        // Novo contador usado pelo dashboard leve
-        const contadorUpdates = montarUpdatesContadorFrequencia({
-            alunoId,
-            alunoNome: aluno.nome,
-            turmaId,
-            turmaNome,
-            academiaId,
-            academiaNome,
-            dataBrasilia,
-            timestampBrasilia,
-            presenteAntes,
-            presenteDepois,
-            diaSemanaAbrev,
-            professorId,
-            professorNome
-        });
-
-        batch.set(contadorDashboardRef, contadorUpdates, { merge: true });
-
-        // Mantém sua coleção antiga contador_presencas_alunos
-        batch.set(contadorGeralRef, {
-            turma_id: turmaId,
-            academia_id: academiaId,
-            aluno_id: alunoId,
-            aluno_nome: aluno.nome,
-            atualizado_em: admin.firestore.FieldValue.serverTimestamp(),
-            ultima_chamada: admin.firestore.FieldValue.serverTimestamp(),
-            ultima_chamada_por: professorNome,
-            ultima_chamada_por_id: professorId,
-        }, { merge: true });
-    }
-
-    await batch.commit();
-
-    // =====================================================
-    // 🚀 ATUALIZAÇÃO AUTOMÁTICA DO CACHE V2 DA DASHBOARD
-    // =====================================================
-    let cacheDashboardAtualizado = false;
-    try {
-        console.log(`[CacheV2] Atualização automática pós-chamada iniciada para turma ${turmaId}`);
-        await reconstruirDashboardTurmaCacheInterno(turmaId, {
-            force: true,
-            origem: "processarChamada"
-        });
-        cacheDashboardAtualizado = true;
-        console.log(`[CacheV2] Atualização automática pós-chamada concluída para turma ${turmaId}`);
-    } catch (cacheError) {
-        cacheDashboardAtualizado = false;
-        console.error(`[CacheV2] Falha ao atualizar após chamada na turma ${turmaId}`, cacheError);
-
-        await db.collection("turmas").doc(turmaId).collection("dashboard_cache").doc("meta").set({
-            necessita_reconstrucao: true,
-            status_processamento: "erro_atualizacao_pos_chamada",
-            erro_pos_chamada: String(cacheError?.message || cacheError).slice(0, 300),
-            ultima_tentativa_pos_chamada: admin.firestore.FieldValue.serverTimestamp(),
-        }, { merge: true }).catch(() => {});
-    }
-
-    // =====================================================
-    // 🔔 REGISTRA NO SININHO: CHAMADA REALIZADA
-    // =====================================================
-    // Não envia push para não incomodar a cada chamada.
-    // Apenas registra na central de notificações:
-    // usuarios/{uid}/notificacoes
-    // =====================================================
-    try {
-        const horaBrasilia = dataBrasilia.toFormat('HH:mm');
-        const dataBrasil = dataBrasilia.toFormat('dd/MM/yyyy');
-        const professorLabel = professorNome || 'Usuário';
-        const turmaLabel = turmaNome || 'Turma';
-        const tipoAulaLabel = tipoAula || 'Aula';
-
-        const tituloNotificacao = '📋 Chamada registrada';
-        const mensagemNotificacao =
-            `${professorLabel} registrou a chamada da turma ${turmaLabel} ` +
-            `às ${horaBrasilia} de Brasília. ` +
-            `Presentes: ${presentes} • Ausentes: ${ausentes} • Frequência: ${porcentagem}%.`;
-
-        const payloadChamada = {
-            tipo: 'chamada_registrada',
-            chamada_id: chamadaRef.id,
-            turma_id: turmaId || '',
-            turma_nome: turmaNome || '',
-            academia_id: academiaId || '',
-            academia_nome: academiaNome || '',
-            professor_id: professorId || '',
-            professor_nome: professorNome || '',
-            tipo_aula: tipoAulaLabel,
-            total_alunos: String(alunos.length),
-            presentes: String(presentes),
-            ausentes: String(ausentes),
-            porcentagem_frequencia: String(porcentagem),
-            data_formatada: dataFormatada,
-            data_brasil: dataBrasil,
-            hora_brasilia: horaBrasilia,
-            origem: 'processar_chamada',
-        };
-
-        const { usuariosMap } = await buscarUsuariosAtivosParaSininho();
-
-        await registrarNotificacaoUsuarios({
-            usuariosMap,
-            tipo: 'chamada_registrada',
-            titulo: tituloNotificacao,
-            mensagem: mensagemNotificacao,
-            data: payloadChamada,
-        });
-
-        await db.collection('logs_notificacoes_app').add({
-            tipo: 'chamada_registrada',
-            chamada_id: chamadaRef.id,
-            turma_id: turmaId || '',
-            turma_nome: turmaNome || '',
-            academia_id: academiaId || '',
-            academia_nome: academiaNome || '',
-            professor_id: professorId || '',
-            professor_nome: professorNome || '',
-            total_alunos: alunos.length,
-            presentes,
-            ausentes,
-            porcentagem_frequencia: porcentagem,
-            data_formatada: dataFormatada,
-            hora_brasilia: horaBrasilia,
-            criado_em: admin.firestore.FieldValue.serverTimestamp(),
-        });
-
-        console.log('🔔 Notificação de chamada registrada no sininho:', {
-            chamadaId: chamadaRef.id,
-            turmaNome,
-            professorNome,
-            presentes,
-            ausentes,
-            porcentagem,
-        });
-    } catch (error) {
-        console.error('⚠️ Chamada salva, mas falhou ao registrar no sininho:', error);
-    }
-
-    await db.collection('locks_chamada').doc(turmaId).delete().catch(() => {});
-
-    return {
-        success: true,
-        duplicate: false,
-        chamadaId: chamadaRef.id,
-        processados: alunos.length,
-        presentes,
-        ausentes,
-        porcentagem_frequencia: porcentagem,
-        diaSemanaAbrev,
-        dataFormatada,
-        contadoresAtualizados: true,
-        cacheDashboardAtualizado: cacheDashboardAtualizado
-    };
-});
+        const presentes = snapshots.filter(a=>a.presente).length;
+        const impedidos = snapshots.filter(a=>a.estado_frequencia==='impedimento_disciplinar').length;
+        const elegiveis = snapshots.length - impedidos;
+        const documento = {...(anterior || {}),turma_id:d.turmaId,turma_nome:acesso.turma.nome || d.turmaNome || '',
+            academia_id:acesso.turma.academia_id || '',academia_nome:anterior?.academia_nome || d.academiaNome || '',
+            data_chamada:timestamp,data_formatada:dia,dia_semana_abrev:normalizarDiaSemanaAbrev(data.setLocale('pt-BR').toFormat('ccc')),
+            tipo_aula:String(d.tipoAula || anterior?.tipo_aula || 'OBJETIVA').slice(0,80),professor_id:professorId,professor_nome:professorNome,
+            alunos:snapshots,presentes,ausentes:elegiveis-presentes,impedidos_disciplina:impedidos,total_alunos:snapshots.length,
+            porcentagem_frequencia:elegiveis ? Math.round(presentes/elegiveis*100) : 0,
+            criado_em:anterior?.criado_em || now,atualizado_em:now,versao:(anterior?.versao || 0)+1,
+            ...(anterior ? {chamada_editada:true,editado_em:now,editado_por_uid:uid,
+                editado_por_nome:acesso.usuario.nome_completo || acesso.usuario.nome || '',editado_por_email:request.auth.token?.email || ''} : {})};
+        if (acao === 'excluir') tx.delete(ref); else tx.set(ref,documento);
+        const resposta = {success:true,chamadaId:ref.id,presentes,ausentes:documento.ausentes,
+            processados:ids.length,porcentagem_frequencia:documento.porcentagem_frequencia,contadoresAtualizados:true,dataFormatada:dia};
+        tx.create(opRef,{acao,assinatura,chamada_id:ref.id,turma_id:d.turmaId,autor_uid:uid,
+            autor_nome:acesso.usuario.nome_completo || acesso.usuario.nome || '',criado_em:now,
+            antes:anterior,depois:acao === 'excluir' ? null : documento,resultado:resposta});
+        if (acao === 'excluir') tx.set(db.collection('logs_chamadas_excluidas').doc(ref.id),{
+            chamada_id:ref.id,turma_id:d.turmaId,excluido_por_uid:uid,excluido_em:now,dados_antes:anterior});
+        tx.set(db.collection('turmas').doc(d.turmaId).collection('dashboard_cache').doc('meta'),{
+            necessita_reconstrucao:true,mutacao_revisao:admin.firestore.FieldValue.increment(1),atualizado_em:now},{merge:true});
+        return resposta;
+    });
+    // Cache é derivado. Falha não desfaz nem repete uma chamada confirmada.
+    try {await reconstruirDashboardTurmaCacheInterno(d.turmaId,{force:true,origem:`chamada_${acao}`});}
+    catch (e) {console.error('Cache de chamada pendente',e);}
+    return resultado;
+}
+exports.processarChamada = onCall(request => mutarChamadaSegura(request, 'criar'));
+exports.editarChamada = onCall(request => mutarChamadaSegura(request, 'editar'));
 
 // ============================================
 // FUNÇÃO 3: EXCLUIR CHAMADA (COM AJUSTE DOS CONTADORES DO DASHBOARD)
 // ============================================
-exports.excluirChamada = onCall(async (request) => {
-    if (!request.auth) {
-        throw new HttpsError('unauthenticated', 'Usuário não autenticado');
-    }
-
-    const { chamadaId, turmaId } = request.data;
-
-    if (!chamadaId || !turmaId) {
-        throw new HttpsError('invalid-argument', 'Parâmetros obrigatórios: chamadaId e turmaId');
-    }
-
-    // Mesma proteção usada na criação: permissão operacional + vínculo
-    // com a turma/academia. Para excluir, edição e exclusão são exigidas.
-    await validarAcessoChamadaNaTurma(request.auth.uid, turmaId, 'excluir');
-
-    const chamadaDoc = await db.collection('chamadas').doc(chamadaId).get();
-
-    if (!chamadaDoc.exists) {
-        throw new Error('Chamada não encontrada');
-    }
-
-    const chamadaData = chamadaDoc.data();
-
-    if (String(chamadaData.turma_id || '') !== String(turmaId)) {
-        throw new HttpsError('permission-denied', 'A chamada não pertence à turma informada.');
-    }
-
-    const alunos = chamadaData.alunos || [];
-    const dataFormatada = chamadaData.data_formatada;
-    const dataChamadaTimestamp = chamadaData.data_chamada;
-    const dataChamada = dataChamadaTimestamp.toDate();
-    const dataBrasilia = DateTime.fromJSDate(dataChamada, { zone: 'America/Sao_Paulo' });
-    const { ano, mesAno, semana } = getChavesPeriodo(dataBrasilia);
-    const diaSemanaAbrev = normalizarDiaSemanaAbrev(
-        chamadaData.dia_semana_abrev || dataBrasilia.setLocale('pt-BR').toFormat('ccc')
-    );
-
-    const logsQuery = await db
-        .collection('log_presenca_alunos')
-        .where('data_formatada', '==', dataFormatada)
-        .where('turma_id', '==', turmaId)
-        .get();
-
-    const batch = db.batch();
-
-    for (const aluno of alunos) {
-        const alunoId = aluno.aluno_id;
-        const estavaPresente = aluno.presente === true;
-        const alunoRef = db.collection('alunos').doc(alunoId);
-        const contadorDashboardRef = alunoRef
-            .collection('contadores')
-            .doc('frequencia_dashboard');
-
-        if (estavaPresente) {
-            // Compatibilidade com contador antigo
-            batch.set(alunoRef, {
-                [`contadores.${mesAno}`]: admin.firestore.FieldValue.increment(-1)
-            }, { merge: true });
-
-            // Novo contador do dashboard
-            batch.set(contadorDashboardRef, {
-                total: admin.firestore.FieldValue.increment(-1),
-                [`porAno.${ano}`]: admin.firestore.FieldValue.increment(-1),
-                [`porMes.${mesAno}`]: admin.firestore.FieldValue.increment(-1),
-                [`porSemana.${semana}`]: admin.firestore.FieldValue.increment(-1),
-                ...(diaSemanaAbrev ? {
-                    [`porDiaSemana.${diaSemanaAbrev}`]: admin.firestore.FieldValue.increment(-1),
-                    [diaSemanaAbrev]: admin.firestore.FieldValue.increment(-1),
-                } : {}),
-                mes: admin.firestore.FieldValue.increment(-1),
-                semana: admin.firestore.FieldValue.increment(-1),
-                atualizado_em: admin.firestore.FieldValue.serverTimestamp(),
-                ultima_sync_logs: admin.firestore.FieldValue.serverTimestamp(),
-                cache_versao: 5,
-            }, { merge: true });
-        }
-
-        const ultimaPresencaQuery = await db
-            .collection('log_presenca_alunos')
-            .where('aluno_id', '==', alunoId)
-            .where('presente', '==', true)
-            .where('data_aula', '<', dataChamadaTimestamp)
-            .orderBy('data_aula', 'desc')
-            .limit(1)
-            .get();
-
-        if (ultimaPresencaQuery.docs.length > 0) {
-            const ultimaPresencaData = ultimaPresencaQuery.docs[0].data();
-
-            batch.set(alunoRef, {
-                ultima_presenca: ultimaPresencaData.data_aula,
-                ultimo_dia_presente: ultimaPresencaData.data_formatada || null,
-            }, { merge: true });
-
-            batch.set(contadorDashboardRef, {
-                ultima_presenca: ultimaPresencaData.data_aula,
-                ultimo_dia_presente: ultimaPresencaData.data_formatada || null,
-            }, { merge: true });
-        } else {
-            batch.set(alunoRef, {
-                ultima_presenca: null,
-                ultimo_dia_presente: null,
-            }, { merge: true });
-
-            batch.set(contadorDashboardRef, {
-                ultima_presenca: null,
-                ultimo_dia_presente: null,
-            }, { merge: true });
-        }
-
-        const ultimaChamadaQuery = await db
-            .collection('log_presenca_alunos')
-            .where('aluno_id', '==', alunoId)
-            .orderBy('data_aula', 'desc')
-            .limit(1)
-            .get();
-
-        if (ultimaChamadaQuery.docs.length > 0) {
-            const ultimaChamada = ultimaChamadaQuery.docs[0].data();
-
-            batch.set(alunoRef, {
-                ultima_chamada: ultimaChamada.data_aula,
-                ultima_chamada_por: ultimaChamada.professor_nome || null,
-                ultima_chamada_por_id: ultimaChamada.professor_id || null
-            }, { merge: true });
-        } else {
-            batch.set(alunoRef, {
-                ultima_chamada: null,
-                ultima_chamada_por: null,
-                ultima_chamada_por_id: null
-            }, { merge: true });
-        }
-    }
-
-    batch.delete(chamadaDoc.ref);
-
-    for (const logDoc of logsQuery.docs) {
-        batch.delete(logDoc.ref);
-    }
-
-    await batch.commit();
-
-    try {
-        await db.collection('logs_chamadas_excluidas').add({
-            chamada_id: chamadaId,
-            turma_id: turmaId,
-            turma_nome: chamadaData.turma_nome || '',
-            academia_id: chamadaData.academia_id || '',
-            academia_nome: chamadaData.academia_nome || '',
-            data_formatada: dataFormatada || '',
-            presentes: Number(chamadaData.presentes || alunos.filter(aluno => aluno.presente === true).length || 0),
-            ausentes: Number(chamadaData.ausentes || alunos.filter(aluno => aluno.presente !== true).length || 0),
-            total_alunos: Number(chamadaData.total_alunos || alunos.length || 0),
-            excluido_por_uid: uid,
-            excluido_por_nome: usuarioData.nome_completo || usuarioData.nome || request.auth.token?.name || '',
-            excluido_por_email: usuarioData.email || request.auth.token?.email || '',
-            excluido_em: admin.firestore.FieldValue.serverTimestamp(),
-            origem: 'listas_chamada_screen',
-            resumo: 'Chamada excluída/desfeita com recálculo de contadores'
-        });
-    } catch (logError) {
-        console.warn('Falha ao registrar auditoria de chamada excluída:', logError);
-    }
-
-    return {
-        success: true,
-        logsExcluidos: logsQuery.docs.length,
-        alunosProcessados: alunos.length,
-        contadoresAtualizados: true
-    };
-});
+exports.excluirChamada = onCall(request => mutarChamadaSegura(request, 'excluir'));
 
 // ============================================
 // FUNÇÃO 4: RESTAURAR FOTOS DO BACKUP
@@ -6219,6 +6008,10 @@ exports.criarSolicitacaoAlteracaoAreaAluno = onCall(
 //   titulo: "🚀 Nova versão 2.0.61 disponível!",
 //   mensagem: "Atualize o UAI Capoeira para receber as melhorias."
 // }
+const {
+    isUpdateAdmin, validAudience, selectVisibleTokens,
+} = require('./atualizacoes/update_push_policy');
+
 exports.notifyNewAppVersion = onCall(
     {
         region: 'us-central1',
@@ -6235,6 +6028,16 @@ exports.notifyNewAppVersion = onCall(
 
         const uid = request.auth.uid;
         const data = request.data || {};
+        const actorSnapshot = await db.collection('usuarios').doc(uid).get();
+        const actor = actorSnapshot.data() || {};
+        if (!isUpdateAdmin(actor)) {
+            throw new HttpsError('permission-denied', 'Apenas a equipe autorizada pode enviar avisos de versão.');
+        }
+        const audiencia = String(data.audiencia || 'todos').trim().toLowerCase();
+        if (!validAudience(audiencia)) {
+            throw new HttpsError('invalid-argument', 'Audiência inválida para notificações.');
+        }
+        const acionarDownloadWifi = data.acionarDownloadWifi === true;
 
         console.log('🚀 notifyNewAppVersion chamada por:', uid, data);
 
@@ -6255,12 +6058,23 @@ exports.notifyNewAppVersion = onCall(
             );
         }
 
-        const obrigatoria = data.obrigatoria === true || config.atualizacao_obrigatoria === true;
+        // Nunca dispara mensagens para rascunhos, URLs fornecidas pelo cliente ou versões obsoletas.
+        if (!/^\d+\.\d+\.\d+$/.test(versao)) {
+            throw new HttpsError('invalid-argument', 'Versão inválida.');
+        }
+        const releaseSnap = await db.collection('versoes_app').doc(versao.replace(/\./g, '_')).get();
+        const release = releaseSnap.data() || {};
+        if (!releaseSnap.exists || release.publicada !== true || release.canal !== 'producao' ||
+            String(config.versao_atual || '') !== versao) {
+            throw new HttpsError('failed-precondition', 'Apenas a release de produção atualmente publicada pode ser anunciada.');
+        }
+
+        const obrigatoria = release.obrigatoria === true;
 
         const titulo = String(
             data.titulo ||
             `🚀 Nova versão ${versao} disponível!`
-        ).trim();
+        ).trim().slice(0, 160);
 
         const mensagem = String(
             data.mensagem ||
@@ -6268,10 +6082,10 @@ exports.notifyNewAppVersion = onCall(
             (obrigatoria
                 ? 'Atualização obrigatória disponível. Atualize para continuar usando o UAI Capoeira.'
                 : 'Atualize o UAI Capoeira para receber as melhorias e correções.')
-        ).trim();
+        ).trim().slice(0, 500);
 
-        const apkPath = String(config.apk_path || data.apk_path || '').trim();
-        const apkUrl = String(config.apk_url || data.apk_url || '').trim();
+        const apkPath = String(config.apk_path || '').trim();
+        const apkUrl = String(config.apk_url || '').trim();
 
         const {
             usuariosAtivos,
@@ -6285,6 +6099,58 @@ exports.notifyNewAppVersion = onCall(
             'android',
             'apk',
         ]);
+
+        const administradores = new Set();
+        if (audiencia === 'admins') {
+            // A seleção é feita no servidor usando perfis reais, jamais a lista enviada pelo Windows.
+            const usersSnapshot = await db.collection('usuarios').where('status_conta', '==', 'ativa').get();
+            usersSnapshot.forEach(doc => {
+                const u = doc.data() || {};
+                if (isUpdateAdmin(u)) {
+                    administradores.add(doc.id);
+                }
+            });
+        }
+        const visibleTokens = selectVisibleTokens(tokens, tokenOwners, audiencia, administradores);
+        const visibleUsers = audiencia === 'admins'
+            ? new Map([...usuariosMap].filter(([id]) => administradores.has(id)))
+            : audiencia === 'nenhum' ? new Map() : usuariosMap;
+
+        // Tópico exclusivo dos clientes >= 2.0.183. Versões antigas NÃO recebem
+        // data-only, pois seus handlers exibiriam notificações extras/genéricas.
+        // A assinatura no tópico é só capacidade; a preferência Wi-Fi é conferida
+        // localmente pelo receptor e a permissão da release pelo resolvedor V3.
+        let triggerMessageId = '';
+        if (acionarDownloadWifi) {
+            try {
+                triggerMessageId = await admin.messaging().send({
+                    topic: 'uai_updates_push_v183',
+                    data: { tipo: 'uai_update_check', versao, canal: 'producao' },
+                    android: { priority: 'high', ttl: 60 * 60 * 1000 },
+                });
+            } catch (error) {
+                // Fall-back é o monitor periódico: não desfazer release publicada.
+                console.warn('Aviso técnico Wi-Fi falhou:', error?.code || error?.message);
+            }
+        }
+        const triggerSuccessCount = triggerMessageId ? 1 : 0;
+        const triggerFailureCount = acionarDownloadWifi && !triggerMessageId ? 1 : 0;
+
+        if ((!tokens || tokens.length === 0) && triggerMessageId) {
+            await configRef.set({
+                ultima_notificacao_versao: versao,
+                ultima_notificacao_versao_status: 'somente_sinal_wifi',
+                ultima_notificacao_wifi_trigger_sucesso: 1,
+                ultima_notificacao_versao_em: admin.firestore.FieldValue.serverTimestamp(),
+                ultima_notificacao_versao_por: uid,
+            }, { merge: true });
+            return {
+                success: true, code: 'somente_sinal_wifi', versao, audiencia,
+                tokensEncontrados: 0, successCount: 0, failureCount: 0,
+                wifiTriggerSuccessCount: 1, wifiTriggerFailureCount: 0,
+                wifiTriggerMessageId: triggerMessageId,
+            };
+        }
 
         if (!tokens || tokens.length === 0) {
             console.log('⚠️ Nenhum token ativo encontrado para notificar.');
@@ -6321,22 +6187,26 @@ exports.notifyNewAppVersion = onCall(
             destino: 'android_apk',
         };
 
-        const resultado = await enviarMulticastEmLotes({
-            tokens,
-            title: titulo,
-            body: mensagem,
-            data: payloadNotificacao,
-            tokenOwners,
-            androidIcon: 'ic_notification_update',
-        });
+        const resultado = visibleTokens.length > 0
+            ? await enviarMulticastEmLotes({
+                tokens: visibleTokens,
+                title: titulo,
+                body: mensagem,
+                data: payloadNotificacao,
+                tokenOwners,
+                androidIcon: 'ic_notification_update',
+            })
+            : { successCount: 0, failureCount: 0, tokensInvalidos: [] };
 
-        const notificacoesRegistradas = await registrarNotificacaoUsuarios({
-            usuariosMap,
-            tipo: 'nova_versao_app',
-            titulo,
-            mensagem,
-            data: payloadNotificacao,
-        });
+        const notificacoesRegistradas = visibleUsers.size > 0
+            ? await registrarNotificacaoUsuarios({
+                usuariosMap: visibleUsers,
+                tipo: 'nova_versao_app',
+                titulo,
+                mensagem,
+                data: payloadNotificacao,
+            })
+            : 0;
 
         await db.collection('logs_notificacoes_app').add({
             tipo: 'nova_versao_app',
@@ -6346,7 +6216,12 @@ exports.notifyNewAppVersion = onCall(
             mensagem,
             usuarios_ativos: usuariosAtivos,
             usuarios_notificaveis: usuariosNotificaveis,
-            tokens_encontrados: tokens.length,
+            tokens_encontrados: visibleTokens.length,
+            audiencia,
+            wifi_trigger_enviado: acionarDownloadWifi,
+            wifi_trigger_sucesso: triggerSuccessCount,
+            wifi_trigger_mensagem_id: triggerMessageId,
+            wifi_trigger_falha: triggerFailureCount,
             notificacoes_registradas: notificacoesRegistradas,
             success_count: resultado.successCount,
             failure_count: resultado.failureCount,
@@ -6357,11 +6232,13 @@ exports.notifyNewAppVersion = onCall(
 
         await configRef.set({
             ultima_notificacao_versao: versao,
-            ultima_notificacao_versao_status: 'enviada',
+            ultima_notificacao_versao_status: audiencia === 'nenhum' ? 'somente_sinal_wifi' : 'enviada',
             ultima_notificacao_versao_success_count: resultado.successCount,
             ultima_notificacao_versao_failure_count: resultado.failureCount,
             ultima_notificacao_versao_tokens_invalidos: resultado.tokensInvalidos,
             ultima_notificacao_versao_destino: 'android_apk',
+            ultima_notificacao_versao_audiencia: audiencia,
+            ultima_notificacao_wifi_trigger_sucesso: triggerSuccessCount,
             ultima_notificacao_versao_sininho_registros: notificacoesRegistradas,
             ultima_notificacao_versao_em: admin.firestore.FieldValue.serverTimestamp(),
             ultima_notificacao_versao_por: uid,
@@ -6382,7 +6259,11 @@ exports.notifyNewAppVersion = onCall(
             obrigatoria,
             usuariosAtivos,
             usuariosNotificaveis,
-            tokensEncontrados: tokens.length,
+            tokensEncontrados: visibleTokens.length,
+            audiencia,
+            wifiTriggerSuccessCount: triggerSuccessCount,
+            wifiTriggerMessageId: triggerMessageId,
+            wifiTriggerFailureCount: triggerFailureCount,
             notificacoesRegistradas,
             destino: 'android_apk',
             ...resultado,
@@ -6390,6 +6271,11 @@ exports.notifyNewAppVersion = onCall(
     }
 );
 
+
+// Nome novo exigido pelo cliente V183: garante falha segura quando o backend
+// ainda não foi publicado. Não cair silenciosamente na callable V182,
+// que ignoraria a opção "administradores" e notificaria todos.
+exports.notifyNewAppVersionV183 = exports.notifyNewAppVersion;
 
 // ============================================
 // PAINEL ADMIN: SAÚDE FIREBASE
@@ -7470,6 +7356,9 @@ async function reconstruirDashboardTurmaCacheInterno(turmaId, options = {}) {
     const metaRef = db.collection('turmas').doc(turmaId).collection('dashboard_cache').doc('meta');
     const distribuicoesRef = db.collection('turmas').doc(turmaId).collection('dashboard_cache').doc('distribuicoes');
     const cacheAlunosColl = db.collection('turmas').doc(turmaId).collection('dashboard_cache_alunos');
+    const fonteMeta = await metaRef.get();
+    const revisaoFonte = fonteMeta.data()?.mutacao_revisao || 0;
+    const diaInicioCache = DateTime.now().setZone('America/Sao_Paulo').toISODate();
 
     console.log(`[CacheV2] Reconstruindo turma ${turmaId} - Origem: ${origem}`);
 
@@ -7700,11 +7589,27 @@ async function reconstruirDashboardTurmaCacheInterno(turmaId, options = {}) {
         };
     });
 
+    // 6. Projeção disciplinar, consultada no servidor antes dos rankings.
+    const configuracaoDisciplina = await db.collection('configuracoes_disciplina').doc('politica_atual').get();
+    const politicaDisciplina = disciplinaMotor.defaults;
+    const tetoDisciplina = Math.max(0, Math.min(10, Number(configuracaoDisciplina.data()?.teto_desconto ?? politicaDisciplina.teto_desconto)));
+    const excluirSuspensos = configuracaoDisciplina.data()?.excluir_suspenso_ranking !== false;
+    const dataHojeDisciplina = diaInicioCache;
+    const docsDisciplina = processedAlunos.length ? await db.getAll(...processedAlunos.map(a =>
+        db.collection('alunos').doc(a.aluno_id).collection('situacao_disciplinar').doc('atual'))) : [];
+    processedAlunos.forEach((aluno, index) => {
+        const estado = disciplinaMotor.statusDe(docsDisciplina[index]?.data() || {}, dataHojeDisciplina, {teto:tetoDisciplina});
+        aluno.disciplina_suspenso = estado.suspenso;
+        aluno.disciplina_expulso = estado.expulso;
+        aluno.disciplina_data = dataHojeDisciplina;
+        aluno.disciplina_desconto = Math.min(tetoDisciplina, estado.penalidade);
+    });
+
     // 6. Cálculo de Scores de Destaque (60/40)
     processedAlunos.forEach(aluno => {
         const calcScore = (freq, max) => {
             const score_freq = max <= 0 ? 0 : (freq / max) * 10;
-            return parseFloat(((aluno.avaliacao_nota * 0.60) + (score_freq * 0.40)).toFixed(2));
+            return parseFloat(Math.max(0, ((aluno.avaliacao_nota * 0.60) + (score_freq * 0.40)) - aluno.disciplina_desconto).toFixed(2));
         };
         aluno.destaque_score_total = calcScore(aluno.freq_total, maxFreqTotal);
         aluno.destaque_score_semana = calcScore(aluno.freq_semana, maxFreqSemana);
@@ -7713,17 +7618,17 @@ async function reconstruirDashboardTurmaCacheInterno(turmaId, options = {}) {
     });
 
     // 7. Cálculo de Rankings
-    const sortByScore = (field) => [...processedAlunos].sort((a, b) => b[field] - a[field]);
+    const sortByScore = (field) => processedAlunos.filter(a => !a.disciplina_expulso && (!excluirSuspensos || !a.disciplina_suspenso)).sort((a, b) => b[field] - a[field]);
     const rankTotal = sortByScore('destaque_score_total');
     const rankSemana = sortByScore('destaque_score_semana');
     const rankMes = sortByScore('destaque_score_mes');
     const rankAno = sortByScore('destaque_score_por_ano');
 
     processedAlunos.forEach(aluno => {
-        aluno.ranking_total = rankTotal.findIndex(a => a.aluno_id === aluno.aluno_id) + 1;
-        aluno.ranking_semana = rankSemana.findIndex(a => a.aluno_id === aluno.aluno_id) + 1;
-        aluno.ranking_mes = rankMes.findIndex(a => a.aluno_id === aluno.aluno_id) + 1;
-        aluno.ranking_por_ano = rankAno.findIndex(a => a.aluno_id === aluno.aluno_id) + 1;
+        aluno.ranking_total = rankTotal.findIndex(a => a.aluno_id === aluno.aluno_id) + 1; // 0 indica suspenso
+        aluno.ranking_semana = rankSemana.findIndex(a => a.aluno_id === aluno.aluno_id) + 1; // 0 indica suspenso
+        aluno.ranking_mes = rankMes.findIndex(a => a.aluno_id === aluno.aluno_id) + 1; // 0 indica suspenso
+        aluno.ranking_por_ano = rankAno.findIndex(a => a.aluno_id === aluno.aluno_id) + 1; // 0 indica suspenso
     });
 
     // 8. Distribuições
@@ -7765,6 +7670,8 @@ async function reconstruirDashboardTurmaCacheInterno(turmaId, options = {}) {
     };
 
     const metaData = {
+        disciplina_data: dataHojeDisciplina,
+        disciplina_politica_versao: configuracaoDisciplina.data()?.versao || 1,
         turma_id: turmaId,
         turma_nome: turmaNome,
         total_alunos: processedAlunos.length,
@@ -7788,15 +7695,9 @@ async function reconstruirDashboardTurmaCacheInterno(turmaId, options = {}) {
         delete data.freq_ano;
         writes.push((b) => b.set(cacheAlunosColl.doc(aluno.aluno_id), data, { merge: true }));
 
-        const legacyRef = db.collection('alunos').doc(aluno.aluno_id).collection('contadores').doc('frequencia_dashboard');
-        writes.push((b) => b.set(legacyRef, {
-            total: aluno.freq_total, semana: aluno.freq_semana, mes: aluno.freq_mes,
-            porAno: aluno.freq_por_ano, porMes: aluno.freq_por_mes, porSemana: aluno.freq_por_semana,
-            porDiaSemana: aluno.freq_por_dia_semana, ...aluno.freq_por_dia_semana,
-            ultima_sync_logs: admin.firestore.FieldValue.serverTimestamp(),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            cache_versao: 6, modelo: "contador_recalculado_cloud_function_cache_v2", recalculado_completo: true
-        }, { merge: true }));
+        // Contadores canônicos pertencem exclusivamente à transação da chamada.
+        // O cache derivado nunca sobrescreve uma mutação mais recente.
+
     });
 
     writes.push((b) => b.set(distribuicoesRef, distribuicoesData, { merge: true }));
@@ -7806,7 +7707,19 @@ async function reconstruirDashboardTurmaCacheInterno(turmaId, options = {}) {
     const currentIds = new Set(processedAlunos.map(a => a.aluno_id));
     existingCacheSnap.forEach(doc => { if (!currentIds.has(doc.id)) writes.push((b) => b.delete(doc.ref)); });
 
-    await executarBatchWrites(writes);
+    // Publicar o conjunto inteiro atomicamente, somente se as fontes ainda
+    // pertencem à mesma revisão. Uma reconstrução antiga nunca vence a nova.
+    await db.runTransaction(async tx => {
+        const [metaAtual, politicaAtual] = await Promise.all([
+            tx.get(metaRef),tx.get(db.collection('configuracoes_disciplina').doc('politica_atual')),
+        ]);
+        if ((metaAtual.data()?.mutacao_revisao || 0) !== revisaoFonte ||
+            (politicaAtual.data()?.versao || 1) !== (configuracaoDisciplina.data()?.versao || 1) ||
+            DateTime.now().setZone('America/Sao_Paulo').toISODate() !== diaInicioCache) {
+            throw new HttpsError('aborted','As fontes do dashboard mudaram; reconstrução antiga descartada.');
+        }
+        for (const gravar of writes) gravar(tx);
+    });
     return { success: true, turmaId, totalAlunos: processedAlunos.length };
 }
 
@@ -10681,9 +10594,17 @@ exports.incluirAlunoConvertidoNaChamadaDoDia = onDocumentWritten(
     const nome = String(aluno.nome || after.nome || after.aluno_nome || 'Aluno').trim();
     const foto = String(aluno.foto_url || aluno.foto_perfil || aluno.foto || '').trim();
 
+    const presencaInformada = presente;
+    let presenteProcessado = presente;
     let inseriu = false;
     await db.runTransaction(async (tx) => {
-      const [chamadaSnap, logSnap] = await Promise.all([tx.get(chamadaRef), tx.get(logRef)]);
+      const [chamadaSnap, logSnap, disciplinaSnap, cadastroAtual] = await Promise.all([tx.get(chamadaRef), tx.get(logRef),
+        tx.get(alunoRef.collection('situacao_disciplinar').doc('atual')),tx.get(alunoRef)]);
+      if (!cadastroAtual.exists) return;
+      const estado = disciplinaMotor.statusDe(disciplinaSnap.data() || {}, dataFormatada);
+      const impedido = estado.suspenso || estado.expulso;
+      const presente = presencaInformada && !impedido;
+      presenteProcessado = presente;
       if (!chamadaSnap.exists) return;
       const chamada = chamadaSnap.data() || {};
       const alunos = Array.isArray(chamada.alunos) ? [...chamada.alunos] : [];
@@ -10697,6 +10618,8 @@ exports.incluirAlunoConvertidoNaChamadaDoDia = onDocumentWritten(
         nome,
         apelido: String(aluno.apelido || ''),
         presente,
+        estado_frequencia:impedido ? 'impedimento_disciplinar' : presente ? 'presenca' : 'falta',
+        suspenso_na_aula:impedido,
         observacao: 'Incluído automaticamente após conversão da inscrição.',
         foto_perfil_aluno: foto,
         foto,
@@ -10708,16 +10631,22 @@ exports.incluirAlunoConvertidoNaChamadaDoDia = onDocumentWritten(
       alunos.push(novo);
       const presentes = alunos.filter((a) => a?.presente === true).length;
       const total = alunos.length;
-      const ausentes = total - presentes;
-      const percentual = total > 0 ? Math.round((presentes / total) * 100) : 0;
+      const impedidos = alunos.filter(a=>a.estado_frequencia === 'impedimento_disciplinar' || a.suspenso_na_aula === true).length;
+      const ausentes = total - presentes - impedidos;
+      const percentual = total > impedidos ? Math.round((presentes / (total - impedidos)) * 100) : 0;
       const timestampAula = chamada.data_chamada || admin.firestore.Timestamp.fromDate(dataBrasilia.toJSDate());
       const diaSemanaAbrev = chamada.dia_semana_abrev || normalizarDiaSemanaAbrev(dataBrasilia.setLocale('pt-BR').toFormat('ccc'));
       const professorId = chamada.professor_id || null;
       const professorNome = chamada.professor_nome || 'Sistema';
+      const ultimaChamada=cadastroAtual.data().ultima_chamada;
+      const ultimosChamada=!ultimaChamada?.toMillis || ultimaChamada.toMillis()<=timestampAula.toMillis()
+        ? {ultima_chamada:timestampAula,ultima_chamada_por:professorNome,ultima_chamada_por_id:professorId} : {};
+      const ultimaPresenca=cadastroAtual.data().ultima_presenca;
+      const atualizarPresenca=!ultimaPresenca?.toMillis || ultimaPresenca.toMillis()<=timestampAula.toMillis();
 
       tx.set(chamadaRef, {
         alunos,
-        total_alunos: total,
+        total_alunos: total,impedidos_disciplina:impedidos,versao:(chamada.versao || 0)+1,
         presentes,
         ausentes,
         porcentagem_frequencia: percentual,
@@ -10737,7 +10666,7 @@ exports.incluirAlunoConvertidoNaChamadaDoDia = onDocumentWritten(
         data_aula: timestampAula,
         data_formatada: dataFormatada,
         dia_semana_abrev: diaSemanaAbrev,
-        presente,
+        presente,estado_frequencia:impedido ? 'impedimento_disciplinar' : presente ? 'presenca' : 'falta',suspenso_na_aula:impedido,
         tipo_aula: chamada.tipo_aula || 'OBJETIVA',
         observacao: 'Incluído automaticamente após conversão da inscrição.',
         foto_perfil_aluno: foto,
@@ -10753,18 +10682,13 @@ exports.incluirAlunoConvertidoNaChamadaDoDia = onDocumentWritten(
 
       if (presente && !logSnap.exists) {
         tx.set(alunoRef, {
-          [`contadores.${mesAno}`]: admin.firestore.FieldValue.increment(1),
-          ultima_presenca: timestampAula,
-          ultimo_dia_presente: dataFormatada,
-          ultima_chamada: admin.firestore.FieldValue.serverTimestamp(),
-          ultima_chamada_por: professorNome,
-          ultima_chamada_por_id: professorId,
+          contadores:{[mesAno]:admin.firestore.FieldValue.increment(1)},
+          ...(atualizarPresenca ? {ultima_presenca:timestampAula,ultimo_dia_presente:dataFormatada} : {}),
+          ...ultimosChamada,
         }, { merge: true });
       } else {
         tx.set(alunoRef, {
-          ultima_chamada: admin.firestore.FieldValue.serverTimestamp(),
-          ultima_chamada_por: professorNome,
-          ultima_chamada_por_id: professorId,
+          ...ultimosChamada,
         }, { merge: true });
       }
 
@@ -10783,6 +10707,7 @@ exports.incluirAlunoConvertidoNaChamadaDoDia = onDocumentWritten(
         professorId,
         professorNome,
       });
+      if (!atualizarPresenca) {delete contadorUpdates.ultima_presenca;delete contadorUpdates.ultimo_dia_presente;}
       tx.set(contadorDashboardRef, contadorUpdates, { merge: true });
       tx.set(contadorGeralRef, {
         turma_id: turmaId,
@@ -10804,6 +10729,9 @@ exports.incluirAlunoConvertidoNaChamadaDoDia = onDocumentWritten(
         presente,
         criado_em: admin.firestore.FieldValue.serverTimestamp(),
       }, { merge: true });
+      tx.set(db.collection('turmas').doc(turmaId).collection('dashboard_cache').doc('meta'),{
+        necessita_reconstrucao:true,mutacao_revisao:admin.firestore.FieldValue.increment(1),
+      },{merge:true});
       inseriu = true;
     });
 
@@ -10817,7 +10745,7 @@ exports.incluirAlunoConvertidoNaChamadaDoDia = onDocumentWritten(
         turma_id: turmaId,
         chamada_id: chamadaRef.id,
         data_chamada: dataFormatada,
-        presente,
+        presente:presenteProcessado,
         origem: 'automacao_conversao_inscricao',
         status: 'ok',
         executado_por: 'robo_conversao_chamada',
@@ -10928,3 +10856,65 @@ exports.roboInatividadeDiario = roboInatividade.diario;
 exports.simularRoboInatividade = roboInatividade.simular;
 exports.simularRoboInatividadeHttp = roboInatividade.http;
 exports.auditoriaRoboInatividadeHttp = roboInatividade.auditoriaHttp;
+
+// Acesso delegado real (sem trocar as regras de autorização existentes).
+const acessoDelegadoUai = require('./usuarios/acesso_delegado');
+exports.iniciarAcessoDelegadoUai = acessoDelegadoUai.iniciarAcessoDelegadoUai;
+exports.encerrarAcessoDelegadoUai = acessoDelegadoUai.encerrarAcessoDelegadoUai;
+
+// Auditoria append-only dos eventos (triggers Firestore).
+Object.assign(exports, require('./src/eventos_auditoria'));
+
+exports.configurarIntegracaoFinanceiraAssociacao = require("./src/associacao_integracoes_financeiras").configurarIntegracaoFinanceiraAssociacao;
+
+// Reinitializacao financeira controlada
+for (const [key, value] of Object.entries(require("./src/associacao_reset_financeiro"))) exports[key] = value;
+
+exports.transferirCaixaBancoAssociacao = require("./src/associacao_tesouraria_transferencias").transferirCaixaBancoAssociacao;
+exports.arquivarExercicioAssociacao = require('./src/associacao_tesouraria_transferencias').arquivarExercicioAssociacao;
+
+exports.listarArquivosExerciciosAssociacao = require("./src/associacao_tesouraria_transferencias").listarArquivosExerciciosAssociacao;
+exports.lerArquivoExercicioAssociacao = require("./src/associacao_tesouraria_transferencias").lerArquivoExercicioAssociacao;
+
+exports.previsualizarFechamentoExercicioAssociacao = require('./src/associacao_tesouraria_transferencias').previsualizarFechamentoExercicioAssociacao;
+
+// Revisão administrativa das origens repetidas (sem estorno automático).
+Object.assign(exports, require("./src/associacao_conciliacao_admin"));
+
+Object.assign(exports, require('./src/associacao_integracoes_financeiras'));
+Object.assign(exports, require('./src/eventos_tesouraria'));
+
+Object.assign(exports, require('./src/eventos_pagamentos'));
+
+exports.encerrarExercicioAssociacao = require('./src/associacao_tesouraria_transferencias').encerrarExercicioAssociacao;
+
+// Uniformes: autorização no servidor, autoria verificada e manutenção bloqueada.
+Object.assign(exports, require('./src/uniformes_admin'));
+Object.assign(exports, require('./src/uniformes_operacoes'));
+
+exports.gerenciarDepositoInternoAssociacao = require("./src/associacao_tesouraria_transferencias").gerenciarDepositoInternoAssociacao;
+
+// Aprovacao de gestao transacional e reconciliacao de prova de e-mail do cadastro.
+Object.assign(exports, require('./src/usuarios_aprovacao_gestao'));
+
+// Custos históricos de remessas e desembolso ao fornecedor.
+exports.configurarCustosRemessaUniformes = require("./src/uniformes_remessas_financeiro").configurarCustosRemessaUniformes;
+exports.registrarPagamentoFornecedorUniformes = require("./src/uniformes_remessas_financeiro").registrarPagamentoFornecedorUniformes;
+exports.resumoFinanceiroAnualUniformes = require('./src/uniformes_relatorio_anual').resumoFinanceiroAnualUniformes;
+exports.estornarPagamentoFornecedorUniformes = require('./src/uniformes_remessas_financeiro').estornarPagamentoFornecedorUniformes;
+
+// Fase 07A — preflight unificado de reset, somente leitura.
+exports.diagnosticarResetUniformesAssociacao = require('./src/uniformes_reset_diagnostico').diagnosticarResetUniformesAssociacao;
+exports.prepararNovoCicloUniformes = require('./src/uniformes_novo_ciclo_preparacao').prepararNovoCicloUniformes;
+exports.listarPreparacoesNovoCicloUniformes = require('./src/uniformes_novo_ciclo_preparacao').listarPreparacoesNovoCicloUniformes;
+exports.prepararBackupNovoCicloUniformes = require('./src/uniformes_novo_ciclo_backup').prepararBackupNovoCicloUniformes;
+exports.verificarBackupNovoCicloUniformes = require('./src/uniformes_novo_ciclo_backup').verificarBackupNovoCicloUniformes;
+
+// Fase 07D — pré-ativação não destrutiva e sem autorização de virada.
+exports.verificarProntidaoNovoCicloUniformes = require('./src/uniformes_novo_ciclo_prontidao').verificarProntidaoNovoCicloUniformes;
+
+// Fase 07E — ciclo operacional sem exclusão; protegido por Rules publicadas.
+exports.verificarProtecaoCicloUniformes = require('./src/uniformes_ciclo_ativacao').verificarProtecaoCicloUniformes;
+exports.ativarNovoCicloUniformes = require('./src/uniformes_ciclo_ativacao').ativarNovoCicloUniformes;
+
+exports.conferirCaixaLegadoAssociacao = require("./src/associacao_tesouraria_transferencias").conferirCaixaLegadoAssociacao;

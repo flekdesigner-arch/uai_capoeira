@@ -1572,25 +1572,6 @@ class _GeradorCertificadosEventoScreenState
     }
   }
 
-  void _addLogProcessamento(String mensagem) {
-    final horario = DateTime.now();
-    final hh = horario.hour.toString().padLeft(2, '0');
-    final mm = horario.minute.toString().padLeft(2, '0');
-    final ss = horario.second.toString().padLeft(2, '0');
-    final linha = '[$hh:$mm:$ss] $mensagem';
-
-    debugPrint('🧾 [GeradorCertificados] $linha');
-
-    if (!mounted) return;
-
-    setState(() {
-      _logsProcessamento.add(linha);
-      if (_logsProcessamento.length > 80) {
-        _logsProcessamento.removeRange(0, _logsProcessamento.length - 80);
-      }
-    });
-  }
-
   void _addLogProcessamentoSemSetState(String mensagem) {
     final horario = DateTime.now();
     final hh = horario.hour.toString().padLeft(2, '0');
@@ -1747,31 +1728,6 @@ class _GeradorCertificadosEventoScreenState
               child: Text(confirmar),
             ),
           ],
-        );
-      },
-    );
-  }
-
-  void _acaoPreviewParaSelecionados(String titulo) {
-    final selecionados = _participantesSelecionados;
-
-    if (selecionados.isEmpty) {
-      _mostrarInfo('Selecione pelo menos um participante.');
-      return;
-    }
-
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) {
-        return _SelecaoAcaoSheet(
-          titulo: titulo,
-          participantes: selecionados,
-          onAbrir: (participante) {
-            Navigator.pop(context);
-            _abrirPreview(participante);
-          },
         );
       },
     );
@@ -2806,120 +2762,6 @@ class _GeradorCertificadosEventoScreenState
           ],
         ],
       ),
-    );
-  }
-}
-
-class _SelecaoAcaoSheet extends StatelessWidget {
-  final String titulo;
-  final List<CertificadoParticipanteData> participantes;
-  final ValueChanged<CertificadoParticipanteData> onAbrir;
-
-  const _SelecaoAcaoSheet({
-    required this.titulo,
-    required this.participantes,
-    required this.onAbrir,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final t = context.uai;
-
-    return DraggableScrollableSheet(
-      initialChildSize: 0.70,
-      minChildSize: 0.35,
-      maxChildSize: 0.92,
-      builder: (context, scrollController) {
-        return Material(
-          color: t.surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
-          clipBehavior: Clip.antiAlias,
-          child: Column(
-            children: [
-              Container(
-                width: 46,
-                height: 5,
-                margin: const EdgeInsets.only(top: 10, bottom: 10),
-                decoration: BoxDecoration(
-                  color: t.border,
-                  borderRadius: BorderRadius.circular(99),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-                child: Row(
-                  children: [
-                    Icon(Icons.workspace_premium_rounded, color: t.primary),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        titulo,
-                        style: TextStyle(
-                          color: t.textPrimary,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.close_rounded),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: ListView.builder(
-                  controller: scrollController,
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
-                  itemCount: participantes.length,
-                  itemBuilder: (context, index) {
-                    final item = participantes[index];
-
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Material(
-                        color: t.card,
-                        borderRadius: BorderRadius.circular(t.inputRadius),
-                        clipBehavior: Clip.antiAlias,
-                        child: ListTile(
-                          onTap: () => onAbrir(item),
-                          leading: CircleAvatar(
-                            backgroundColor: t.primary,
-                            foregroundColor: t.primary.computeLuminance() > 0.48
-                                ? const Color(0xFF111827)
-                                : Colors.white,
-                            child: Text('${index + 1}'),
-                          ),
-                          title: Text(
-                            item.alunoNome,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: t.textPrimary,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          subtitle: Text(
-                            item.graduacaoNova,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(color: t.textSecondary),
-                          ),
-                          trailing: Icon(
-                            Icons.chevron_right_rounded,
-                            color: t.textMuted,
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 }

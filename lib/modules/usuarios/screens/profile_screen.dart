@@ -12,6 +12,8 @@ import 'package:uai_capoeira/core/preferences/user_preferences_service.dart';
 import 'package:uai_capoeira/core/theme/app_theme.dart';
 import 'package:uai_capoeira/core/theme/app_theme_controller.dart';
 import 'package:uai_capoeira/core/theme/app_theme_preset.dart';
+import 'package:uai_capoeira/core/services/update_wifi_service.dart';
+import 'package:uai_capoeira/shared/widgets/update_wifi_preference_tile.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -1085,6 +1087,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ]),
         const SizedBox(height: 18),
+        if (UpdateWifiService.instance.isSupported) ...[
+          const SizedBox(height: 14),
+          _sectionTitle('Atualizações automáticas'),
+          const UpdateWifiPreferenceTile(),
+          const SizedBox(height: 18),
+        ],
         _sectionTitle('Conta'),
         _settingsGroup([
           _settingsTile(

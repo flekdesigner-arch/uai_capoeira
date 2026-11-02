@@ -10,10 +10,8 @@ class VendaCard extends StatelessWidget {
   static Future<QuerySnapshot<Map<String, dynamic>>>? _alunosLookupFuture;
 
   static String _normalizarNome(String value) {
-    const com =
-        'áàâãäéèêëíìîïóòôõöúùûüçÁÀÂÃÄÉÈÊËÍÌÏÓÒÔÕÖÚÙÛÜÇ';
-    const sem =
-        'aaaaaeeeeiiiiooooouuuucAAAAAEEEEIIIIOOOOOUUUUC';
+    const com = 'áàâãäéèêëíìîïóòôõöúùûüçÁÀÂÃÄÉÈÊËÍÌÏÓÒÔÕÖÚÙÛÜÇ';
+    const sem = 'aaaaaeeeeiiiiooooouuuucAAAAAEEEEIIIIOOOOOUUUUC';
 
     var out = value.trim().toLowerCase();
     for (var i = 0; i < com.length; i++) {
@@ -46,14 +44,15 @@ class VendaCard extends StatelessWidget {
   Future<String?> _resolverFotoAluno() {
     final alunoId = (data['aluno_id'] ?? '').toString().trim();
     final alunoNome = (data['aluno_nome'] ?? '').toString().trim();
-    final direta = (data['foto_aluno_url'] ??
-            data['aluno_foto_url'] ??
-            data['foto_perfil_aluno'] ??
-            data['foto_url'] ??
-            data['fotoUrl'] ??
-            '')
-        .toString()
-        .trim();
+    final direta =
+        (data['foto_aluno_url'] ??
+                data['aluno_foto_url'] ??
+                data['foto_perfil_aluno'] ??
+                data['foto_url'] ??
+                data['fotoUrl'] ??
+                '')
+            .toString()
+            .trim();
 
     if (direta.isNotEmpty) return Future<String?>.value(direta);
 
@@ -113,30 +112,19 @@ class VendaCard extends StatelessWidget {
 
       if (aluno == null || aluno.isEmpty) return null;
 
-      final foto = (aluno['foto_perfil_aluno'] ??
-              aluno['foto_url'] ??
-              aluno['fotoUrl'] ??
-              aluno['foto'] ??
-              aluno['url_foto'] ??
-              aluno['fotoPerfil'] ??
-              aluno['foto_perfil_url'] ??
-              '')
-          .toString()
-          .trim();
+      final foto =
+          (aluno['foto_perfil_aluno'] ??
+                  aluno['foto_url'] ??
+                  aluno['fotoUrl'] ??
+                  aluno['foto'] ??
+                  aluno['url_foto'] ??
+                  aluno['fotoPerfil'] ??
+                  aluno['foto_perfil_url'] ??
+                  '')
+              .toString()
+              .trim();
 
       if (foto.isEmpty) return null;
-
-      // Backfill para vendas antigas: as próximas aberturas não precisam buscar.
-      try {
-        await FirebaseFirestore.instance
-            .collection('vendas_uniformes')
-            .doc(docId)
-            .set({
-          'foto_aluno_url': foto,
-          'foto_perfil_aluno': foto,
-          'foto_aluno_atualizada_em': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
-      } catch (_) {}
 
       return foto;
     } catch (_) {
@@ -155,18 +143,18 @@ class VendaCard extends StatelessWidget {
         final foto = snapshot.data?.trim() ?? '';
 
         Widget placeholder() => Container(
-              width: width,
-              height: height,
-              decoration: BoxDecoration(
-                color: context.uai.cardAlt,
-                borderRadius: BorderRadius.circular(radius),
-              ),
-              child: Icon(
-                Icons.person_rounded,
-                color: context.uai.textMuted,
-                size: compact ? 30 : 24,
-              ),
-            );
+          width: width,
+          height: height,
+          decoration: BoxDecoration(
+            color: context.uai.cardAlt,
+            borderRadius: BorderRadius.circular(radius),
+          ),
+          child: Icon(
+            Icons.person_rounded,
+            color: context.uai.textMuted,
+            size: compact ? 30 : 24,
+          ),
+        );
 
         if (foto.isEmpty) return placeholder();
 
@@ -367,8 +355,7 @@ class VendaCard extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                (data['aluno_nome'] ??
-                                        'Aluno não identificado')
+                                (data['aluno_nome'] ?? 'Aluno não identificado')
                                     .toString()
                                     .toUpperCase(),
                                 maxLines: 1,
@@ -486,8 +473,7 @@ class VendaCard extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              (data['aluno_nome'] ??
-                                      'Aluno não identificado')
+                              (data['aluno_nome'] ?? 'Aluno não identificado')
                                   .toString()
                                   .toUpperCase(),
                               maxLines: 1,
@@ -597,89 +583,6 @@ class VendaCard extends StatelessWidget {
             ],
           ),
         ],
-      ],
-    );
-  }
-
-  Widget _buildTotalFooter(
-    BuildContext context,
-    double total,
-    double pago,
-    double restante,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: context.uai.cardAlt,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _buildMetric(
-              context,
-              label: 'Total',
-              value: realFormat.format(total),
-            ),
-          ),
-          Expanded(
-            child: _buildMetric(
-              context,
-              label: 'Pago',
-              value: realFormat.format(pago),
-            ),
-          ),
-          Expanded(
-            child: _buildMetric(
-              context,
-              label: 'Falta',
-              value: realFormat.format(restante),
-              valueColor: restante > 0
-                  ? context.uai.warning
-                  : context.uai.success,
-            ),
-          ),
-          if (podeEditar || podeExcluir)
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (podeEditar)
-                  Icon(Icons.edit_rounded, size: 16, color: context.uai.info),
-                if (podeEditar && podeExcluir) const SizedBox(width: 8),
-                if (podeExcluir)
-                  Icon(
-                    Icons.delete_outline_rounded,
-                    size: 16,
-                    color: context.uai.error,
-                  ),
-              ],
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMetric(
-    BuildContext context, {
-    required String label,
-    required String value,
-    Color? valueColor,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: TextStyle(fontSize: 11, color: context.uai.textMuted),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          value,
-          style: TextStyle(
-            fontWeight: FontWeight.w800,
-            color: valueColor ?? context.uai.textPrimary,
-          ),
-        ),
       ],
     );
   }

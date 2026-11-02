@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart';
+import 'package:uai_capoeira/core/services/uai_callable_client.dart';
 import 'package:flutter/foundation.dart';
 
 import 'package:uai_capoeira/modules/turmas/models/aluno_snapshot_model.dart';
@@ -10,7 +10,6 @@ import 'package:uai_capoeira/modules/turmas/models/aluno_snapshot_model.dart';
 /// são processados no servidor e salvos em subcoleções de cache prontas para a UI.
 class DashboardTurmaCacheService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseFunctions _functions = FirebaseFunctions.instance;
 
   /// Verifica se o App deve usar a lógica de Cache V2.
   ///
@@ -152,11 +151,10 @@ class DashboardTurmaCacheService {
     bool force = false,
   }) async {
     try {
-      final result = await _functions
-          .httpsCallable('reconstruirDashboardTurmaCache')
-          .call(<String, dynamic>{'turmaId': turmaId, 'force': force});
-
-      return Map<String, dynamic>.from(result.data as Map);
+      return await UaiCallableClient.instance.call(
+        'reconstruirDashboardTurmaCache',
+        {'turmaId': turmaId, 'force': force},
+      );
     } catch (e) {
       debugPrint('⚠️ Erro ao reconstruir cache no servidor: $e');
       return {

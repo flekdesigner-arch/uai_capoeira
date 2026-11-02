@@ -1,3 +1,6 @@
+import 'package:uai_capoeira/core/access_simulation/access_simulation_controller.dart';
+import 'package:uai_capoeira/core/access_simulation/simulation_session.dart';
+import 'package:uai_capoeira/core/access_simulation/simulation_navigation_guard.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -311,6 +314,7 @@ class AppDrawer extends StatelessWidget {
               children: [
                 InkWell(
                   onTap: () {
+                    if (SimulationNavigationGuard.intercept(context, module: 'Perfil')) return;
                     Navigator.pop(context);
                     Navigator.push(
                       context,
@@ -358,7 +362,7 @@ class AppDrawer extends StatelessWidget {
                       ),
                       const SizedBox(height: 5),
                       Text(
-                        currentUser?.email ?? 'Email n\u00e3o encontrado',
+                        AccessSimulationController.instance.active ? 'Perfil simulado • somente leitura' : (currentUser?.email ?? 'Email n\u00e3o encontrado'),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -393,6 +397,7 @@ class AppDrawer extends StatelessWidget {
             const SizedBox(height: 9),
             InkWell(
               onTap: () {
+                if (SimulationNavigationGuard.intercept(context, module: 'Perfil')) return;
                 Navigator.pop(context);
                 Navigator.push(
                   context,
@@ -481,6 +486,7 @@ class AppDrawer extends StatelessWidget {
           titulo: 'EVENTOS',
           subtitulo: 'Calendário e gestão de eventos',
           tela: const EventosScreen(),
+          mirrorDestination: MirrorDestination.events,
         ),
       if (permissoes.temTransportes)
         _buildMenuItem(
@@ -490,6 +496,7 @@ class AppDrawer extends StatelessWidget {
           titulo: 'TRANSPORTES',
           subtitulo: 'Viagens, vagas e pagamentos',
           tela: const TransportesScreen(),
+          mirrorDestination: MirrorDestination.transportes,
         ),
       if (permissoes.temAssociacao)
         _buildMenuItem(
@@ -508,6 +515,7 @@ class AppDrawer extends StatelessWidget {
           titulo: 'RIFAS',
           subtitulo: 'Gerencie rifas e sorteios',
           tela: const RifasScreen(),
+          mirrorDestination: MirrorDestination.rifas,
         ),
       if (permissoes.temUniformes)
         _buildMenuItem(
@@ -520,7 +528,9 @@ class AppDrawer extends StatelessWidget {
         ),
       if (permissoes.temInscricoes)
         StreamBuilder<int>(
-          stream: InscricoesPendentesService().watchPendentes(),
+          stream: AccessSimulationController.instance.active
+              ? Stream<int>.value(0)
+              : InscricoesPendentesService().watchPendentes(),
           builder: (context, snapshot) {
             final pendentes = snapshot.data ?? 0;
             return PendingPulse(
@@ -586,6 +596,7 @@ class AppDrawer extends StatelessWidget {
   }
 
   Widget _buildMinhaAreaAlunoSection(BuildContext context) {
+    if (AccessSimulationController.instance.active) return const ListTile(leading: Icon(Icons.info_outline), title: Text('Área do Aluno: cobertura limitada'));
     if (currentUser == null) return const SizedBox.shrink();
 
     return FutureBuilder<List<AlunoVinculadoGoogle>>(
@@ -633,7 +644,9 @@ class AppDrawer extends StatelessWidget {
         ),
         child: Row(
           children: [
-            const Expanded(child: BotaoAtualizarMelhorado()),
+            Expanded(child: AccessSimulationController.instance.active
+              ? TextButton(onPressed: SimulationSession.instance.stop, child: const Text('Sair do Modo Espelho'))
+              : const BotaoAtualizarMelhorado()),
             const SizedBox(width: 5),
             Tooltip(
               message: 'Sair do app',
@@ -661,6 +674,7 @@ class AppDrawer extends StatelessWidget {
   }
 
   Future<void> _sairDoApp(BuildContext context) async {
+    if (AccessSimulationController.instance.active) { SimulationSession.instance.stop(); return; }
     // A preferência visual pertence ao dispositivo/usuário e deve continuar
     // aplicada nas telas públicas de Login/Cadastro. Não force tema claro no
     // logout: apenas encerre a sessão autenticada.
@@ -716,6 +730,7 @@ class AppDrawer extends StatelessWidget {
     required String subtitulo,
     required Widget tela,
     int badgeCount = 0,
+    MirrorDestination? mirrorDestination,
   }) {
     final t = context.uai;
     final accent = _ensureVisible(cor, t.card);
@@ -729,12 +744,23 @@ class AppDrawer extends StatelessWidget {
         borderRadius: BorderRadius.circular(t.cardRadius),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
-          onTap: () {
-            Navigator.pop(context);
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => tela),
-            );
+          onTap: () async {
+            final navigator = Navigator.of(context);
+            if (AccessSimulationController.instance.active) {
+              if (mirrorDestination == null) {
+                SimulationNavigationGuard.intercept(context, module: titulo);
+                return;
+              }
+              final allowed = await SimulationNavigationGuard().canEnter(mirrorDestination);
+              if (!context.mounted) return;
+              if (!allowed) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  content: Text('Acesso negado. Verifique as permissões do perfil e a autorização administrativa.')));
+                return;
+              }
+            }
+            navigator.pop();
+            navigator.push(MaterialPageRoute(builder: (context) => tela));
           },
           splashColor: accent.withAlpha(28),
           highlightColor: accent.withAlpha(14),

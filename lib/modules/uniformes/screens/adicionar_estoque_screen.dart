@@ -57,6 +57,11 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
 
   bool _controlaEstoque = true;
   bool _isLoading = false;
+  final String _produtoPendenteId = FirebaseFirestore.instance
+      .collection('uniformes_estoque')
+      .doc()
+      .id;
+  final Map<String, String> _variantesPendentes = {};
 
   // Foto e Variações
   XFile? _fotoArquivo; // Agora XFile para compatibilidade web
@@ -89,8 +94,6 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
         ? const Color(0xFF111827)
         : const Color(0xFFFFFFFF);
   }
-
-
 
   @override
   void initState() {
@@ -285,6 +288,8 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
           await ref.putFile(File(_fotoArquivo!.path));
         }
         fotoFinal = await ref.getDownloadURL();
+        _fotoUrl = fotoFinal;
+        _fotoArquivo = null;
       }
 
       if (_possuiVariacoes && _variacoes.isNotEmpty) {
@@ -314,22 +319,39 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
           'tipo': 'base',
         };
 
+        final variantesExistentes =
+            <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+        String chaveVariacao(Map<String, dynamic> value) =>
+            "${value['tamanho']}::${value['cor'] ?? ''}";
         String baseId;
         if (widget.itemId != null) {
-          await _uniformesService.adicionarItemEstoque(
-            dadosBase,
-            itemId: widget.itemId,
-          );
           baseId = widget.itemId!;
-          final variacoesAntigas = await FirebaseFirestore.instance
+          final antigas = await FirebaseFirestore.instance
               .collection('uniformes_estoque')
               .where('item_base_id', isEqualTo: baseId)
               .get();
-          for (var doc in variacoesAntigas.docs) {
-            await doc.reference.delete();
+          for (final doc in antigas.docs) {
+            variantesExistentes[chaveVariacao(doc.data())] = doc;
           }
+          for (final variacao in _variacoes) {
+            final anterior = variantesExistentes[chaveVariacao(variacao)];
+            if (anterior != null &&
+                (anterior.data()['quantidade'] ?? 0) !=
+                    (variacao['quantidade'] ?? 0)) {
+              throw StateError(
+                'Use Entrada ou Saída no estoque para alterar a quantidade de uma variação existente. Os vínculos e o estoque atual foram preservados.',
+              );
+            }
+          }
+          await _uniformesService.adicionarItemEstoque(
+            dadosBase,
+            itemId: baseId,
+          );
         } else {
-          baseId = await _uniformesService.adicionarItemEstoque(dadosBase);
+          baseId = await _uniformesService.adicionarItemEstoque(
+            dadosBase,
+            itemId: _produtoPendenteId,
+          );
         }
 
         for (var variacao in _variacoes) {
@@ -354,7 +376,20 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
             'status': 'ativo',
             'tipo': 'variacao',
           };
-          await _uniformesService.adicionarItemEstoque(dadosVariacao);
+          final anterior = variantesExistentes[chaveVariacao(variacao)];
+          if (anterior != null) dadosVariacao.remove('quantidade');
+          await _uniformesService.adicionarItemEstoque(
+            dadosVariacao,
+            itemId:
+                anterior?.id ??
+                _variantesPendentes.putIfAbsent(
+                  chaveVariacao(variacao),
+                  () => FirebaseFirestore.instance
+                      .collection('uniformes_estoque')
+                      .doc()
+                      .id,
+                ),
+          );
         }
 
         if (mounted) {
@@ -401,7 +436,7 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
 
         await _uniformesService.adicionarItemEstoque(
           dados,
-          itemId: widget.itemId,
+          itemId: widget.itemId ?? _produtoPendenteId,
         );
 
         if (mounted) {
@@ -431,9 +466,10 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
       debugPrint('[UNIFORMES_ESTOQUE] erro ao salvar item: $e');
       debugPrintStack(stackTrace: st);
       if (mounted) {
-        final mensagem = e is FirebaseException && e.plugin == 'firebase_storage'
+        final mensagem =
+            e is FirebaseException && e.plugin == 'firebase_storage'
             ? 'Não foi possível enviar a foto do item. Verifique sua conexão e tente novamente.'
-            : 'Não foi possível salvar o item agora. Tente novamente.';
+            : 'Não foi possível salvar o item: $e';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -685,10 +721,14 @@ class _AdicionarEstoqueScreenState extends State<AdicionarEstoqueScreen> {
                         label: Text(
                           'Adicionar',
                           style: TextStyle(
-                            color: primario.withAlpha((255.0 * (
-                              _variacoes.length < _tamanhosPadrao.length
-                                  ? 1.0
-                                  : 0.5)).round()),
+                            color: primario.withAlpha(
+                              (255.0 *
+                                      (_variacoes.length <
+                                              _tamanhosPadrao.length
+                                          ? 1.0
+                                          : 0.5))
+                                  .round(),
+                            ),
                           ),
                         ),
                       ),
@@ -1316,12 +1356,6 @@ class _SelecionarFornecedorDialogState
   void dispose() {
     _searchController.dispose();
     super.dispose();
-  }
-
-  Color _readableOn(Color background) {
-    return background.computeLuminance() > 0.48
-        ? const Color(0xFF111827)
-        : const Color(0xFFFFFFFF);
   }
 
   @override

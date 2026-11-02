@@ -469,7 +469,10 @@ class _EditarGraduacaoModalState extends State<EditarGraduacaoModal> {
           Expanded(child: _buildEmptyState())
         else
           Flexible(
-            child: ListView.builder(
+            child: RadioGroup<String>(
+              groupValue: _graduacaoSelecionada,
+              onChanged: (value) => setState(() => _graduacaoSelecionada = value),
+              child: ListView.builder(
               shrinkWrap: true,
               padding: const EdgeInsets.only(top: 6, bottom: 8),
               itemCount: _graduacoes.length,
@@ -477,6 +480,7 @@ class _EditarGraduacaoModalState extends State<EditarGraduacaoModal> {
                 final graduacao = _graduacoes[index];
                 return _buildGraduacaoTile(graduacao);
               },
+            ),
             ),
           ),
       ],
@@ -595,11 +599,7 @@ class _EditarGraduacaoModalState extends State<EditarGraduacaoModal> {
                 const SizedBox(width: 8),
                 Radio<String>(
                   value: id,
-                  groupValue: _graduacaoSelecionada,
                   activeColor: cor,
-                  onChanged: (value) {
-                    setState(() => _graduacaoSelecionada = value);
-                  },
                 ),
               ],
             ),

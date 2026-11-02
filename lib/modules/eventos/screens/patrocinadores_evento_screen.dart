@@ -51,8 +51,6 @@ class _PatrocinadoresEventoScreenState
         .toColor();
   }
 
-  Color _onCard() => _readableOn(context.uai.card);
-  Color _onCardMuted() => _onCard().withAlpha(173);
   Color _appBarBg() =>
       Theme.of(context).appBarTheme.backgroundColor ?? context.uai.primary;
   Color _appBarFg() =>
@@ -103,7 +101,7 @@ class _PatrocinadoresEventoScreenState
   final AssociacaoFinanceiroService _financeiroAssociacao = AssociacaoFinanceiroService();
 
   File? _imagemSelecionada;
-  String? _logoUrl;
+
   bool _uploading = false;
   bool _salvando = false;
 
@@ -191,7 +189,7 @@ class _PatrocinadoresEventoScreenState
       if (image != null) {
         setState(() {
           _imagemSelecionada = File(image.path);
-          _logoUrl = null;
+
         });
       }
     } catch (e) {
@@ -225,7 +223,7 @@ class _PatrocinadoresEventoScreenState
       final String downloadUrl = await snapshot.ref.getDownloadURL();
 
       setState(() {
-        _logoUrl = downloadUrl;
+
         _uploading = false;
       });
 
@@ -249,7 +247,7 @@ class _PatrocinadoresEventoScreenState
   void _removerImagem() {
     setState(() {
       _imagemSelecionada = null;
-      _logoUrl = null;
+
     });
   }
 
@@ -324,7 +322,7 @@ class _PatrocinadoresEventoScreenState
       _dataPrevista = DateTime.now().add(const Duration(days: 30));
       _dataRealizada = null;
       _imagemSelecionada = null;
-      _logoUrl = null;
+
       _uploading = false;
       _salvando = false;
     });
@@ -807,7 +805,7 @@ class _PatrocinadoresEventoScreenState
         _dataPrevista = DateTime.now().add(const Duration(days: 30));
         _dataRealizada = null;
         _imagemSelecionada = null;
-        _logoUrl = null;
+
         _salvando = false;
       });
 
@@ -1306,76 +1304,6 @@ class _PatrocinadoresEventoScreenState
     );
   }
 
-  Widget _buildPermissaoBanner() {
-    if (_carregandoPermissoes) {
-      return Container(
-        margin: EdgeInsets.fromLTRB(16, 14, 16, 0),
-        padding: EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: context.uai.card,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: context.uai.cardAlt),
-        ),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: context.uai.warning,
-              ),
-            ),
-            SizedBox(width: 10),
-            Text(
-              'Conferindo permissão de patrocinadores...',
-              style: TextStyle(
-                color: context.uai.textSecondary,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    final color = _podeGerenciarPatrocinadores
-        ? context.uai.success
-        : context.uai.warning;
-
-    return Container(
-      margin: EdgeInsets.fromLTRB(16, 14, 16, 0),
-      padding: EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withAlpha(20),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: color.withAlpha(36)),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            _podeGerenciarPatrocinadores
-                ? Icons.check_circle_rounded
-                : Icons.lock_outline_rounded,
-            color: _ensureVisible(color, context.uai.card),
-          ),
-          SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              _podeGerenciarPatrocinadores
-                  ? 'Permissão liberada para adicionar, registrar pagamento e excluir patrocinadores.'
-                  : 'Você pode visualizar patrocinadores, mas não pode alterar este módulo.',
-              style: TextStyle(
-                color: _ensureVisible(color, context.uai.card),
-                fontWeight: FontWeight.w800,
-                height: 1.25,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget _buildResumoCard({
     required int total,
